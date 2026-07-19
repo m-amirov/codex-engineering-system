@@ -1,0 +1,8 @@
+# Example only. Do not copy blindly into ~/.codex/config.toml.
+[foundation]
+version = "0.1.0"
+root = "E:/Work/codex-engineering-system"
+
+# Add internal skills only after reviewing local paths.
+# [skills]
+# implementation_cycle = "E:/Work/codex-engineering-system/skills/implementation-cycle"

@@ -1,0 +1,5 @@
+stages:
+  development: [inspect affected implementation, acceptance criteria, targeted lint, targeted typecheck, targeted unit tests, targeted integration or E2E]
+  pullRequest: [lint, typecheck, affected tests, regression review, documentation impact, review findings]
+  releaseCandidate: [full lint, full typecheck, full unit suite, full E2E, production build, production preview, artifact validation, release documentation, unresolved risk report]
+highRisk: [failure injection, retry and error path verification, rollback recovery verification, state machine review, independent reviewer]

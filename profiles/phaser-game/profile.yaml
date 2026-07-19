@@ -1,0 +1,8 @@
+id: phaser-game
+schemaVersion: 1
+version: 0.1.0
+extends: ["common"]
+description: "scene lifecycle, preload, assets, responsive canvas, hit areas, pause/resume, transitions, deterministic state, saves, performance, mobile, reduced motion, cleanup, double transition prevention, targeted Playwright smoke"
+requiredSkills:
+  - implementation-cycle
+  - documentation-sync

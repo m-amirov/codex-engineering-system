@@ -1,0 +1,8 @@
+id: automation-tool
+schemaVersion: 1
+version: 0.1.0
+extends: ["common"]
+description: "idempotency, retries, timeouts, locks, duplicate execution, state machine, logs, recovery, rate limits, external APIs, manual stop, dry-run, deterministic reports, no hidden infinite loop, retryable vs terminal errors"
+requiredSkills:
+  - implementation-cycle
+  - documentation-sync

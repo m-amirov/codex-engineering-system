@@ -1,0 +1,10 @@
+profile: browser-extension
+requiredDocs:
+  - README.md
+  - PRODUCT.md
+  - ARCHITECTURE.md
+  - DEVELOPMENT.md
+  - TESTING.md
+  - RELEASE.md
+  - STATUS.md
+  - SECURITY.md

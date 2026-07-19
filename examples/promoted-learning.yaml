@@ -1,0 +1,12 @@
+id: learning-example-001
+title: Example verified learning
+sourceProject: example
+problem: Example problem
+rootCause: Verified root cause
+verifiedResolution: Verified resolution
+evidence:
+  - command: example test
+scope: project
+proposedTargets:
+  - docs
+date: 2026-07-19

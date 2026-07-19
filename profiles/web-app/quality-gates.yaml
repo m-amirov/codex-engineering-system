@@ -1,0 +1,17 @@
+profile: web-app
+gates:
+  development:
+    required:
+      - inspect affected implementation
+      - acceptance criteria
+      - targeted lint when available
+      - targeted unit tests
+      - targeted integration or E2E for changed flow
+  releaseCandidate:
+    required:
+      - full lint
+      - full typecheck
+      - full unit suite
+      - full E2E when applicable
+      - production build
+      - artifact validation

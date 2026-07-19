@@ -1,0 +1,8 @@
+id: common
+schemaVersion: 1
+version: 0.1.0
+extends: []
+description: "research, acceptance criteria, minimal coherent change, targeted verification, docs, evidence, dependency review, security, compatibility, error handling, Definition of Done"
+requiredSkills:
+  - implementation-cycle
+  - documentation-sync
