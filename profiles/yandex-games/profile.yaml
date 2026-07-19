@@ -1,0 +1,8 @@
+id: yandex-games
+schemaVersion: 1
+version: 0.1.0
+extends: ["common"]
+description: "SDK /sdk.js, YaGames.init, LoadingAPI.ready timing, GameplayAPI state machine, cloud save transaction invariants, ads lifecycle, completion flow, leaderboards, ZIP structure, quality viewports, release verification"
+requiredSkills:
+  - implementation-cycle
+  - documentation-sync

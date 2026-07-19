@@ -1,0 +1,8 @@
+id: browser-extension
+schemaVersion: 1
+version: 0.1.0
+extends: ["common"]
+description: "manifest, content scripts, service worker, popup/options, permissions, host permissions, messaging, frame isolation, duplicate execution, storage, Chromium/Yandex Browser compatibility, dynamic DOM, dropdown diagnostics, graceful degradation, data safety"
+requiredSkills:
+  - implementation-cycle
+  - documentation-sync

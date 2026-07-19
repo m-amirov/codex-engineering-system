@@ -1,0 +1,6 @@
+schemaVersion: 1
+foundationVersion: 0.1.0
+project:
+  name: example
+profiles:
+  - common

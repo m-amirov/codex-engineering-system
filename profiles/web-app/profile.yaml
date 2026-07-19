@@ -1,0 +1,8 @@
+id: web-app
+schemaVersion: 1
+version: 0.1.0
+extends: ["common"]
+description: "production build, browser runtime, responsive layout, accessibility, loading/error states, env config, network failures, performance, bundle size, browser smoke tests, desktop/mobile viewports, no dev-only production code"
+requiredSkills:
+  - implementation-cycle
+  - documentation-sync

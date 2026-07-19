@@ -1,0 +1,37 @@
+agents:
+  - id: architect
+    path: agents/architect.toml
+    responsibility: architect responsibilities
+    allowedWriteScope: assigned files
+    recommendedUse: role-specific tasks
+    parallelSafe: true
+  - id: implementer
+    path: agents/implementer.toml
+    responsibility: implementer responsibilities
+    allowedWriteScope: assigned files
+    recommendedUse: role-specific tasks
+    parallelSafe: true
+  - id: reviewer
+    path: agents/reviewer.toml
+    responsibility: reviewer responsibilities
+    allowedWriteScope: assigned files
+    recommendedUse: role-specific tasks
+    parallelSafe: true
+  - id: qa-engineer
+    path: agents/qa-engineer.toml
+    responsibility: qa-engineer responsibilities
+    allowedWriteScope: assigned files
+    recommendedUse: role-specific tasks
+    parallelSafe: true
+  - id: documentation-engineer
+    path: agents/documentation-engineer.toml
+    responsibility: documentation-engineer responsibilities
+    allowedWriteScope: assigned files
+    recommendedUse: role-specific tasks
+    parallelSafe: true
+  - id: release-manager
+    path: agents/release-manager.toml
+    responsibility: release-manager responsibilities
+    allowedWriteScope: assigned files
+    recommendedUse: role-specific tasks
+    parallelSafe: true

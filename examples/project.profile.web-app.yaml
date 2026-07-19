@@ -1,0 +1,11 @@
+schemaVersion: 1
+foundationVersion: 0.1.0
+project:
+  id: example-web-app
+  name: Example web-app
+profiles: ["common", "web-app"]
+requiredSkills: [implementation-cycle, documentation-sync]
+documentation: required
+testingPolicy: targeted during development, full before release
+releasePolicy: no automatic publication
+managedFilePolicy: managed, mergeable, projectOwned

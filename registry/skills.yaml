@@ -1,0 +1,65 @@
+skills:
+  - id: implementation-cycle
+    path: skills/implementation-cycle
+    description: Internal implementation-cycle workflow
+    profiles: [common]
+    status: active
+    version: 0.1.0
+    owner: foundation
+    dependencies: []
+  - id: documentation-sync
+    path: skills/documentation-sync
+    description: Internal documentation-sync workflow
+    profiles: [common]
+    status: active
+    version: 0.1.0
+    owner: foundation
+    dependencies: []
+  - id: regression-analysis
+    path: skills/regression-analysis
+    description: Internal regression-analysis workflow
+    profiles: [common]
+    status: active
+    version: 0.1.0
+    owner: foundation
+    dependencies: []
+  - id: release-audit
+    path: skills/release-audit
+    description: Internal release-audit workflow
+    profiles: [common]
+    status: active
+    version: 0.1.0
+    owner: foundation
+    dependencies: []
+  - id: yandex-release-validation
+    path: skills/yandex-release-validation
+    description: Internal yandex-release-validation workflow
+    profiles: [common]
+    status: active
+    version: 0.1.0
+    owner: foundation
+    dependencies: []
+  - id: save-migration-audit
+    path: skills/save-migration-audit
+    description: Internal save-migration-audit workflow
+    profiles: [common]
+    status: active
+    version: 0.1.0
+    owner: foundation
+    dependencies: []
+  - id: gameplay-lifecycle-audit
+    path: skills/gameplay-lifecycle-audit
+    description: Internal gameplay-lifecycle-audit workflow
+    profiles: [common]
+    status: active
+    version: 0.1.0
+    owner: foundation
+    dependencies: []
+  - id: project-bootstrap
+    path: skills/project-bootstrap
+    description: Internal project-bootstrap workflow
+    profiles: [common]
+    status: active
+    version: 0.1.0
+    owner: foundation
+    dependencies: []

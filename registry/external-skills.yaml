@@ -1,0 +1,46 @@
+externalSkills:
+  - id: "@obra/systematic-debugging"
+    source: "@obra/systematic-debugging"
+    purpose: "Externally managed skill; content is not copied into this repository."
+    profiles: [common, web-app]
+    required: false
+    status: externally-managed
+    copiedContent: false
+    verifiedAt: null
+    version: unknown
+  - id: "@obra/verification-before-completion"
+    source: "@obra/verification-before-completion"
+    purpose: "Externally managed skill; content is not copied into this repository."
+    profiles: [common, web-app]
+    required: false
+    status: externally-managed
+    copiedContent: false
+    verifiedAt: null
+    version: unknown
+  - id: "@majiayu000/browser-testing-playwright"
+    source: "@majiayu000/browser-testing-playwright"
+    purpose: "Externally managed skill; content is not copied into this repository."
+    profiles: [common, web-app]
+    required: false
+    status: externally-managed
+    copiedContent: false
+    verifiedAt: null
+    version: unknown
+  - id: "@neversight/frontend-developer-skill"
+    source: "@neversight/frontend-developer-skill"
+    purpose: "Externally managed skill; content is not copied into this repository."
+    profiles: [common, web-app]
+    required: false
+    status: externally-managed
+    copiedContent: false
+    verifiedAt: null
+    version: unknown
+  - id: "@majiayu000/css-layout-development"
+    source: "@majiayu000/css-layout-development"
+    purpose: "Externally managed skill; content is not copied into this repository."
+    profiles: [common, web-app]
+    required: false
+    status: externally-managed
+    copiedContent: false
+    verifiedAt: null
+    version: unknown

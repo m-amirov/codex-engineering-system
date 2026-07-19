@@ -1,0 +1,22 @@
+[project]
+name = "codex-engineering-system"
+version = "0.1.0"
+description = "Central engineering foundation for Codex-assisted projects"
+requires-python = ">=3.11"
+dependencies = []
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Internal Engineering"}]
+
+[project.scripts]
+ces-bootstrap = "scripts.bootstrap_project:main"
+ces-compose-agents = "scripts.compose_agents_file:main"
+ces-validate-repository = "scripts.validate_repository:main"
+ces-validate-project = "scripts.validate_project:main"
+ces-update-project = "scripts.update_project:main"
+ces-promote-learning = "scripts.promote_learning:main"
+ces-install-codex-config = "scripts.install_codex_config:main"
+
+[tool.unittest]
+start-dir = "tests"
+pattern = "test*.py"

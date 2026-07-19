@@ -1,0 +1,37 @@
+profiles:
+  - id: common
+    path: profiles/common
+    extends: []
+    description: research, acceptance criteria, minimal coherent change, targeted verification, docs, evidence, dependency review, security, compatibility, error handling, Definition of Done
+    compatibleWith: [common]
+    requiredSkills: [implementation-cycle, documentation-sync]
+  - id: web-app
+    path: profiles/web-app
+    extends: []
+    description: production build, browser runtime, responsive layout, accessibility, loading/error states, env config, network failures, performance, bundle size, browser smoke tests, desktop/mobile viewports, no dev-only production code
+    compatibleWith: [common]
+    requiredSkills: [implementation-cycle, documentation-sync]
+  - id: browser-extension
+    path: profiles/browser-extension
+    extends: []
+    description: manifest, content scripts, service worker, popup/options, permissions, host permissions, messaging, frame isolation, duplicate execution, storage, Chromium/Yandex Browser compatibility, dynamic DOM, dropdown diagnostics, graceful degradation, data safety
+    compatibleWith: [common]
+    requiredSkills: [implementation-cycle, documentation-sync]
+  - id: automation-tool
+    path: profiles/automation-tool
+    extends: []
+    description: idempotency, retries, timeouts, locks, duplicate execution, state machine, logs, recovery, rate limits, external APIs, manual stop, dry-run, deterministic reports, no hidden infinite loop, retryable vs terminal errors
+    compatibleWith: [common]
+    requiredSkills: [implementation-cycle, documentation-sync]
+  - id: phaser-game
+    path: profiles/phaser-game
+    extends: []
+    description: scene lifecycle, preload, assets, responsive canvas, hit areas, pause/resume, transitions, deterministic state, saves, performance, mobile, reduced motion, cleanup, double transition prevention, targeted Playwright smoke
+    compatibleWith: [common]
+    requiredSkills: [implementation-cycle, documentation-sync]
+  - id: yandex-games
+    path: profiles/yandex-games
+    extends: []
+    description: SDK /sdk.js, YaGames.init, LoadingAPI.ready timing, GameplayAPI state machine, cloud save transaction invariants, ads lifecycle, completion flow, leaderboards, ZIP structure, quality viewports, release verification
+    compatibleWith: [common]
+    requiredSkills: [implementation-cycle, documentation-sync]
