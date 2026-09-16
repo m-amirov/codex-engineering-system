@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ceos.local/schemas/project-manifest.schema.json",
+  "title": "CEOS Project Manifest",
+  "type": "object",
+  "required": [
+    "version",
+    "profile",
+    "commands"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "profile": {
+      "enum": [
+        "generic",
+        "node-web",
+        "yandex-games",
+        "twork-desktop",
+        "platibridge"
+      ]
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "production": {
+      "type": "object",
+      "properties": {
+        "access": {
+          "enum": [
+            "read-only",
+            "controlled",
+            "write"
+          ]
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "properties": {
+        "clean_worktree": {
+          "type": "boolean"
+        }
+      }
+    },
+    "browser": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "gate": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

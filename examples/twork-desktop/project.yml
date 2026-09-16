@@ -1,0 +1,15 @@
+version: 1
+profile: twork-desktop
+commands:
+  lint: npm run lint
+  test: npm test
+  integration: npm run test:integration
+  build: npm run build
+gates:
+  verification: [lint, test, integration, build]
+  release: [lint, test, integration, build]
+production:
+  access: read-only
+browser:
+  required: true
+  gate: integration

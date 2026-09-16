@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ceos.local/schemas/evidence-summary.schema.json",
+  "title": "CEOS Evidence Summary",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "ceosVersion",
+    "mode",
+    "verdict",
+    "gates"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "verdict": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "CONFIGURATION_ERROR",
+        "BLOCKED"
+      ]
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "required",
+          "risk"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "CONFIGURATION_ERROR",
+              "BLOCKED",
+              "SKIP"
+            ]
+          },
+          "risk": {
+            "enum": [
+              "R0",
+              "R1",
+              "R2",
+              "R3"
+            ]
+          },
+          "failureType": {
+            "enum": [
+              "TEST_FAILURE",
+              "COMMAND_FAILURE",
+              "CONFIGURATION_ERROR"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

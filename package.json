@@ -1,0 +1,19 @@
+{
+  "name": "codex-engineering-os",
+  "version": "0.2.0",
+  "description": "A global-first engineering operating layer for Codex with automatic model routing, skills, policies, profiles, gates and evidence.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "ceos": "./bin/ceos.mjs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "self-test": "node ./bin/ceos.mjs self-test",
+    "doctor": "node ./bin/ceos.mjs doctor",
+    "lint": "node --check ./bin/ceos.mjs && node --check ./src/ceos.mjs && node --check ./src/yaml-lite.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
