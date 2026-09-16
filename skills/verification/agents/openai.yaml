@@ -1,0 +1,6 @@
+interface:
+  display_name: "CEOS Verification"
+  short_description: "Codex Engineering OS workflow: verification"
+  default_prompt: "Use the verification workflow and produce evidence-based results."
+policy:
+  allow_implicit_invocation: true

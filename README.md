@@ -1,45 +1,103 @@
-# Codex Engineering System
+# Codex Engineering OS (CEOS) 0.2.0
 
-Central versioned engineering foundation for creating and maintaining software projects with Codex.
+CEOS is a global-first engineering operating layer for Codex. Install it once and every Codex repository inherits the same compact engineering contract, reusable Skills, and automatic multi-model routing. Project Profiles, Gates, and Evidence remain available when a repository needs a stricter local contract.
 
-## Concepts
-- **Principles**: stable global rules and risk posture.
-- **Profiles**: project-type overlays such as web app, browser extension, Phaser, and Yandex Games.
-- **Skills**: reusable task workflows with references and report templates.
-- **Agents**: role configuration examples; adapt fields to the current Codex version.
-- **Templates**: documentation and project foundation files.
+## What 0.2.0 adds
 
-## Instruction priority
-```text
-Global defaults
-→ selected profiles
-→ generated project AGENTS.md
-→ local project instructions
-```
-Local project instructions have highest priority. Always read the nearest project `AGENTS.md` first.
+- Global Codex installation with `ceos install-global`.
+- Managed CEOS instructions in the active `$CODEX_HOME/AGENTS.override.md` or `$CODEX_HOME/AGENTS.md` without replacing unrelated user text.
+- Six personal custom agents under `$CODEX_HOME/agents/` with task-specific model and reasoning settings.
+- Seven CEOS Skills under `$HOME/.agents/skills/`, available in every repository.
+- Automatic semantic routing based on workload shape, complexity, uncertainty, and risk.
+- Drift detection with `ceos global-status` and checksummed `$CODEX_HOME/ceos/installation.json`.
+- Conflict-safe upgrades: differing CEOS-owned agent/skill targets fail closed unless `--force` is explicit; forced replacement is backed up first, while unrelated user targets are never overwritten.
+- Dry-run planning with `ceos install-global --dry-run`.
 
-## Quick start
+Existing 0.1.1 project manifests and verification behavior remain compatible.
+
+## Automatic model routing
+
+CEOS uses Codex custom subagents, not a wrapper API, to route bounded units of work:
+
+| Agent | Model | Reasoning | Typical work |
+|---|---|---|---|
+| `ceos_bulk_checker` | `gpt-5.6-luna` | low | repetitive/high-volume deterministic checks |
+| `ceos_explorer` | `gpt-5.6-terra` | medium | repository exploration, tracing, evidence gathering |
+| `ceos_implementer` | `gpt-5.6` | medium | bounded implementation/refactor after scope is known |
+| `ceos_debugger` | `gpt-5.6` | high | ambiguous bugs, state/concurrency, failed gates |
+| `ceos_reviewer` | `gpt-5.6` | high | correctness/security/architecture/production-risk review |
+| `ceos_verifier` | `gpt-5.6` | high | independent final acceptance and release verification |
+
+The parent Codex thread remains the orchestrator. CEOS does **not** hot-swap the model of an already-running parent thread; it automatically delegates suitable subtasks to the configured agents. This is the native Codex model-routing mechanism.
+
+## One-time global install
+
 ```powershell
-python scripts/validate_repository.py --strict
-python scripts/bootstrap_project.py --name "new-yandex-game" --path "E:/Work/new-yandex-game" --profiles common web-app phaser-game yandex-games --dry-run
-python scripts/bootstrap_project.py --name "new-yandex-game" --path "E:/Work/new-yandex-game" --profiles common web-app phaser-game yandex-games
-python scripts/validate_project.py --path "E:/Work/new-yandex-game" --strict
+npm install -g E:\Tools\codex-engineering-os
+ceos install-global --mode copy --force
+ceos global-status
+ceos routing
 ```
 
-## Main commands
-- Compose AGENTS: `python scripts/compose_agents_file.py --output AGENTS.md --profiles common web-app --local-block "Project-specific notes" --dry-run`
-- Update project foundation safely: `python scripts/update_project.py --path "E:/Work/new-yandex-game"` (dry-run by default); apply only with `--apply`.
-- Install Codex config safely: `python scripts/install_codex_config.py` (dry-run by default); apply only with `--apply`.
-- Promote learning: `python scripts/promote_learning.py --file examples/promoted-learning.yaml` then add `--apply` after review.
-- Validate Yandex ZIP: `python skills/yandex-release-validation/scripts/validate_yandex_zip.py release.zip --json`.
+Then start a new Codex session. The global layer applies regardless of repository. Project-local `AGENTS.md`, Skills, and config can still add narrower constraints and take precedence where Codex normally allows them.
 
-## Safety rules
-Scripts default to dry-run when they can affect existing user configuration or projects. They do not delete projects, publish releases, change git remotes, force push, execute shell from YAML, or store secrets. Reports redact secret-like values.
+For Windows, the package also includes a one-command installer from the extracted folder:
 
-## Known limitations
-The YAML validator is intentionally limited to the repository's simple YAML subset. This repository does not scaffold real Vite, Phaser, servers, cloud sync, or GitHub Actions.
+```powershell
+.\scripts\install-global.ps1
+```
 
-## Roadmap
-1. Pilot on one existing project with `update_project.py --dry-run`.
-2. Add project-specific quality gate adapters.
-3. Expand schemas after real project feedback.
+It installs the local package globally, applies the CEOS global layer with safe CEOS-owned replacement, and runs `global-status`.
+
+Use `--mode link` instead of `copy` if you want user-level Skills linked to the central CEOS checkout:
+
+```powershell
+ceos install-global --mode link --force
+```
+
+Preview an upgrade without changing the Codex home:
+
+```powershell
+ceos install-global --dry-run --mode copy
+```
+
+## Project-specific integration remains optional
+
+Global CEOS does not require `.codex-os/project.yml`. Add a project manifest only when you want executable project gates, evidence bundles, or a family-specific profile:
+
+```bash
+ceos init --profile yandex-games --project /path/to/project
+ceos doctor --project /path/to/project
+ceos verify --project /path/to/project
+ceos failures --project /path/to/project
+```
+
+When `package.json` is present, `init` detects profile-relevant scripts instead of inventing commands. The Yandex Games profile, for example, recognizes existing browser/E2E script aliases and omits the E2E gate when no compatible script exists.
+
+## Reusable Skills
+
+The global installation exposes:
+
+```text
+$audit
+$fix
+$verification
+$release
+$visual-qa
+$prod-check
+$incident-analysis
+```
+
+Codex can also invoke a skill implicitly when its description matches the task.
+
+## Engineering contract
+
+- Evidence, not assertion, determines PASS.
+- Production access is read-only by default.
+- Unknown permission is not permission.
+- Reuse repository-native infrastructure; do not build parallel test/build systems without need.
+- Prefer goal + constraints + acceptance criteria over prescriptive multi-thousand-line prompts.
+- Route noisy exploration, batch checks, debugging, review, and verification to bounded subagents when delegation is beneficial.
+- Prefer the lowest-cost model that is adequate, then escalate on uncertainty, failed attempts, expanded scope, or high risk.
+
+See `docs/architecture/model-routing.md` and `docs/architecture/overview.md`.

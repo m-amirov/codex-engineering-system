@@ -1,0 +1,6 @@
+interface:
+  display_name: "CEOS Fix"
+  short_description: "Codex Engineering OS workflow: fix"
+  default_prompt: "Use the fix workflow and produce evidence-based results."
+policy:
+  allow_implicit_invocation: false
