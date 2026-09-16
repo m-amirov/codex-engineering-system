@@ -1,0 +1,37 @@
+name: Materialize CEOS 0.2.0
+
+on:
+  push:
+    branches:
+      - ceos-0.2.0-publish
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: ${{ !contains(github.event.head_commit.message, '[materialized]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Materialize exact CEOS 0.2.0 release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .publish/part-*.txt | base64 -d > /tmp/release.tar.gz
+          echo "4207a6452f430875ad64cecfc6892b20ca41f606c66566d8af14cdc6d63dda75  /tmp/release.tar.gz" | sha256sum -c -
+          find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .publish ! -name .github -exec rm -rf {} +
+          tar -xzf /tmp/release.tar.gz -C .
+          rm -rf .publish .github
+          test "$(cat VERSION)" = "0.2.0"
+          test "$(find . -type f ! -path './.git/*' | wc -l)" = "64"
+          npm test
+          npm run lint
+          npm run self-test
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Release Codex Engineering OS 0.2.0 [materialized]"
+          git push origin HEAD:ceos-0.2.0-publish
