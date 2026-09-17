@@ -5,12 +5,17 @@ import { resolveCodexHome } from './ceos.mjs';
 
 export const DEFAULT_WEB_HEALTH_URL = 'http://127.0.0.1:17841/healthz';
 
+function stripUtf8Bom(text) {
+  return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+}
+
 export function readHybridRoutingManifest({ homeDir = os.homedir(), codexHome } = {}) {
   const resolvedCodexHome = resolveCodexHome({ homeDir, codexHome });
   const file = path.join(resolvedCodexHome, 'ceos', 'hybrid-routing.json');
   if (!fs.existsSync(file)) return { file, exists: false, manifest: null, error: null };
   try {
-    return { file, exists: true, manifest: JSON.parse(fs.readFileSync(file, 'utf8')), error: null };
+    const text = stripUtf8Bom(fs.readFileSync(file, 'utf8'));
+    return { file, exists: true, manifest: JSON.parse(text), error: null };
   } catch (error) {
     return { file, exists: true, manifest: null, error: error.message };
   }
