@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CEOS_ROOT } from '../src/ceos.mjs';
 
-const skills = ['audit','fix','verification','release','visual-qa','prod-check','incident-analysis'];
+const skills = ['audit','audit-repair-loop','fix','verification','release','visual-qa','prod-check','incident-analysis'];
 
 function parseFrontmatter(text) {
   assert.ok(text.startsWith('---\n'), 'missing opening frontmatter');
