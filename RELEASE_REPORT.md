@@ -1,99 +1,43 @@
-# CEOS 0.3.2 Release Report
+# CEOS 0.3.3 Release Report
 
 Date: 2026-09-17
 
-## Final verdict
+## Intended verdict
 
-`PASS_CEOS_0_3_2_SCOPED_OBSERVABLE_WEB_AUDIT`
+`PASS_CEOS_0_3_3_WINDOWS_BOM_SAFE_WEB_PREFLIGHT`
 
-## Why 0.3.2 exists
+## Why 0.3.3 exists
 
-A real `audit-repair-loop` pilot exposed two contract defects in 0.3.1:
-
-1. **Scope drift:** a product/narrative audit expanded into Yandex release-readiness and treated missing gameplay videos as the blocking verdict even though release submission artifacts were not the requested audit target.
-2. **Silent native-only audit:** Web routing was merely optional (`when enabled and appropriate`), so the loop could complete without using `ceos_bulk_checker_web` or `ceos_reasoner_web` and without reporting that choice.
-
-A separate runtime pilot also showed that an installed Web route can be unavailable when the local `codex-chatgpt-web` launcher/bridge is not running, producing repeated reconnects rather than a deterministic fallback decision.
-
-## 0.3.2 contract
-
-### Scope lock
-
-Before audit, the loop freezes:
-
-- target;
-- in-scope surfaces;
-- out-of-scope surfaces;
-- acceptance contract;
-- mutation boundary.
-
-Repository profiles and platform requirements may select tooling and verification, but they may not silently redefine user scope.
-
-Unless explicitly requested, release/publication/submission artifacts such as gameplay videos, store screenshots, marketing assets, metadata, publication forms, deployment evidence, and other marketplace deliverables are out of scope for product/content/runtime audits. They may be reported separately as `OUT_OF_SCOPE_OBSERVATION`, but they cannot cause `FAIL`, `BLOCKED`, or `ESCALATE` for the locked target.
-
-### Observable Web routing
-
-New command:
+A real Windows installation of CEOS 0.3.2 exposed a compatibility defect in `ceos web-preflight`:
 
 ```text
-ceos web-preflight --json
+WEB NOT_CONFIGURED  invalid hybrid-routing manifest: Unexpected token '﻿'
 ```
 
-It reads the CEOS hybrid-routing manifest and probes the local `codex-chatgpt-web` health endpoint (`http://127.0.0.1:17841/healthz` by default).
+The hybrid routing manifest itself was valid JSON, but Windows PowerShell had written it as UTF-8 with BOM. Node read the BOM as `U+FEFF`, and the 0.3.2 preflight passed the raw string directly to `JSON.parse`, which rejects that leading character.
 
-States:
+This defect affected runtime Web-readiness detection only. The base global CEOS installation and native agents/Skills remained valid.
 
-- `READY`
-- `DISABLED`
-- `NOT_CONFIGURED`
-- `UNAVAILABLE`
-- `NOT_ACCEPTING_TURNS`
+## 0.3.3 fix
 
-When hybrid routing is enabled and preflight is `READY`, every substantive `audit-repair-loop` cycle must actually use `ceos_bulk_checker_web` and/or `ceos_reasoner_web` before confirming defects. The loop cannot silently choose native-only audit.
+- `src/web-preflight.mjs` strips a single leading UTF-8 BOM before parsing `hybrid-routing.json`.
+- Existing BOM-prefixed manifests created by CEOS 0.3.2 therefore work without manual migration.
+- `scripts/install-hybrid.ps1` no longer uses `Set-Content -Encoding utf8` for the manifest.
+- The installer writes `hybrid-routing.json` through `System.IO.File.WriteAllText` with `System.Text.UTF8Encoding($false)`, giving explicit UTF-8 without BOM on Windows PowerShell and PowerShell 7.
+- No audit-routing, scope-lock, safety, fallback, model, or project-manifest semantics are changed.
 
-Every checkpoint must report:
+## Regression requirements
 
-- `web_preflight_status`;
-- `web_agents_used[]`;
-- `native_fallback_used`;
-- `fallback_reason`.
+The 0.3.3 release gate must prove:
 
-If Web is unavailable, the existing single deterministic native fallback remains permitted. If the user explicitly requires Web review, a non-ready Web route is `BLOCKED` rather than an equivalent native audit.
+- `ceos version` reads `0.3.3`;
+- all Node regression tests pass;
+- a BOM-prefixed enabled hybrid-routing manifest produces `READY` when the health endpoint is healthy;
+- existing `NOT_CONFIGURED`, `DISABLED`, `READY`, and `UNAVAILABLE` preflight behavior remains intact;
+- installer static contract proves UTF-8-no-BOM writing and rejects the old `Set-Content ... -Encoding utf8` pattern;
+- lint/syntax passes;
+- self-test passes;
+- package and SHA-256 artifact are produced;
+- both PR and post-merge `main` release gates pass.
 
-## Architecture boundaries preserved
-
-- Fresh repository/tool evidence remains native.
-- Web agents remain reasoning-only over explicitly supplied context.
-- Implementation remains native `ceos_implementer`.
-- Ambiguous/root-cause work remains native `ceos_debugger`.
-- Mechanical verification and final completion evidence remain native.
-- Production access remains read-only unless separately authorized.
-- No model shopping or retries for unfavorable semantic outcomes.
-
-## Verification evidence
-
-Pre-merge PR #3 release gate:
-
-- version read-back: PASS (`0.3.2`);
-- Node regression tests: PASS, **53/53**;
-- scope-drift regression: PASS;
-- READY-Web-must-not-be-silently-skipped regression: PASS;
-- `ceos web-preflight` CLI tests: PASS;
-- Web-preflight state tests (`NOT_CONFIGURED`, `DISABLED`, `READY`, `UNAVAILABLE`): PASS;
-- syntax/lint, including `src/web-preflight.mjs`: PASS;
-- self-test: PASS;
-- packaging: PASS;
-- artifact upload: PASS.
-
-PR #3 was squash-merged into `main` as commit `78586bc39765e084e68096d49b41dee19956cfae`.
-
-Post-merge `main` release gate run `35234090870` passed version read-back, tests, lint, self-test, packaging, and artifact upload.
-
-Resulting post-merge artifact:
-
-- name: `codex-engineering-system-0.3.2`;
-- artifact id: `10501999870`;
-- size: `74709` bytes;
-- digest: `sha256:74866f21f7d8ffb606b914a46cf4f10e6d09f0e256ac5f2b9d5edbb97a91f4c8`.
-
-The release-report-only commit must also pass the same `main` release gate before this report is treated as final repository evidence.
+Final observed CI evidence and artifact digest will be recorded after the latest release gate succeeds.
