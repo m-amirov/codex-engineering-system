@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 — 2026-09-17
+
+- Added the universal `audit-repair-loop` Skill for product-agnostic audit → remediation → native repair → verification → fresh re-audit workflows.
+- Added a structured consolidated remediation-packet contract instead of emitting isolated fix prompts for interacting defects.
+- Kept fresh repository/tool evidence, implementation, debugging, verification, and all writes on native Codex routes; Web routes remain reasoning-only over explicitly supplied evidence.
+- Added a default maximum of three automatic repair cycles plus `PASS`, `FAIL`, `BLOCKED`, and `ESCALATE` outcomes and no-progress stop conditions.
+- Required fresh post-repair evidence and re-audit against the original acceptance contract to reduce self-confirmation of previous recommendations.
+- Registered the new Skill in global installation, status/evidence policy resolution, and repository/Skill-shape regression coverage.
+- Preserved read-only production defaults and the existing single Web → native transport/backend fallback contract.
+
 ## 0.3.0 — 2026-09-17
 
 - Added optional native / ChatGPT Web model routing without making `codex-chatgpt-web` a CEOS runtime dependency.

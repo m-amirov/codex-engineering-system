@@ -1,0 +1,6 @@
+interface:
+  display_name: "CEOS Audit Repair Loop"
+  short_description: "Bounded audit → repair → verify → fresh re-audit workflow"
+  default_prompt: "Run the universal audit-repair-loop and stop only on PASS, BLOCKED, ESCALATE, or the configured cycle limit."
+policy:
+  allow_implicit_invocation: true

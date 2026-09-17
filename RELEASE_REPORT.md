@@ -1,22 +1,52 @@
-# CEOS 0.3.0 Release Report
+# CEOS 0.3.1 Release Report
 
 Date: 2026-09-17
 
 ## Intended verdict
 
-`PASS_CEOS_0_3_0_REASONING_ONLY_WEB_ROUTING`
+`PASS_CEOS_0_3_1_UNIVERSAL_AUDIT_REPAIR_LOOP`
 
 ## Scope
 
-CEOS 0.3.0 adds optional ChatGPT Web reasoning without making MCP / Full Harness a prerequisite. `codex-chatgpt-web` remains a separate transport project; CEOS uses its model rows when present and degrades to the unchanged native routing baseline when absent.
+CEOS 0.3.1 adds a universal `audit-repair-loop` Skill on top of the 0.3.0 reasoning-only Web routing baseline. The loop is product-agnostic and can be used for software behavior, UI/UX, visual presentation, narrative/content, configuration, data transformations, integrations, documentation, and release-readiness work.
 
-The corrected 0.3.0 contract explicitly separates reasoning over supplied context from tool-backed evidence gathering.
+The workflow is:
 
-## Web routing
+```text
+native evidence collection
+→ web/native audit
+→ confirmed defects
+→ consolidated remediation packet
+→ native implement/debug
+→ project-native verification
+→ fresh evidence snapshot
+→ fresh web/native re-audit
+→ PASS | FAIL | BLOCKED | ESCALATE
+```
 
-- `ceos_bulk_checker_web` → `chatgpt-web/light`, low, reasoning-only; for repetitive classification/comparison over a complete supplied evidence bundle.
-- `ceos_reasoner_web` → `chatgpt-web/medium`, medium, reasoning-only; for architecture reasoning, hypothesis comparison, planning, synthesis, and critique over supplied context.
-- `ceos_explorer_web` is removed from the corrected 0.3.0 contract because Browser-only Web models cannot independently inspect the workspace.
+## Audit-repair contract
+
+- Fresh repository/tool evidence is collected natively.
+- `ceos_bulk_checker_web` may perform bounded repetitive review over complete supplied evidence.
+- `ceos_reasoner_web` may perform cross-cutting reasoning, synthesis, causal analysis, architecture/product critique, and remediation consolidation over supplied context.
+- Web agents remain reasoning-only and never mutate files or external systems.
+- Confirmed compatible defects are consolidated into one remediation packet containing evidence, violated expectation, required outcome, invariants/non-goals, acceptance criteria, dependencies, required verification, and stop conditions.
+- Native `ceos_implementer` performs bounded repairs; `ceos_debugger` handles ambiguous root-cause or repeated repair failures.
+- Mechanical verification remains project-native and evidence-based.
+- Post-repair review uses a fresh evidence snapshot and the original acceptance contract rather than merely confirming earlier recommendations.
+
+## Loop boundaries
+
+- Default maximum automatic repair cycles: 3.
+- Exit states: `PASS`, `FAIL`, `BLOCKED`, `ESCALATE`.
+- Stop on safety/permission boundaries, missing essential evidence, irreconcilable requirements, destructive/external writes without authorization, or repeated lack of material progress.
+- If the same material defect survives two repair attempts, require one deeper native debugging/reasoning pass before another mutation.
+- Production remains read-only by default.
+
+## Web routing baseline
+
+- `ceos_bulk_checker_web` → `chatgpt-web/light`, reasoning-only.
+- `ceos_reasoner_web` → `chatgpt-web/medium`, reasoning-only.
 - `ceos_bulk_checker` → native `gpt-5.6-luna`, low, for tool-backed batch checks.
 - `ceos_explorer` → native `gpt-5.6-terra`, medium, for repository exploration and fresh evidence gathering.
 - `ceos_implementer` → native `gpt-5.6`, medium.
@@ -28,40 +58,33 @@ Critical writes, fresh repository inspection, terminal/tests/browser work, ambig
 
 ## MCP boundary
 
-CEOS 0.3.0 does **not** require MCP / Full Harness. Browser sign-in, a passing browser smoke test, installed ChatGPT Web model rows, and a successful Web turn in Codex are sufficient for the optional Web reasoning routes.
-
-Even if MCP is configured separately, the 0.3.0 routing policy does not automatically move tool-backed engineering roles to Web models. That expansion requires a later explicit policy change backed by real-project evidence.
-
-## Evidence boundary
-
-A Web agent may analyze only evidence supplied in its delegated context. It must not claim to have inspected files, repository state, command results, browser state, or external systems unless that evidence was supplied.
-
-The supported pattern is native evidence collection → bounded evidence snapshot → Web reasoning → native implementation/verification. Web output is advisory analysis, not independent completion evidence.
-
-## Capability and fallback contract
-
-`scripts/install-hybrid.ps1` supports `auto|on|off`. In `auto`, Windows detection recognizes both a legacy CLI-style command and the packaged launcher at `%LOCALAPPDATA%\Programs\Codex Web GPT\Codex Web GPT.exe`.
-
-The manifest is schema v2 and records `routingMode: reasoning-only`, `mcpRequired: false`, and `localToolsAssumed: false`.
-
-A Web task may fall back to a native role at most once and only for model/backend/transport/runtime unavailability. A found defect, uncertainty, rejected hypothesis, disagreement, or otherwise unfavorable outcome is not a transport failure and does not cause model shopping or hidden double execution.
+CEOS 0.3.1 does **not** require MCP / Full Harness. Browser sign-in, installed ChatGPT Web model rows, and a successful Web turn in Codex are sufficient for optional Web reasoning routes. Tool-backed roles stay native unless a future explicit policy changes that boundary.
 
 ## Compatibility
 
 - Node: >=22
 - Project manifest schema: v1 unchanged
 - Evidence schema: v1 unchanged
-- Existing seven Skills and five Profiles unchanged
-- Existing six native routes unchanged
+- Eight global Skills, including `audit-repair-loop`
+- Five Profiles unchanged
+- Six native custom-agent routes unchanged
+- Two optional Web reasoning routes unchanged from corrected 0.3.0 baseline
 - `codex-chatgpt-web`: optional; CEOS remains functional without it
-- Earlier draft `ceos_explorer_web`: migrated away safely by the hybrid installer when CEOS-managed
 
 ## Verification gates for this release
 
-- Existing Node regression suite must remain PASS.
-- Web-agent static-contract tests must prove reasoning-only behavior and absence of the explorer Web agent.
+- `ceos version` must read `0.3.1`.
+- Node regression suite must PASS.
+- Skill-shape tests must include `audit-repair-loop`.
+- Global installation tests must prove the new Skill is installed/checksummed and does not overwrite unrelated user targets.
+- Hybrid Web-agent static-contract tests must continue proving reasoning-only behavior and absence of a Web explorer route.
 - `npm run lint` must PASS.
 - `npm run self-test` must PASS.
-- `ceos version` must read `0.3.0`.
-- Hybrid installer must recognize the packaged Windows launcher, protect unrelated agent files, emit the schema-v2 capability manifest, and preserve the single-fallback contract.
 - Release packaging must complete only after all gates pass.
+- GitHub Actions release gate must run for pull requests to `main` and pushes to `main`.
+
+## Observed pre-merge evidence
+
+The first 0.3.1 PR run reached the Node regression suite and reported 43/44 passing tests. The only failure was a stale test assertion hard-pinned to `VERSION === 0.3.0`; the product/runtime behavior was not implicated. The assertion was generalized to the 0.3.x reasoning-only baseline.
+
+A subsequent PR run passed version read-back, all Node regression tests, syntax/lint, self-test, source packaging, and artifact upload before release-metadata cleanup. Final release verdict requires the latest post-cleanup PR run to complete successfully.
