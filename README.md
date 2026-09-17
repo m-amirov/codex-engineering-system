@@ -1,8 +1,44 @@
-# Codex Engineering OS (CEOS) 0.3.3
+# Codex Engineering OS (CEOS) 0.4.0
 
 CEOS is a global-first engineering operating layer for Codex. It installs compact engineering instructions, reusable Skills, project policies, verification/evidence tooling, and task-specific custom agents.
 
-Version 0.3.3 is a Windows compatibility hotfix on top of the scoped, observable Web audit flow from 0.3.2. It fixes `ceos web-preflight` when Windows PowerShell writes `hybrid-routing.json` with a UTF-8 BOM and makes future hybrid manifests BOM-free.
+Version 0.4.0 adds a production-art pipeline that separates **Web art direction** from **native image generation and integration** without weakening the existing reasoning-only Web contract.
+
+## Production-art pipeline
+
+Use `production-art` when a project needs real character art, expressions, backgrounds, CGs, location masters, production image assets, or a systematic replacement of placeholders.
+
+```text
+scope + invariants lock
+        ↓
+asset inventory / manifest
+        ↓
+ceos web-preflight
+        ↓
+Web art direction when READY
+ceos_art_director_web → chatgpt-web/high
+        ↓
+character/location/style canon
+        ↓
+native generation batches
+ceos_asset_generator → gpt-5.6
+        ↓
+real files + runtime mappings
+        ↓
+contact sheets / runtime evidence
+        ↓
+Web consistency review
+        ↓
+visual-qa + project-native gates
+        ↓
+PASS | BLOCKED | ESCALATE
+```
+
+The Web art director is reasoning-only. It may define canon, generation briefs, reusable asset families, and review supplied screenshots/contact sheets/manifests, but it does not generate or persist files.
+
+The native `ceos_asset_generator` may use image generation only when the current Codex environment actually exposes that capability. If native image generation is unavailable, the workflow returns `BLOCKED` instead of fabricating assets or silently substituting placeholders.
+
+Production-art completion requires real files in the workspace, complete required manifest coverage, valid runtime mappings, no confirmed identity/style/location drift, fresh runtime evidence, and relevant tests/lint/build passing.
 
 ## Audit-repair loop
 
@@ -38,18 +74,22 @@ Default maximum automatic repair cycles: **3**. Production remains read-only unl
 
 CEOS integrates optionally with [`miuuyy/codex-chatgpt-web`](https://github.com/miuuyy/codex-chatgpt-web) without making MCP / Full Harness a CEOS requirement.
 
-- `ceos_bulk_checker_web` → `chatgpt-web/light`: repetitive classification/comparison over complete supplied evidence.
-- `ceos_reasoner_web` → `chatgpt-web/medium`: architecture, product logic, causal analysis, synthesis, critique, and remediation consolidation over supplied context.
-- Web agents are reasoning-only in CEOS. They do not discover repository state, run commands/tests, or write files.
-- Fresh evidence gathering, implementation, debugging, mechanical verification, security/production review, and final completion evidence remain native.
+Web reasoning routes:
 
-Native routes remain:
+- `ceos_bulk_checker_web` → `chatgpt-web/light`: repetitive classification/comparison over complete supplied evidence.
+- `ceos_reasoner_web` → `chatgpt-web/medium`: architecture, product logic, causal analysis, synthesis, critique, and remediation consolidation.
+- `ceos_art_director_web` → `chatgpt-web/high`: visual canon, asset briefs, art-direction reasoning, and consistency critique over supplied visual evidence.
+
+Web agents do not discover repository state, run commands/tests, or write files.
+
+Native routes:
 
 | Role | Native model | Purpose |
 |---|---|---|
 | `ceos_bulk_checker` | `gpt-5.6-luna` low | tool-backed batch checks |
 | `ceos_explorer` | `gpt-5.6-terra` medium | repository exploration/evidence mapping |
 | `ceos_implementer` | `gpt-5.6` medium | bounded implementation/refactor |
+| `ceos_asset_generator` | `gpt-5.6` medium | bounded native image generation + asset integration when capability exists |
 | `ceos_debugger` | `gpt-5.6` high | ambiguous/cross-component debugging |
 | `ceos_reviewer` | `gpt-5.6` high | correctness/security/risk review |
 | `ceos_verifier` | `gpt-5.6` high | independent acceptance verification |
@@ -69,39 +109,24 @@ Default health endpoint:
 http://127.0.0.1:17841/healthz
 ```
 
-`READY` means Web routing is enabled and the bridge is healthy and accepting turns. Non-ready states do not cause repeated reconnect storms inside CEOS: the loop may use its single native fallback unless Web was explicitly required.
+`READY` means Web routing is enabled and the bridge is healthy and accepting turns. CEOS accepts BOM-prefixed `hybrid-routing.json` files from older Windows installs and writes new manifests as UTF-8 without BOM.
 
-CEOS 0.3.3 accepts existing BOM-prefixed `hybrid-routing.json` files from Windows PowerShell and `scripts/install-hybrid.ps1` writes new manifests explicitly as UTF-8 without BOM.
-
-## Using audit-repair-loop
-
-For a general product audit:
+## Example: production art
 
 ```text
-Проведи полный аудит продукта через CEOS audit-repair-loop.
-Исправляй подтверждённые дефекты автоматически и повторяй verify + fresh re-audit до PASS,
-либо остановись на BLOCKED/ESCALATE/лимите циклов.
-Не расширяй scope на release/publication readiness, если я этого отдельно не просил.
-```
-
-For a specific surface, name it explicitly:
-
-```text
-Проведи audit-repair-loop сценария как читательского продукта.
-В scope: narrative comprehension, continuity, causality, character/location/time clarity и последствия choices.
-Release readiness, gameplay videos, store metadata и публикационные артефакты вне scope.
-```
-
-If Web review itself is mandatory:
-
-```text
-Проведи audit-repair-loop. Web audit required: если Web недоступен, остановись с BLOCKED, не подменяй его native review.
+Проведи CEOS production-art pass проекта.
+Сначала построй asset manifest и visual canon.
+При Web READY используй ceos_art_director_web для art direction и consistency review.
+Генерируй и интегрируй изображения только нативно через ceos_asset_generator и только если image-generation capability реально доступна.
+После каждого batch собирай fresh runtime evidence и делай visual-qa.
+Не меняй product topology/character cores ради удобства генерации.
+Заверши PASS, BLOCKED или ESCALATE.
 ```
 
 ## Recommended Windows installation
 
-1. Install/configure `Codex Web GPT` if you want Web reasoning. Browser sign-in, browser smoke test, **Install models**, and a successful ChatGPT Web turn are sufficient. MCP / Full Harness is optional for CEOS.
-2. Extract CEOS 0.3.3.
+1. Install/configure `Codex Web GPT` if you want Web reasoning. MCP / Full Harness is optional for CEOS.
+2. Update/extract CEOS 0.4.0.
 3. Run:
 
 ```powershell
@@ -115,6 +140,7 @@ Useful checks:
 ```powershell
 ceos version
 ceos global-status
+ceos routing
 ceos web-preflight
 ```
 
@@ -124,26 +150,20 @@ If ChatGPT Web model rows are already visible but auto-detection does not find t
 .\scripts\install-global.ps1 -Web on
 ```
 
-Disable optional Web routes while retaining native CEOS:
-
-```powershell
-.\scripts\install-global.ps1 -Web off
-```
-
 ## Manual base installation
 
 ```powershell
 npm install -g <path-to-codex-engineering-system>
 ceos install-global --mode copy --force
+.\scripts\install-hybrid.ps1 -Web auto
 ceos global-status
 ceos routing
-.\scripts\install-hybrid.ps1 -Web auto
 ceos web-preflight
 ```
 
 ## Project-specific integration
 
-Global CEOS works without `.codex-os/project.yml`. Add a project manifest only when executable project gates/evidence or a family profile are required:
+Global CEOS works without `.codex-os/project.yml`. Add a project manifest when executable project gates/evidence or a family profile are required:
 
 ```powershell
 ceos init --profile yandex-games --project E:\Work\YandexGames\MyGame
@@ -157,12 +177,12 @@ For Yandex Games, bootstrap new projects only through the official Starter Kit b
 
 - User scope controls the audit verdict; project profiles do not silently broaden it.
 - Evidence, not assertion, determines PASS.
-- Web-backed audit must contain observable Web routing evidence.
-- Web reasoning without tools may analyze supplied evidence but must never pretend it inspected fresh repository state.
-- Fresh re-audit evaluates the repaired state against the original locked acceptance contract.
-- Prefer one consolidated remediation packet over isolated fix prompts when findings interact.
-- Production access is read-only by default.
+- Web reasoning may analyze supplied evidence but must never pretend it inspected fresh repository state.
+- Generated assets count as complete only when real files exist and are integrated.
+- Image-generation availability is observed at runtime, not assumed from configuration.
+- Fresh re-audit evaluates the repaired/generated state against the original locked contract.
+- Production access is read-only by default unless separately authorized.
 - Hybrid routing never weakens sandbox, approval, production-write, or project-specific constraints.
 - Do not retry/switch Web modes to evade usage limits.
 
-See `policies/model-routing.md`, `skills/audit-repair-loop/SKILL.md`, and `INSTALL.md`.
+See `policies/model-routing.md`, `skills/production-art/SKILL.md`, `skills/audit-repair-loop/SKILL.md`, and `INSTALL.md`.
