@@ -9,48 +9,58 @@ These defaults apply across repositories. More specific repository instructions 
 - Preserve unrelated work, existing project conventions, and project-native build/test/release infrastructure.
 - Evidence, not assertion, determines completion. Run validation proportional to the change and do not claim PASS without supporting evidence.
 - Production access is read-only by default. Do not turn inspection into deployment, restart, database mutation, provider submit, payment, or other external write without explicit authorization.
-- Reuse an applicable CEOS skill when its trigger matches: audit, audit-repair-loop, fix, verification, release, visual-qa, prod-check, incident-analysis.
+- Reuse an applicable CEOS skill when its trigger matches: audit, audit-repair-loop, fix, verification, release, visual-qa, production-art, prod-check, incident-analysis.
 
 ## Automatic model routing (hybrid)
 
 For sustained engineering work, classify the next unit by workload, complexity, uncertainty, risk, and whether fresh tool access is required. The parent agent owns orchestration and the final answer.
 
-CEOS 0.3.x can use optional `chatgpt-web/*` model rows exposed by `codex-chatgpt-web`. The baseline is intentionally **reasoning-only Web routing**: MCP / Full Harness is not required and must not be assumed.
+CEOS 0.4.x can use optional `chatgpt-web/*` model rows exposed by `codex-chatgpt-web`. Web routes are **reasoning-only** unless a future policy explicitly changes that contract; MCP / Full Harness is not required and must not be assumed.
 
 When Web routing is enabled:
 
-- Use `ceos_bulk_checker_web` (`chatgpt-web/light`) only for repetitive classification, comparison, or consistency checks over a complete bounded evidence bundle already supplied in the delegated prompt.
-- Use `ceos_reasoner_web` (`chatgpt-web/medium`) for architecture reasoning, hypothesis comparison, planning, synthesis, or critique over context already supplied by the parent.
-- Do not ask a Web agent to discover files, inspect the workspace, search the repository, run commands/tests, browse, call external tools, or perform writes unless a future policy explicitly enables a tool-capable Web route.
-- If fresh repository/tool evidence is required, route natively: `ceos_bulk_checker` for tool-backed batch checks, `ceos_explorer` for repository exploration, and the existing native implement/debug/review/verify agents for their roles.
-- A native agent may collect a bounded evidence snapshot and the parent may then delegate that snapshot to a Web reasoning agent. Web analysis is advisory reasoning over supplied evidence; it is not independent proof of repository state.
-- Keep `ceos_implementer`, `ceos_debugger`, `ceos_reviewer`, and `ceos_verifier` on their native models by default. They form the critical write/debug/risk/final-verification path.
+- `ceos_bulk_checker_web` (`chatgpt-web/light`): repetitive classification/comparison over a complete bounded evidence bundle supplied by the parent.
+- `ceos_reasoner_web` (`chatgpt-web/medium`): architecture reasoning, hypothesis comparison, planning, synthesis, or critique over supplied context.
+- `ceos_art_director_web` (`chatgpt-web/high`): art direction, visual canon, asset briefs, and consistency review over supplied manifests/contact sheets/screenshots. It does not generate or persist files.
+- Do not ask a Web agent to discover files, inspect the workspace, run commands/tests, browse, call local tools, or perform writes.
+- If fresh repository/tool evidence is required, route natively: `ceos_bulk_checker` for batch checks, `ceos_explorer` for repository exploration, `ceos_asset_generator` for bounded asset generation/integration when native image generation is actually available, and the existing native implement/debug/review/verify agents for their roles.
+- Web analysis is advisory reasoning over supplied evidence; it is not independent proof of repository state.
+- Keep implementation, asset persistence, debugging, risk review, and final verification native.
 
-When Web routing is disabled or unavailable, use the native agents exactly as before:
+When Web routing is disabled or unavailable, use the native agents:
 
-- `ceos_bulk_checker`: repetitive, deterministic, high-volume checks; log/file batches; simple classification.
-- `ceos_explorer`: read-heavy repository exploration, dependency tracing, locating implementations, broad evidence gathering.
-- `ceos_implementer`: bounded implementation or refactor after the desired behavior and affected area are understood.
-- `ceos_debugger`: ambiguous failures, cross-component bugs, concurrency/state problems, failed acceptance gates, or unclear root cause.
-- `ceos_reviewer`: correctness/security/risk review, architecture-sensitive changes, production-risk analysis.
-- `ceos_verifier`: independent final verification, acceptance criteria, release readiness, and completion claims.
+- `ceos_bulk_checker`: repetitive deterministic checks.
+- `ceos_explorer`: repository exploration/evidence mapping.
+- `ceos_implementer`: bounded implementation/refactor.
+- `ceos_asset_generator`: bounded native image generation + asset integration; if no native image-generation capability is available, report `BLOCKED` rather than fabricate assets.
+- `ceos_debugger`: ambiguous/cross-component debugging.
+- `ceos_reviewer`: correctness/security/architecture/production-risk review.
+- `ceos_verifier`: independent final verification.
+
+## Production art pipeline
+
+When the user asks to create, replace, or integrate production image assets, activate `production-art` rather than treating image generation as an incidental implementation detail.
+
+Lock product invariants → build an asset manifest → preflight Web → establish character/location/style canon → use `ceos_art_director_web` for substantive art direction when `READY` → generate bounded batches natively with `ceos_asset_generator` when image generation is available → integrate real files and mappings → collect fresh runtime screenshots/contact sheets → Web consistency review when available → `visual-qa` → final manifest/runtime re-audit.
+
+Never claim a generated asset exists unless the file is present in the workspace. Prefer canonical character/location masters plus meaningful variants over independent one-off scene generation. Generation convenience must not redefine narrative/gameplay/topology/character cores. Record image-generation capability and generated/integrated asset counts in the checkpoint.
 
 ## Universal audit → repair loop
 
 When the user asks to audit a product and automatically fix confirmed defects, activate `audit-repair-loop`.
 
-First freeze the audit target and scope. Repository profiles, platform requirements, release gates, submission assets, screenshots, videos, store metadata, deployment evidence, and other adjacent surfaces must not silently expand the user's target. Unless release/publication/submission readiness is explicitly requested, those surfaces cannot block the target verdict.
+First freeze the audit target and scope. Repository profiles, platform requirements, release gates, submission assets, screenshots, videos, store metadata, deployment evidence, and adjacent surfaces must not silently expand the user's target. Unless release/publication/submission readiness is explicitly requested, those surfaces cannot block the target verdict.
 
-Then collect fresh evidence natively → preflight Web with `ceos web-preflight --json` → audit supplied evidence → confirm in-scope defects → produce one consolidated remediation packet → repair natively → run target-proportional verification → build fresh evidence → re-audit against the original acceptance contract.
+Then collect fresh evidence natively → `ceos web-preflight --json` → audit supplied evidence → confirm in-scope defects → one consolidated remediation packet → repair natively → target-proportional verification → fresh evidence → re-audit against the original acceptance contract.
 
-If hybrid Web routing is enabled and preflight is `READY`, each substantive audit cycle must use `ceos_bulk_checker_web` and/or `ceos_reasoner_web`; do not silently skip Web. If Web is unavailable, allow the existing single native fallback and record it explicitly. If the user explicitly requires Web review, unavailable Web is `BLOCKED` rather than an equivalent native result.
+If Web is enabled and preflight is `READY`, each substantive audit cycle must use the appropriate Web reviewer; do not silently skip Web. If Web is unavailable, allow the existing single native fallback and record it. If the user explicitly requires Web review, unavailable Web is `BLOCKED`.
 
-Every loop checkpoint must report Web preflight status, Web agents used, whether native fallback was used, and its reason. Default maximum automatic repair cycles: **3**. Stop on `PASS`, `FAIL`, `BLOCKED`, `ESCALATE`, the cycle limit, a safety/permission boundary, missing essential target evidence, or repeated lack of material progress.
+Every loop checkpoint reports Web preflight status, Web agents used, whether native fallback was used, and why. Default maximum automatic repair cycles: **3**. Stop on `PASS`, `FAIL`, `BLOCKED`, `ESCALATE`, the cycle limit, a safety/permission boundary, missing essential target evidence, or repeated lack of material progress.
 
 ### Fallback contract
 
-A Web-to-native fallback is allowed at most once for a delegated unit of work, and only when the selected Web model/backend/transport cannot run. Do not fallback merely because the agent found a bug, returned uncertainty, rejected an assumption, produced an unfavorable result, or disagreed with another analysis. Those are semantic/task outcomes and must remain visible.
+A Web-to-native fallback is allowed at most once for a delegated unit and only when the selected Web model/backend/transport cannot run. Do not fallback because the agent found a bug, returned uncertainty, rejected an assumption, or disagreed with another analysis.
 
-Do not create retry loops, cycle among Web modes, or switch models to evade product usage limits. A fallback must preserve the same task scope and safety constraints. Routing never weakens sandbox, approval, production-write, or project-specific constraints.
+Do not create retry loops, cycle among Web modes, or switch models to evade usage limits. Fallback preserves task scope and safety constraints. Routing never weakens sandbox, approval, production-write, or project-specific constraints.
 
-Prefer the lowest-cost adequate route. Escalate role/model strength when uncertainty remains, scope expands, a first reasoning pass is insufficient, or the task touches security, production, concurrency, data integrity, or irreversible behavior. De-escalate repetitive follow-up checks after the hard reasoning is complete. Parallelize independent read-only work when useful; do not delegate trivial work when overhead exceeds the task.
+Prefer the lowest-cost adequate route. Escalate strength when uncertainty remains, scope expands, a first reasoning pass is insufficient, or the task touches security, production, concurrency, data integrity, or irreversible behavior. Parallelize independent read-only work when useful; do not delegate trivial work when overhead exceeds the task.
