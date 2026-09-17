@@ -1,4 +1,4 @@
-# Install Codex Engineering OS 0.3.1
+# Install Codex Engineering OS 0.3.2
 
 ## Recommended Windows installation
 
@@ -8,7 +8,7 @@ Install `Codex Web GPT` from:
 
 https://github.com/miuuyy/codex-chatgpt-web
 
-For CEOS 0.3.1 you only need the browser/model path:
+For CEOS 0.3.2 you only need the browser/model path:
 
 1. Sign in to ChatGPT in the embedded browser.
 2. Run the browser smoke test.
@@ -16,13 +16,13 @@ For CEOS 0.3.1 you only need the browser/model path:
 4. Fully restart Codex.
 5. Confirm a `ChatGPT Web — ...` model appears in Codex and can complete a simple turn.
 
-**MCP / Full Harness is not required by CEOS 0.3.1.** The optional Web agents are reasoning-only and must not assume local Codex tools. Tool-backed evidence collection, writes, debugging and verification remain native.
+**MCP / Full Harness is not required by CEOS 0.3.2.** The optional Web agents are reasoning-only and must not assume local Codex tools. Tool-backed evidence collection, writes, debugging and verification remain native.
 
 CEOS also works without Codex Web GPT; in that case routing remains native-only.
 
 ### 2. Install CEOS
 
-From the extracted `codex-engineering-system-0.3.1` folder:
+From the extracted `codex-engineering-system-0.3.2` folder:
 
 ```powershell
 .\scripts\install-global.ps1
@@ -30,29 +30,43 @@ From the extracted `codex-engineering-system-0.3.1` folder:
 
 Default `-Web auto` behavior recognizes either a legacy `codex-chatgpt-web` command or the packaged Windows launcher at `%LOCALAPPDATA%\Programs\Codex Web GPT\Codex Web GPT.exe`. It installs the base CEOS global layer, verifies it, writes `$CODEX_HOME\ceos\hybrid-routing.json`, and installs the optional reasoning-only Web agents when enabled.
 
-The global installation now includes the `audit-repair-loop` Skill. It can orchestrate product-agnostic audit → remediation → native repair → verification → fresh re-audit workflows.
-
 Useful modes:
 
 ```powershell
-# Detect automatically
 .\scripts\install-global.ps1 -Web auto
-
-# Explicitly enable Web reasoning definitions when model rows are already visible in Codex
 .\scripts\install-global.ps1 -Web on
-
-# Explicitly disable/remove CEOS-managed Web reasoning definitions
 .\scripts\install-global.ps1 -Web off
-
-# Non-default Codex home
 .\scripts\install-global.ps1 -CodexHome 'D:\CodexHome' -Web auto
 ```
 
-`-Web off` removes only Web agent files that are recognizably CEOS-managed. The installer refuses to overwrite or delete unrelated user agents.
+`-Web off` removes only CEOS-managed Web agent files. The installer refuses to overwrite or delete unrelated user agents.
 
-During upgrade from the earlier 0.3.0 draft, `ceos_explorer_web` is backed up and removed only when it is recognizably CEOS-managed; it is replaced by `ceos_reasoner_web`.
+### 3. Check Web runtime readiness
 
-### 3. Restart Codex
+Installation detection is not runtime readiness. With Codex Web GPT running, check:
+
+```powershell
+ceos web-preflight
+ceos web-preflight --json
+```
+
+Expected healthy result:
+
+```text
+WEB READY
+```
+
+The default probe is `http://127.0.0.1:17841/healthz`. CEOS distinguishes these states:
+
+- `READY`
+- `DISABLED`
+- `NOT_CONFIGURED`
+- `UNAVAILABLE`
+- `NOT_ACCEPTING_TURNS`
+
+When Web is configured but unavailable, `audit-repair-loop` may use its single native fallback and must record that fallback. If the user explicitly requires Web audit, a non-ready Web route is `BLOCKED`.
+
+### 4. Restart Codex
 
 Start a new Codex session/task after installation so global instructions and the custom-agent/Skill catalog reload together.
 
@@ -64,35 +78,49 @@ ceos install-global --mode copy --force
 ceos global-status
 ceos routing
 .\scripts\install-hybrid.ps1 -Web auto
+ceos web-preflight
 ```
 
 Expected version:
 
 ```powershell
 ceos version
-# 0.3.1
+# 0.3.2
 ```
 
-## Upgrade from 0.3.0
+## Upgrade from 0.3.1
 
-Extract/replace the central CEOS source folder with 0.3.1, then run:
+Extract/replace the central CEOS source folder with 0.3.2, then run:
 
 ```powershell
 .\scripts\install-global.ps1 -Web auto
 ```
 
-The normal CEOS installer keeps its existing conflict behavior: CEOS-owned drift requires explicit replacement and is backed up; unrelated user targets are not overwritten. The hybrid installer applies the same ownership rule to its Web agent files.
-
 After installation, `ceos global-status` should include `skill:audit-repair-loop` as healthy.
 
 ## Using audit-repair-loop
 
-A normal Codex request can be short:
+For a general product audit:
 
 ```text
 Проведи аудит продукта через CEOS audit-repair-loop.
-Исправь подтверждённые дефекты и повторяй verification + fresh re-audit до PASS,
+Исправляй подтверждённые дефекты и повторяй verification + fresh re-audit до PASS,
 либо остановись на BLOCKED/ESCALATE/лимите циклов.
+Не расширяй scope на release/publication readiness, если я этого отдельно не просил.
+```
+
+For a specific surface, name it explicitly. Example for a narrative audit:
+
+```text
+Проведи audit-repair-loop сценария.
+В scope: reader comprehension, continuity, causality, character/location/time clarity и последствия choices.
+Release readiness, gameplay videos, store metadata и публикационные артефакты вне scope.
+```
+
+If Web review is mandatory:
+
+```text
+Web audit required. Если Web недоступен, остановись с BLOCKED и не подменяй его native review.
 ```
 
 The loop defaults to a maximum of three automatic repair cycles. It does not grant permission for production writes, deployments, payments, provider submits, destructive operations, or other external mutations.
@@ -105,7 +133,7 @@ Inspect:
 Get-Content "$env:USERPROFILE\.codex\ceos\hybrid-routing.json"
 ```
 
-When `CODEX_HOME` is configured, use that path instead. The reasoning-only contract should record:
+The reasoning-only contract should record:
 
 ```json
 {
@@ -115,11 +143,7 @@ When `CODEX_HOME` is configured, use that path instead. The reasoning-only contr
 }
 ```
 
-`enabled: true` means CEOS installation policy permits the Web reasoning routes; it is not proof that every live ChatGPT model is currently available.
-
-## Native-only operation
-
-No Codex Web GPT installation is required. With Web routing disabled, CEOS 0.3.1 uses the native routes and all project Profiles/Gates/Evidence plus `audit-repair-loop` remain available.
+`enabled: true` means CEOS installation policy permits Web reasoning routes; `ceos web-preflight` determines whether the local Web runtime is currently ready.
 
 ## Repository-specific integration
 
