@@ -1,54 +1,70 @@
-# CEOS 0.3.3 Release Report
+# CEOS 0.4.0 Release Report
 
 Date: 2026-09-17
 
-## Final verdict
+## Intended verdict
 
-`PASS_CEOS_0_3_3_WINDOWS_BOM_SAFE_WEB_PREFLIGHT`
+`PASS_CEOS_0_4_0_ART_PRODUCTION_ROUTING`
 
-## Why 0.3.3 exists
+## Why 0.4.0 exists
 
-A real Windows installation of CEOS 0.3.2 exposed a compatibility defect in `ceos web-preflight`:
+The first production-art planning pass exposed a missing CEOS capability boundary: existing Web agents could reason about visual evidence, but CEOS had no dedicated art-director role and no native role responsible for actual image generation plus filesystem/runtime integration. Treating Web reasoning as if it had generated files would violate CEOS evidence rules; forcing every art task through the generic implementer would lose visual-canon and capability-specific safeguards.
 
-```text
-WEB NOT_CONFIGURED  invalid hybrid-routing manifest: Unexpected token '﻿'
-```
+## 0.4.0 architecture
 
-The hybrid routing manifest itself was valid JSON, but Windows PowerShell had written it as UTF-8 with BOM. Node read the BOM as `U+FEFF`, and the 0.3.2 preflight passed the raw string directly to `JSON.parse`, which rejects that leading character.
+### Web art director
 
-This defect affected runtime Web-readiness detection only. The base global CEOS installation and native agents/Skills remained valid.
+New optional hybrid route:
 
-## 0.3.3 fix
+- `ceos_art_director_web` → `chatgpt-web/high`;
+- reasoning-only, read-only;
+- accepts supplied narrative context, art manifests, canonical references, generated assets, and runtime captures;
+- owns visual canon, scene-to-art planning, generation constraints, identity/style consistency reasoning, batch critique, and fresh visual re-audit;
+- does **not** inspect the repository, invoke image generation, save files, or prove asset existence.
 
-- `src/web-preflight.mjs` strips a single leading UTF-8 BOM before parsing `hybrid-routing.json`.
-- Existing BOM-prefixed manifests created by CEOS 0.3.2 therefore work without manual migration.
-- `scripts/install-hybrid.ps1` no longer uses `Set-Content -Encoding utf8` for the manifest.
-- The installer writes `hybrid-routing.json` through `System.IO.File.WriteAllText` with `System.Text.UTF8Encoding($false)`, giving explicit UTF-8 without BOM on Windows PowerShell and PowerShell 7.
-- No audit-routing, scope-lock, safety, fallback, model, or project-manifest semantics are changed.
+### Native asset generator
 
-## Verification evidence
+New base global route:
 
-Pre-merge PR #4 release gate:
+- `ceos_asset_generator` → `gpt-5.6`, medium;
+- workspace-write;
+- invokes native image-generation capability when the current Codex runtime exposes it;
+- writes only project-owned generated assets, updates mappings/manifests, and runs targeted load/framing validation;
+- if image generation is unavailable, returns `BLOCKED_CAPABILITY` with the exact generation packet instead of claiming prompt-only or placeholder completion.
 
-- version read-back: PASS (`0.3.3`);
-- Node regression tests: PASS, **55/55**;
-- BOM-prefixed manifest → healthy `READY`: PASS;
-- BOM-free Windows installer write contract: PASS;
-- existing Web-preflight state regressions: PASS;
-- syntax/lint: PASS;
-- self-test: PASS;
-- package creation: PASS;
-- artifact upload: PASS.
+### `art-production` Skill
 
-PR #4 was squash-merged into `main` as commit `c8aa074e9310842aa961c286af36728c9f2e6020`.
+New globally installed Skill enforces:
 
-Post-merge `main` release gate run `35238521880` also passed version read-back, tests, lint, self-test, packaging, and artifact upload.
+- scope/product-invariant lock;
+- art manifest before high-volume generation;
+- canonical character/location/style references before dependent variants;
+- coherent batch production rather than unrelated scene-by-scene improvisation;
+- Web preflight and observable routing for art-direction review;
+- actual generated-file + runtime evidence for PASS;
+- explicit separation from release/publication/store-art scope unless requested.
 
-Post-merge artifact:
+### Policy and installation
 
-- name: `codex-engineering-system-0.3.3`;
-- artifact id: `10504736751`;
-- size: `74355` bytes;
-- digest: `sha256:c259cbbbe71f3aabab17b8faac51b7ed21b31215045187086b04a53a6b3ab36c`.
+- new `policies/art-production.md` defines capability truthfulness, project-owned mutation boundary, canon consistency, evidence, and external/release boundaries;
+- `policies/model-routing.md` now distinguishes Web art direction from native image-generation/write responsibility;
+- global install/status/manifest tracks `ceos_asset_generator` and `art-production`;
+- hybrid installer adds/removes `ceos_art_director_web` with the existing deterministic single-fallback contract;
+- existing BOM-safe `hybrid-routing.json` behavior is preserved.
 
-The release-report-only commit must pass the same `main` release gate before this report is considered final repository evidence.
+## Release acceptance
+
+The 0.4.0 release gate must prove:
+
+- version read-back: `0.4.0`;
+- all Node regression tests pass;
+- global install includes `ceos_asset_generator` and `art-production`;
+- routing table includes the native asset generator;
+- hybrid static contract includes `ceos_art_director_web` → `chatgpt-web/high`;
+- Web/native art-role separation and `BLOCKED_CAPABILITY` behavior are mechanically covered;
+- existing audit-repair-loop, Web preflight, BOM, safety, evidence, profile, and installation regressions remain green;
+- syntax/lint and self-test pass;
+- source ZIP + SHA-256 artifact are produced;
+- both PR and post-merge `main` release gates pass.
+
+Final observed CI evidence and artifact digest will be recorded after the release gates succeed.
