@@ -9,13 +9,13 @@ These defaults apply across repositories. More specific repository instructions 
 - Preserve unrelated work, existing project conventions, and project-native build/test/release infrastructure.
 - Evidence, not assertion, determines completion. Run validation proportional to the change and do not claim PASS without supporting evidence.
 - Production access is read-only by default. Do not turn inspection into deployment, restart, database mutation, provider submit, payment, or other external write without explicit authorization.
-- Reuse an applicable CEOS skill when its trigger matches: audit, fix, verification, release, visual-qa, prod-check, incident-analysis.
+- Reuse an applicable CEOS skill when its trigger matches: audit, audit-repair-loop, fix, verification, release, visual-qa, prod-check, incident-analysis.
 
 ## Automatic model routing (hybrid)
 
 For sustained engineering work, classify the next unit by workload, complexity, uncertainty, risk, and whether fresh tool access is required. The parent agent owns orchestration and the final answer.
 
-CEOS 0.3.0 can use optional `chatgpt-web/*` model rows exposed by `codex-chatgpt-web`. The 0.3.0 baseline is intentionally **reasoning-only Web routing**: MCP / Full Harness is not required and must not be assumed.
+CEOS 0.3.x can use optional `chatgpt-web/*` model rows exposed by `codex-chatgpt-web`. The baseline is intentionally **reasoning-only Web routing**: MCP / Full Harness is not required and must not be assumed.
 
 When Web routing is enabled:
 
@@ -24,7 +24,7 @@ When Web routing is enabled:
 - Do not ask a Web agent to discover files, inspect the workspace, search the repository, run commands/tests, browse, call external tools, or perform writes unless a future policy explicitly enables a tool-capable Web route.
 - If fresh repository/tool evidence is required, route natively: `ceos_bulk_checker` for tool-backed batch checks, `ceos_explorer` for repository exploration, and the existing native implement/debug/review/verify agents for their roles.
 - A native agent may collect a bounded evidence snapshot and the parent may then delegate that snapshot to a Web reasoning agent. Web analysis is advisory reasoning over supplied evidence; it is not independent proof of repository state.
-- Keep `ceos_implementer`, `ceos_debugger`, `ceos_reviewer`, and `ceos_verifier` on their native models by default. They form the critical write/debug/risk/final-verification path in 0.3.0.
+- Keep `ceos_implementer`, `ceos_debugger`, `ceos_reviewer`, and `ceos_verifier` on their native models by default. They form the critical write/debug/risk/final-verification path.
 
 When Web routing is disabled or unavailable, use the native agents exactly as before:
 
@@ -34,6 +34,26 @@ When Web routing is disabled or unavailable, use the native agents exactly as be
 - `ceos_debugger`: ambiguous failures, cross-component bugs, concurrency/state problems, failed acceptance gates, or unclear root cause.
 - `ceos_reviewer`: correctness/security/risk review, architecture-sensitive changes, production-risk analysis.
 - `ceos_verifier`: independent final verification, acceptance criteria, release readiness, and completion claims.
+
+## Universal audit → repair loop
+
+When the user asks to audit a product and automatically fix confirmed defects, activate `audit-repair-loop` rather than treating audit and repair as unrelated tasks.
+
+The loop is product-agnostic. It may cover software behavior, UI/UX, visual presentation, narrative/content, configuration, data transformations, integrations, documentation, release readiness, or other auditable product surfaces.
+
+Use this orchestration contract:
+
+1. Resolve the target, acceptance criteria, invariants, mutation boundary, and stop conditions.
+2. Collect fresh evidence natively. Web agents receive only explicit bounded context and never discover repository/tool state themselves.
+3. Audit the supplied evidence. Use `ceos_bulk_checker_web` for bounded repetitive review and `ceos_reasoner_web` for cross-cutting reasoning when appropriate; use native equivalents when Web routing is unavailable.
+4. Confirm defects. Separate actionable defects from uncertainty, intentional behavior, missing evidence, and rejected findings.
+5. Consolidate compatible confirmed defects into one remediation packet. State evidence, violated expectation, required outcome, invariants/non-goals, acceptance criteria, dependencies, required verification, and stop conditions. Prefer outcome constraints over step-by-step edit recipes.
+6. Give the remediation packet to native `ceos_implementer`; use `ceos_debugger` when root cause or repair remains ambiguous. Web agents do not mutate files or external systems.
+7. Run mechanical/project-native verification proportional to the repair.
+8. Build a fresh post-repair evidence snapshot and perform a fresh re-audit against the original acceptance contract. Do not merely ask the reviewer to confirm its previous recommendation.
+9. Return `PASS`, `FAIL`, `BLOCKED`, or `ESCALATE` with evidence and remaining defects.
+
+Default maximum automatic repair cycles: **3**. Stop earlier on a safety/permission boundary, missing essential evidence, irreconcilable requirements, destructive/external write without authorization, or repeated failure without material progress. If the same material defect survives two repair attempts, perform one deeper native debugging/reasoning pass before another mutation.
 
 ### Fallback contract
 
