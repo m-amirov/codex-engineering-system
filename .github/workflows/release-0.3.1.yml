@@ -1,0 +1,51 @@
+name: CEOS 0.3.1 Release Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Version read-back
+        run: |
+          test "$(cat VERSION)" = "0.3.1"
+          node ./bin/ceos.mjs version
+      - name: Unit and regression tests
+        run: npm test
+      - name: Syntax gate
+        run: npm run lint
+      - name: Self-test
+        run: npm run self-test
+      - name: Package source archive
+        shell: bash
+        run: |
+          mkdir -p release-stage/codex-engineering-system-0.3.1
+          git ls-files -z | while IFS= read -r -d '' file; do
+            mkdir -p "release-stage/codex-engineering-system-0.3.1/$(dirname "$file")"
+            cp "$file" "release-stage/codex-engineering-system-0.3.1/$file"
+          done
+          cp INSTALL.md release-stage/codex-engineering-system-0.3.1/INSTALL-0.3.1.md
+          cd release-stage
+          zip -r ../codex-engineering-system-0.3.1.zip codex-engineering-system-0.3.1
+          cd ..
+          sha256sum codex-engineering-system-0.3.1.zip > codex-engineering-system-0.3.1.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-engineering-system-0.3.1
+          path: |
+            codex-engineering-system-0.3.1.zip
+            codex-engineering-system-0.3.1.zip.sha256
+          if-no-files-found: error
+          retention-days: 90
