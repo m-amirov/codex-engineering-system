@@ -76,7 +76,7 @@ This prevents hidden double execution, retry storms, quota-evasion behavior, and
 
 - The fallback inherits the original task scope and safety constraints.
 - Web agents are reasoning-only and assume no local tools.
-- Web output is not independent evidence of repository, production, or generated-file state.
+- Web output is not independent evidence of repository or production state; it is also not evidence of generated-file state.
 - Production writes remain forbidden without explicit authorization.
 - Project-owned art generation does not imply permission to publish/upload/deploy assets externally.
 - A missing/disabled Web capability degrades to the native routing map unless Web was explicitly required.
