@@ -5,6 +5,8 @@ Keep this file short. Load only the skill/profile/policy required by the task.
 ## Routing
 
 - Audit without product mutation → `skills/audit/SKILL.md`
+- Audit + automatic repair cycles → `skills/audit-repair-loop/SKILL.md`
+- Generate/integrate production visual assets → `skills/art-production/SKILL.md`
 - Reproduce + repair a defect → `skills/fix/SKILL.md`
 - Independent completion check → `skills/verification/SKILL.md`
 - Prepare a release candidate → `skills/release/SKILL.md`
@@ -22,6 +24,6 @@ Always load `policies/safety.md`, `policies/evidence.md`, and the resolved proje
 4. Reuse project-native infrastructure; do not build parallel test/build systems unless the task explicitly requires it.
 5. Prefer goal + constraints + acceptance criteria over prescriptive multi-thousand-line prompts.
 6. Repeated prose rules should migrate into mechanical gates.
-7. If required evidence cannot be obtained, return `BLOCKED`, not a guessed PASS.
+7. If required evidence or native generation capability cannot be obtained, return `BLOCKED`/`BLOCKED_CAPABILITY`, not a guessed PASS.
 
 Use `ceos status`, `ceos doctor`, `ceos gates`, and `ceos verify` to inspect and enforce the local contract.

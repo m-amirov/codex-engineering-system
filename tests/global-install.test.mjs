@@ -93,7 +93,7 @@ test('force never overwrites an unrelated user skill that is not CEOS-managed', 
   fs.writeFileSync(path.join(target, 'SKILL.md'), '---\nname: audit\ndescription: Personal unrelated audit skill.\n---\nDo not replace me.\n');
   const before = fs.readFileSync(path.join(target, 'SKILL.md'), 'utf8');
   assert.throws(() => installGlobal({ homeDir: p.home, codexHome: p.codexHome, force: true }), /not CEOS-managed/);
-  assert.equal(fs.readFileSync(path.join(target, 'SKILL.md'), 'utf8'), before);
+  assert.equal(fs.readFileSync(target + '/SKILL.md', 'utf8'), before);
   assert.equal(fs.existsSync(p.codexHome), false);
 });
 
@@ -126,6 +126,7 @@ test('routing table exposes the intended model tiers', () => {
     ['ceos_bulk_checker', 'gpt-5.6-luna', 'low'],
     ['ceos_explorer', 'gpt-5.6-terra', 'medium'],
     ['ceos_implementer', 'gpt-5.6', 'medium'],
+    ['ceos_asset_generator', 'gpt-5.6', 'medium'],
     ['ceos_debugger', 'gpt-5.6', 'high'],
     ['ceos_reviewer', 'gpt-5.6', 'high'],
     ['ceos_verifier', 'gpt-5.6', 'high']

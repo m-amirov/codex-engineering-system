@@ -1,0 +1,6 @@
+interface:
+  display_name: "CEOS Art Production"
+  short_description: "Web art direction + native asset generation and integration"
+  default_prompt: "Use the art-production workflow: lock scope, build the art manifest and canon, use Web art direction when READY, generate/integrate assets natively, then verify with fresh visual evidence and re-audit."
+policy:
+  allow_implicit_invocation: true
