@@ -25,9 +25,9 @@ if ($LASTEXITCODE -ne 0) { throw "ceos install-global failed with exit code $LAS
 & ceos @StatusArgs
 if ($LASTEXITCODE -ne 0) { throw "ceos global-status failed with exit code $LASTEXITCODE" }
 
-$HybridArgs = @('-Web', $Web)
-if ($CodexHome) { $HybridArgs += @('-CodexHome', $CodexHome) }
-& (Join-Path $PSScriptRoot 'install-hybrid.ps1') @HybridArgs
+$HybridParams = @{ Web = $Web }
+if ($CodexHome) { $HybridParams.CodexHome = $CodexHome }
+& (Join-Path $PSScriptRoot 'install-hybrid.ps1') @HybridParams
 if ($LASTEXITCODE -ne 0) { throw "install-hybrid.ps1 failed with exit code $LASTEXITCODE" }
 
 Write-Host 'CEOS global installation verified. Optional reasoning-only Web routing state recorded. Start a new Codex session.'
