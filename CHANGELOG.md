@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-09-17
+
+- Added the `art-production` Skill for production visual-asset inventory, canon, generation, integration, rendered evidence, and fresh visual re-audit.
+- Added `ceos_art_director_web` (`chatgpt-web/high`) for reasoning-only visual canon, scene-to-art planning, prompt constraints, identity/style consistency review, and art-direction critique over supplied evidence.
+- Added native `ceos_asset_generator` (`gpt-5.6`, medium) for actual image-generation calls when the native capability is exposed, project-owned file writes, runtime mapping, and targeted asset validation.
+- Added a strict capability boundary: Web art direction never counts as file generation; unavailable native image generation yields `BLOCKED_CAPABILITY` instead of fake placeholders or prompt-only completion.
+- Added art-production policy for project-owned mutation boundaries, canonical character/location references, identity/style drift, evidence requirements, and release/publication separation.
+- Extended global routing/install/status manifests to include the native asset generator and the new Skill, and hybrid installation to include the Web art-director route.
+- Added regression coverage for Web/native art-role separation, installer routing, global installation, and production-art completion truthfulness.
+
 ## 0.3.3 — 2026-09-17
 
 - Fixed `ceos web-preflight` on Windows when `hybrid-routing.json` contains a UTF-8 BOM written by Windows PowerShell.
