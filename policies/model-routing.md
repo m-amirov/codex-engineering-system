@@ -17,7 +17,7 @@ CEOS separates **role selection** from **backend selection** and distinguishes *
 | review | — | `ceos_reviewer` → `gpt-5.6` high | read-only/tool-backed |
 | verification | — | `ceos_verifier` → `gpt-5.6` high | read-only/tool-backed |
 
-The critical implementation/debug/asset-write/review/final-verification path remains native. Browser-only `codex-chatgpt-web` is sufficient for supplemental Web reasoning routes; MCP / Full Harness is not a prerequisite and is not assumed by CEOS routing.
+The critical implementation/debug/review/final-verification path remains native. Production asset generation and asset writes also remain native. Browser-only `codex-chatgpt-web` is sufficient for supplemental Web reasoning routes; MCP / Full Harness is not a prerequisite and is not assumed by CEOS routing.
 
 ## Evidence boundary
 
