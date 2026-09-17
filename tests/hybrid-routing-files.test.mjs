@@ -31,6 +31,22 @@ test('hybrid policy keeps fresh evidence gathering and critical path native', ()
   assert.match(policy, /implementation\/debug\/review\/final-verification path remains native/i);
 });
 
+test('audit-repair-loop locks target scope and makes Web routing observable', () => {
+  const skill = read('skills/audit-repair-loop/SKILL.md');
+  const global = read('global/AGENTS.md');
+  const policy = read('policies/model-routing.md');
+  assert.match(skill, /## Scope lock/);
+  assert.match(skill, /release\/publication\/submission readiness/i);
+  assert.match(skill, /must not turn the target verdict into `FAIL`, `BLOCKED`, or `ESCALATE`/i);
+  assert.match(skill, /ceos web-preflight --json/);
+  assert.match(skill, /must.*be delegated to `ceos_bulk_checker_web` or `ceos_reasoner_web`/is);
+  assert.match(skill, /web_agents_used\[\]/);
+  assert.match(global, /must not silently expand the user's target/i);
+  assert.match(global, /do not silently skip Web/i);
+  assert.match(policy, /READY.*substantive audit must actually use/is);
+  assert.match(policy, /Web preflight status/);
+});
+
 test('Windows hybrid installer detects packaged launcher and records no-MCP contract', () => {
   const installer = read('scripts/install-hybrid.ps1');
   assert.match(installer, /Programs\\Codex Web GPT\\Codex Web GPT\.exe/);

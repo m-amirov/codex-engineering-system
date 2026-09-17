@@ -1,119 +1,134 @@
-# Codex Engineering OS (CEOS) 0.3.1
+# Codex Engineering OS (CEOS) 0.3.2
 
-CEOS is a global-first engineering operating layer for Codex. It installs compact engineering instructions, reusable Skills, project policies, verification/evidence tooling, and task-specific custom agents. Version 0.3.1 adds a universal **audit → repair → verify → fresh re-audit** workflow on top of the optional native / ChatGPT Web reasoning routes introduced in 0.3.0.
+CEOS is a global-first engineering operating layer for Codex. It installs compact engineering instructions, reusable Skills, project policies, verification/evidence tooling, and task-specific custom agents.
 
-## What 0.3.1 adds
+Version 0.3.2 hardens the universal **audit → repair → verify → fresh re-audit** workflow introduced in 0.3.1. It fixes two real pilot defects: audit scope drift into unrelated release-readiness work, and silent native-only audits when Web routing was enabled.
 
-- New global Skill: `audit-repair-loop`.
-- Product-agnostic orchestration for software behavior, UI/UX, visual quality, narrative/content, configuration, data transformations, integrations, documentation, and release-readiness checks.
-- Native Codex remains responsible for fresh repository/tool evidence, implementation, debugging, mechanical verification, and writes.
-- Optional Web models remain reasoning-only:
-  - `ceos_bulk_checker_web` → `chatgpt-web/light` for bounded repetitive audit/classification over supplied evidence;
-  - `ceos_reasoner_web` → `chatgpt-web/medium` for cross-cutting analysis, consolidation, critique, and causal reasoning over supplied context.
-- Confirmed defects are consolidated into one **remediation packet** before repair instead of creating one prompt per finding.
-- Post-repair review uses a **fresh evidence snapshot** and the original acceptance contract; it must not simply confirm the reviewer's prior recommendation.
-- Default maximum automatic repair cycles: **3**.
-- Loop exits: `PASS`, `FAIL`, `BLOCKED`, or `ESCALATE`.
-- If the same material defect survives two repair attempts, CEOS requires a deeper native debug/reasoning pass before another mutation.
-- Production remains read-only by default; audit-repair-loop does not authorize deployments, payments, provider submits, destructive writes, or other external mutations.
+## What 0.3.2 changes
 
-## Hybrid routing baseline
+- `audit-repair-loop` now freezes a **scope lock** before audit:
+  - target;
+  - in-scope surfaces;
+  - out-of-scope surfaces;
+  - acceptance contract;
+  - mutation boundary.
+- Repository profiles and platform requirements no longer silently redefine the user's audit target.
+- Unless explicitly requested, release/publication/submission artifacts such as store metadata, screenshots, videos, marketing assets, publication forms, and deployment evidence cannot block a product/content/runtime audit verdict.
+- New command: `ceos web-preflight`.
+- Web installation and Web runtime readiness are now separate concepts. The preflight probes the local `codex-chatgpt-web` health endpoint and reports `READY`, `DISABLED`, `NOT_CONFIGURED`, `UNAVAILABLE`, or `NOT_ACCEPTING_TURNS`.
+- If hybrid routing is enabled and Web preflight is `READY`, each substantive `audit-repair-loop` cycle must actually use `ceos_bulk_checker_web` and/or `ceos_reasoner_web`.
+- Each checkpoint records routing evidence: Web preflight state, Web agents used, native fallback usage, and fallback reason.
+- If Web is unavailable, the existing single deterministic native fallback remains allowed. If the user explicitly requires Web review, Web unavailability is `BLOCKED` rather than silently treated as equivalent native review.
 
-CEOS retains optional integration with [`miuuyy/codex-chatgpt-web`](https://github.com/miuuyy/codex-chatgpt-web) without making browser automation, MCP, or API billing a required dependency.
-
-- **No MCP requirement** for the CEOS Web routes. Browser-only ChatGPT Web model rows are sufficient.
-- `$CODEX_HOME/ceos/hybrid-routing.json` records whether optional Web reasoning is enabled and explicitly records `mcpRequired: false` / `localToolsAssumed: false`.
-- Deterministic fallback: at most one Web → native fallback, and only for backend/transport/runtime unavailability.
-- Semantic failures, discovered bugs, uncertainty, disagreements, and unfavorable results never trigger hidden model reruns.
-- All fresh repository evidence gathering, terminal/test/browser work, implementation, debugging, security/production review, and final verification remain on native Codex models.
-- Existing CEOS 0.2.x/0.3.0 project manifests, Gates, Evidence, Skills, and native agents remain compatible.
-
-## Routing matrix
-
-| Work type | Optional Web route | Native route | Policy |
-|---|---|---|---|
-| batch classification over a complete supplied evidence bundle | `chatgpt-web/light` | `gpt-5.6-luna` | Web allowed only when no fresh tools are needed |
-| architecture/product reasoning / synthesis over supplied context | `chatgpt-web/medium` | parent-selected native role | Web allowed only when no fresh tools are needed |
-| repository exploration / dependency tracing | — | `gpt-5.6-terra` | native tool-backed path |
-| tool-backed bulk checks | — | `gpt-5.6-luna` | native tool-backed path |
-| implementation | — | `gpt-5.6` medium | native critical path |
-| debugger | — | `gpt-5.6` high | native critical path |
-| reviewer | — | `gpt-5.6` high | native critical path |
-| verifier | — | `gpt-5.6` high | native final gate |
-
-CEOS chooses the engineering role and evidence boundary; `codex-chatgpt-web` supplies optional `chatgpt-web/*` model rows. The projects remain separate. CEOS does not fork or modify the Web bridge.
-
-A standard reasoning pattern remains:
+## Audit-repair loop
 
 ```text
-native explorer/tooling -> bounded evidence snapshot -> Web reasoner -> native implementation/verification
-```
-
-For automatic repair, CEOS 0.3.1 extends it to:
-
-```text
-native evidence
+scope lock
     ↓
-web/native audit
+native evidence collection
     ↓
-confirmed defects
+ceos web-preflight
+    ↓
+web audit when READY
+    ↓
+confirmed in-scope defects
     ↓
 consolidated remediation packet
     ↓
 native implement/debug
     ↓
-project-native verification
+target-proportional verification
     ↓
 fresh evidence snapshot
     ↓
-fresh web/native re-audit
+fresh web audit when READY
     ↓
 PASS | FAIL | BLOCKED | ESCALATE
 ```
 
-The Web result is advisory reasoning over supplied evidence. It is not independent proof of repository or production state.
+Default maximum automatic repair cycles: **3**. Production remains read-only unless separately authorized.
+
+## Hybrid routing baseline
+
+CEOS integrates optionally with [`miuuyy/codex-chatgpt-web`](https://github.com/miuuyy/codex-chatgpt-web) without making MCP / Full Harness a CEOS requirement.
+
+- `ceos_bulk_checker_web` → `chatgpt-web/light`: repetitive classification/comparison over complete supplied evidence.
+- `ceos_reasoner_web` → `chatgpt-web/medium`: architecture, product logic, causal analysis, synthesis, critique, and remediation consolidation over supplied context.
+- Web agents are reasoning-only in CEOS. They do not discover repository state, run commands/tests, or write files.
+- Fresh evidence gathering, implementation, debugging, mechanical verification, security/production review, and final completion evidence remain native.
+
+Native routes remain:
+
+| Role | Native model | Purpose |
+|---|---|---|
+| `ceos_bulk_checker` | `gpt-5.6-luna` low | tool-backed batch checks |
+| `ceos_explorer` | `gpt-5.6-terra` medium | repository exploration/evidence mapping |
+| `ceos_implementer` | `gpt-5.6` medium | bounded implementation/refactor |
+| `ceos_debugger` | `gpt-5.6` high | ambiguous/cross-component debugging |
+| `ceos_reviewer` | `gpt-5.6` high | correctness/security/risk review |
+| `ceos_verifier` | `gpt-5.6` high | independent acceptance verification |
+
+## Web runtime preflight
+
+Use:
+
+```powershell
+ceos web-preflight
+ceos web-preflight --json
+```
+
+Default health endpoint:
+
+```text
+http://127.0.0.1:17841/healthz
+```
+
+`READY` means Web routing is enabled and the bridge is healthy and accepting turns. Non-ready states do not cause repeated reconnect storms inside CEOS: the loop may use its single native fallback unless Web was explicitly required.
 
 ## Using audit-repair-loop
 
-A short user instruction is enough:
+For a general product audit:
 
 ```text
 Проведи полный аудит продукта через CEOS audit-repair-loop.
-Исправь подтверждённые дефекты автоматически и повторяй verify + fresh re-audit до PASS,
+Исправляй подтверждённые дефекты автоматически и повторяй verify + fresh re-audit до PASS,
 либо остановись на BLOCKED/ESCALATE/лимите циклов.
-Не выходи за существующие product constraints и не выполняй production writes без отдельного разрешения.
+Не расширяй scope на release/publication readiness, если я этого отдельно не просил.
 ```
 
-The active project profile determines domain-specific verification. The loop itself does not hard-code game, narrative, frontend, backend, or other product assumptions.
+For a specific surface, name it explicitly:
+
+```text
+Проведи audit-repair-loop сценария как читательского продукта.
+В scope: narrative comprehension, continuity, causality, character/location/time clarity и последствия choices.
+Release readiness, gameplay videos, store metadata и публикационные артефакты вне scope.
+```
+
+If Web review itself is mandatory:
+
+```text
+Проведи audit-repair-loop. Web audit required: если Web недоступен, остановись с BLOCKED, не подменяй его native review.
+```
 
 ## Recommended Windows installation
 
-1. Install/configure `Codex Web GPT` if you want Web reasoning. Browser sign-in, browser smoke test, **Install models**, and a successful ChatGPT Web turn in Codex are sufficient. MCP / Full Harness is optional and not required by CEOS.
-2. Extract CEOS 0.3.1.
+1. Install/configure `Codex Web GPT` if you want Web reasoning. Browser sign-in, browser smoke test, **Install models**, and a successful ChatGPT Web turn are sufficient. MCP / Full Harness is optional for CEOS.
+2. Extract CEOS 0.3.2.
 3. Run:
 
 ```powershell
 .\scripts\install-global.ps1
 ```
 
-The installer:
+Then fully restart Codex and start a new task.
 
-- installs this CEOS folder globally with npm;
-- updates CEOS-managed global Codex instructions, native agents, and Skills, including `audit-repair-loop`;
-- verifies `ceos global-status`;
-- recognizes the packaged Windows `Codex Web GPT.exe` installation when present;
-- installs the two reasoning-only Web agent definitions when enabled;
-- writes `$CODEX_HOME\ceos\hybrid-routing.json`.
-
-Then restart Codex and start a **new task**.
-
-If ChatGPT Web model rows are already visible in Codex but auto-detection does not find the launcher:
+If ChatGPT Web model rows are already visible but auto-detection does not find the launcher:
 
 ```powershell
 .\scripts\install-global.ps1 -Web on
 ```
 
-Disable the optional Web routes and retain native CEOS:
+Disable optional Web routes while retaining native CEOS:
 
 ```powershell
 .\scripts\install-global.ps1 -Web off
@@ -127,11 +142,10 @@ ceos install-global --mode copy --force
 ceos global-status
 ceos routing
 .\scripts\install-hybrid.ps1 -Web auto
+ceos web-preflight
 ```
 
-The base `ceos routing` command reports the always-available native custom-agent routes. The optional Web reasoning routes are governed by the hybrid manifest and global routing policy.
-
-## Project-specific integration remains optional
+## Project-specific integration
 
 Global CEOS works without `.codex-os/project.yml`. Add a project manifest only when executable project gates/evidence or a family profile are required:
 
@@ -145,16 +159,14 @@ For Yandex Games, bootstrap new projects only through the official Starter Kit b
 
 ## Engineering invariants
 
+- User scope controls the audit verdict; project profiles do not silently broaden it.
 - Evidence, not assertion, determines PASS.
-- Production access is read-only by default.
-- Unknown permission is not permission.
-- Reuse repository-native infrastructure.
-- Prefer goal + constraints + acceptance criteria over oversized procedural prompts.
-- Prefer one consolidated remediation packet over many isolated fix prompts when findings interact.
-- Prefer the lowest-cost adequate role/model and escalate when uncertainty or risk requires it.
+- Web-backed audit must contain observable Web routing evidence.
 - Web reasoning without tools may analyze supplied evidence but must never pretend it inspected fresh repository state.
-- Fresh re-audit must evaluate the repaired state against the original acceptance contract, not merely validate prior recommendations.
+- Fresh re-audit evaluates the repaired state against the original locked acceptance contract.
+- Prefer one consolidated remediation packet over isolated fix prompts when findings interact.
+- Production access is read-only by default.
 - Hybrid routing never weakens sandbox, approval, production-write, or project-specific constraints.
 - Do not retry/switch Web modes to evade usage limits.
 
-See `docs/architecture/hybrid-routing.md`, `policies/model-routing.md`, and `INSTALL.md`.
+See `policies/model-routing.md`, `skills/audit-repair-loop/SKILL.md`, and `INSTALL.md`.

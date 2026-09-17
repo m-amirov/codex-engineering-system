@@ -37,9 +37,15 @@ When Web routing is disabled or unavailable, use the native agents exactly as be
 
 ## Universal audit → repair loop
 
-When the user asks to audit a product and automatically fix confirmed defects, activate `audit-repair-loop`. Keep it product-agnostic: collect fresh evidence natively → audit supplied evidence → confirm defects → produce one consolidated remediation packet → repair natively → run project-native verification → build fresh evidence → re-audit against the original acceptance contract. Web agents remain reasoning-only and never perform mutations.
+When the user asks to audit a product and automatically fix confirmed defects, activate `audit-repair-loop`.
 
-Default maximum automatic repair cycles: **3**. Stop on `PASS`, `BLOCKED`, `ESCALATE`, the cycle limit, a safety/permission boundary, missing essential evidence, or repeated lack of material progress. Do not let a fresh re-audit merely confirm the reviewer's previous recommendations.
+First freeze the audit target and scope. Repository profiles, platform requirements, release gates, submission assets, screenshots, videos, store metadata, deployment evidence, and other adjacent surfaces must not silently expand the user's target. Unless release/publication/submission readiness is explicitly requested, those surfaces cannot block the target verdict.
+
+Then collect fresh evidence natively → preflight Web with `ceos web-preflight --json` → audit supplied evidence → confirm in-scope defects → produce one consolidated remediation packet → repair natively → run target-proportional verification → build fresh evidence → re-audit against the original acceptance contract.
+
+If hybrid Web routing is enabled and preflight is `READY`, each substantive audit cycle must use `ceos_bulk_checker_web` and/or `ceos_reasoner_web`; do not silently skip Web. If Web is unavailable, allow the existing single native fallback and record it explicitly. If the user explicitly requires Web review, unavailable Web is `BLOCKED` rather than an equivalent native result.
+
+Every loop checkpoint must report Web preflight status, Web agents used, whether native fallback was used, and its reason. Default maximum automatic repair cycles: **3**. Stop on `PASS`, `FAIL`, `BLOCKED`, `ESCALATE`, the cycle limit, a safety/permission boundary, missing essential target evidence, or repeated lack of material progress.
 
 ### Fallback contract
 

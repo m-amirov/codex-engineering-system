@@ -1,6 +1,6 @@
 interface:
   display_name: "CEOS Audit Repair Loop"
-  short_description: "Bounded audit → repair → verify → fresh re-audit workflow"
-  default_prompt: "Run the universal audit-repair-loop and stop only on PASS, BLOCKED, ESCALATE, or the configured cycle limit."
+  short_description: "Scoped audit → Web review → native repair → verify → fresh re-audit"
+  default_prompt: "Run audit-repair-loop with a locked user scope. If Web routing is READY, use a substantive Web audit and report routing trace. Do not let unrelated release/publication surfaces affect the target verdict. Stop on PASS, FAIL, BLOCKED, ESCALATE, or the configured cycle limit."
 policy:
   allow_implicit_invocation: true

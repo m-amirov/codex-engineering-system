@@ -1,94 +1,86 @@
-# CEOS 0.3.1 Release Report
+# CEOS 0.3.2 Release Report
 
 Date: 2026-09-17
 
-## Final verdict
+## Intended verdict
 
-`PASS_CEOS_0_3_1_UNIVERSAL_AUDIT_REPAIR_LOOP`
+`PASS_CEOS_0_3_2_SCOPED_OBSERVABLE_WEB_AUDIT`
 
-## Scope
+## Why 0.3.2 exists
 
-CEOS 0.3.1 adds a universal `audit-repair-loop` Skill on top of the 0.3.0 reasoning-only Web routing baseline. The loop is product-agnostic and can be used for software behavior, UI/UX, visual presentation, narrative/content, configuration, data transformations, integrations, documentation, and release-readiness work.
+A real `audit-repair-loop` pilot exposed two contract defects in 0.3.1:
 
-The workflow is:
+1. **Scope drift:** a product/narrative audit expanded into Yandex release-readiness and treated missing gameplay videos as the blocking verdict even though release submission artifacts were not the requested audit target.
+2. **Silent native-only audit:** Web routing was merely optional (`when enabled and appropriate`), so the loop could complete without using `ceos_bulk_checker_web` or `ceos_reasoner_web` and without reporting that choice.
+
+A separate runtime pilot also showed that an installed Web route can be unavailable when the local `codex-chatgpt-web` launcher/bridge is not running, producing repeated reconnects rather than a deterministic fallback decision.
+
+## 0.3.2 contract
+
+### Scope lock
+
+Before audit, the loop freezes:
+
+- target;
+- in-scope surfaces;
+- out-of-scope surfaces;
+- acceptance contract;
+- mutation boundary.
+
+Repository profiles and platform requirements may select tooling and verification, but they may not silently redefine user scope.
+
+Unless explicitly requested, release/publication/submission artifacts such as gameplay videos, store screenshots, marketing assets, metadata, publication forms, deployment evidence, and other marketplace deliverables are out of scope for product/content/runtime audits. They may be reported separately as `OUT_OF_SCOPE_OBSERVATION`, but they cannot cause `FAIL`, `BLOCKED`, or `ESCALATE` for the locked target.
+
+### Observable Web routing
+
+New command:
 
 ```text
-native evidence collection
-→ web/native audit
-→ confirmed defects
-→ consolidated remediation packet
-→ native implement/debug
-→ project-native verification
-→ fresh evidence snapshot
-→ fresh web/native re-audit
-→ PASS | FAIL | BLOCKED | ESCALATE
+ceos web-preflight --json
 ```
 
-## Audit-repair contract
+It reads the CEOS hybrid-routing manifest and probes the local `codex-chatgpt-web` health endpoint (`http://127.0.0.1:17841/healthz` by default).
 
-- Fresh repository/tool evidence is collected natively.
-- `ceos_bulk_checker_web` may perform bounded repetitive review over complete supplied evidence.
-- `ceos_reasoner_web` may perform cross-cutting reasoning, synthesis, causal analysis, architecture/product critique, and remediation consolidation over supplied context.
-- Web agents remain reasoning-only and never mutate files or external systems.
-- Confirmed compatible defects are consolidated into one remediation packet containing evidence, violated expectation, required outcome, invariants/non-goals, acceptance criteria, dependencies, required verification, and stop conditions.
-- Native `ceos_implementer` performs bounded repairs; `ceos_debugger` handles ambiguous root-cause or repeated repair failures.
-- Mechanical verification remains project-native and evidence-based.
-- Post-repair review uses a fresh evidence snapshot and the original acceptance contract rather than merely confirming earlier recommendations.
+States:
 
-## Loop boundaries
+- `READY`
+- `DISABLED`
+- `NOT_CONFIGURED`
+- `UNAVAILABLE`
+- `NOT_ACCEPTING_TURNS`
 
-- Default maximum automatic repair cycles: 3.
-- Exit states: `PASS`, `FAIL`, `BLOCKED`, `ESCALATE`.
-- Stop on safety/permission boundaries, missing essential evidence, irreconcilable requirements, destructive/external writes without authorization, or repeated lack of material progress.
-- If the same material defect survives two repair attempts, require one deeper native debugging/reasoning pass before another mutation.
-- Production remains read-only by default.
+When hybrid routing is enabled and preflight is `READY`, every substantive `audit-repair-loop` cycle must actually use `ceos_bulk_checker_web` and/or `ceos_reasoner_web` before confirming defects. The loop cannot silently choose native-only audit.
 
-## Web routing baseline
+Every checkpoint must report:
 
-- `ceos_bulk_checker_web` → `chatgpt-web/light`, reasoning-only.
-- `ceos_reasoner_web` → `chatgpt-web/medium`, reasoning-only.
-- `ceos_bulk_checker` → native `gpt-5.6-luna`, low, for tool-backed batch checks.
-- `ceos_explorer` → native `gpt-5.6-terra`, medium, for repository exploration and fresh evidence gathering.
-- `ceos_implementer` → native `gpt-5.6`, medium.
-- `ceos_debugger` → native `gpt-5.6`, high.
-- `ceos_reviewer` → native `gpt-5.6`, high.
-- `ceos_verifier` → native `gpt-5.6`, high.
+- `web_preflight_status`;
+- `web_agents_used[]`;
+- `native_fallback_used`;
+- `fallback_reason`.
 
-Critical writes, fresh repository inspection, terminal/tests/browser work, ambiguous debugging, security/production-risk review, and final acceptance remain native.
+If Web is unavailable, the existing single deterministic native fallback remains permitted. If the user explicitly requires Web review, a non-ready Web route is `BLOCKED` rather than an equivalent native audit.
 
-## MCP boundary
+## Architecture boundaries preserved
 
-CEOS 0.3.1 does **not** require MCP / Full Harness. Browser sign-in, installed ChatGPT Web model rows, and a successful Web turn in Codex are sufficient for optional Web reasoning routes. Tool-backed roles stay native unless a future explicit policy changes that boundary.
+- Fresh repository/tool evidence remains native.
+- Web agents remain reasoning-only over explicitly supplied context.
+- Implementation remains native `ceos_implementer`.
+- Ambiguous/root-cause work remains native `ceos_debugger`.
+- Mechanical verification and final completion evidence remain native.
+- Production access remains read-only unless separately authorized.
+- No model shopping or retries for unfavorable semantic outcomes.
 
-## Compatibility
+## Verification requirements
 
-- Node: >=22
-- Project manifest schema: v1 unchanged
-- Evidence schema: v1 unchanged
-- Eight global Skills, including `audit-repair-loop`
-- Five Profiles unchanged
-- Six native custom-agent routes unchanged
-- Two optional Web reasoning routes unchanged from corrected 0.3.0 baseline
-- `codex-chatgpt-web`: optional; CEOS remains functional without it
+The 0.3.2 release gate must prove:
 
-## Verification gates for this release
+- `ceos version` reads `0.3.2`;
+- all Node regression tests pass;
+- new Web-preflight tests cover not-configured, disabled, ready, and unavailable states;
+- audit-repair-loop contract tests prove scope lock and observable Web routing requirements;
+- syntax/lint passes, including `src/web-preflight.mjs`;
+- self-test passes;
+- source package and SHA-256 artifact are produced;
+- pull-request and post-merge `main` release gates both pass.
 
-- `ceos version` reads `0.3.1`.
-- Node regression suite passes 44/44 tests.
-- Skill-shape tests include `audit-repair-loop`.
-- Global installation tests prove the new Skill is installed/checksummed and unrelated user targets remain protected.
-- Hybrid Web-agent static-contract tests continue proving reasoning-only behavior and absence of a Web explorer route.
-- `npm run lint` passes.
-- `npm run self-test` passes.
-- Release packaging completes only after all gates pass.
-- GitHub Actions release gate runs for pull requests to `main` and pushes to `main`.
-
-## Observed release evidence
-
-The first 0.3.1 PR run reported 43/44 passing tests. The only failure was a stale test assertion hard-pinned to `VERSION === 0.3.0`; no product/runtime defect was implicated. The assertion was generalized to the 0.3.x reasoning-only baseline.
-
-The final pre-merge PR run passed version read-back, 44/44 Node regression tests, syntax/lint, self-test, source packaging, and artifact upload.
-
-PR #2 was squash-merged into `main` as commit `b0aa37531eb7c0f72d2dbbb1be44b25ede013124`. The post-merge `main` release gate also passed version read-back, 44/44 tests, lint, self-test, packaging, and artifact upload.
-
-The resulting Actions artifact is `codex-engineering-system-0.3.1`, artifact id `10499799652`, digest `sha256:6d106ec3af68642d8fd986b66e77371e780b4539b5a56b3c40cf9670a7555809`.
+Final observed CI evidence and artifact digest will be appended only after the latest release gate succeeds.

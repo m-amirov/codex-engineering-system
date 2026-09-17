@@ -2,6 +2,7 @@
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { CEOS_ROOT, VERSION, SUPPORTED_PROFILES, SKILL_NAMES, resolveProject, loadManifest, doctor, gitState, resolveGates, runVerification, validateEvidence, createManifest, detectManifestForProject, latestEvidenceDir, readFailures, renderContext, installSkills, installGlobal, globalStatus, routingTable } from '../src/ceos.mjs';
+import { webPreflight } from '../src/web-preflight.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -23,7 +24,7 @@ function print(obj, json = false) {
   else console.log(JSON.stringify(obj, null, 2));
 }
 function usage() {
-  console.log(`Codex Engineering OS ${VERSION}\n\nUsage:\n  ceos init --profile <profile> [--project dir]\n  ceos status [--project dir] [--json]\n  ceos doctor [--project dir] [--json]\n  ceos gates [--mode verification|release] [--project dir] [--json]\n  ceos verify [--mode verification|release] [--project dir] [--evidence dir] [--dry-run] [--json]\n  ceos evidence [--path dir | --project dir] [--json]\n  ceos failures [--path dir | --project dir] [--tail lines] [--json]\n  ceos profile [--project dir]\n  ceos context --skill <name> [--project dir]\n  ceos install-skills --scope repo|user [--mode copy|link] [--project dir] [--force]\n  ceos install-global [--mode copy|link] [--force] [--dry-run] [--codex-home dir] [--json]\n  ceos global-status [--codex-home dir] [--json]\n  ceos routing [--json]\n  ceos self-test\n\nProfiles: ${SUPPORTED_PROFILES.join(', ')}\nSkills: ${SKILL_NAMES.join(', ')}`);
+  console.log(`Codex Engineering OS ${VERSION}\n\nUsage:\n  ceos init --profile <profile> [--project dir]\n  ceos status [--project dir] [--json]\n  ceos doctor [--project dir] [--json]\n  ceos gates [--mode verification|release] [--project dir] [--json]\n  ceos verify [--mode verification|release] [--project dir] [--evidence dir] [--dry-run] [--json]\n  ceos evidence [--path dir | --project dir] [--json]\n  ceos failures [--path dir | --project dir] [--tail lines] [--json]\n  ceos profile [--project dir]\n  ceos context --skill <name> [--project dir]\n  ceos web-preflight [--codex-home dir] [--url http://127.0.0.1:17841/healthz] [--timeout-ms 1200] [--json]\n  ceos install-skills --scope repo|user [--mode copy|link] [--project dir] [--force]\n  ceos install-global [--mode copy|link] [--force] [--dry-run] [--codex-home dir] [--json]\n  ceos global-status [--codex-home dir] [--json]\n  ceos routing [--json]\n  ceos self-test\n\nProfiles: ${SUPPORTED_PROFILES.join(', ')}\nSkills: ${SKILL_NAMES.join(', ')}`);
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -109,6 +110,19 @@ try {
       if (!args.skill) throw new Error('--skill is required');
       process.stdout.write(renderContext(project, args.skill)); break;
     }
+    case 'web-preflight': {
+      const timeoutMs = args['timeout-ms'] ? Number(args['timeout-ms']) : 1200;
+      if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10000) throw new Error('--timeout-ms must be an integer from 100 to 10000');
+      const result = await webPreflight({ codexHome: args['codex-home'] || undefined, healthUrl: args.url || undefined, timeoutMs });
+      if (args.json) print(result, true); else {
+        console.log(`WEB ${result.status}  ${result.reason}`);
+        console.log(`Manifest: ${result.manifestFile}`);
+        console.log(`Health: ${result.healthUrl}`);
+        if (result.activity) console.log(`Activity: ${JSON.stringify(result.activity)}`);
+      }
+      process.exitCode = result.status === 'UNAVAILABLE' || result.status === 'NOT_ACCEPTING_TURNS' ? 2 : 0;
+      break;
+    }
     case 'install-skills': {
       const result = installSkills({ projectDir: project, scope: args.scope || 'repo', mode: args.mode || 'copy', force: Boolean(args.force) });
       if (args.json) print(result, true); else {
@@ -137,8 +151,7 @@ try {
       const result = globalStatus({ homeDir: args.home || undefined, codexHome: args['codex-home'] || undefined });
       if (args.json) print(result, true); else {
         for (const check of result.checks) console.log(`${check.ok ? 'PASS' : 'FAIL'}  ${check.id}  ${check.path}`);
-        console.log(`
-VERDICT: ${result.ok ? 'PASS' : 'FAIL'}`);
+        console.log(`\nVERDICT: ${result.ok ? 'PASS' : 'FAIL'}`);
       }
       process.exitCode = result.ok ? 0 : 1;
       break;

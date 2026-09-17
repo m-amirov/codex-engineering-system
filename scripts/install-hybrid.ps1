@@ -127,7 +127,7 @@ if ($Enabled) {
 }
 
 Write-Host ("CEOS {0} Web reasoning routes: {1} ({2})" -f $Version, $(if ($Enabled) { 'ENABLED' } else { 'DISABLED' }), $Detection)
-Write-Host 'Mode: reasoning-only; MCP / Full Harness is not required or assumed by CEOS 0.3.0.'
+Write-Host ("Mode: reasoning-only; MCP / Full Harness is not required or assumed by CEOS {0}." -f $Version)
 Write-Host "Manifest: $ManifestFile"
 if ($BackupRoot) { Write-Host "Backups: $BackupRoot" }
 if ($Web -eq 'auto' -and -not $Detected) {
