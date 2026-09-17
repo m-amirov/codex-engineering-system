@@ -1,54 +1,78 @@
-# CEOS 0.3.3 Release Report
+# CEOS 0.4.0 Release Report
 
 Date: 2026-09-17
 
-## Final verdict
+## Intended verdict
 
-`PASS_CEOS_0_3_3_WINDOWS_BOM_SAFE_WEB_PREFLIGHT`
+`PASS_CEOS_0_4_0_PRODUCTION_ART_PIPELINE`
 
-## Why 0.3.3 exists
+## Why 0.4.0 exists
 
-A real Windows installation of CEOS 0.3.2 exposed a compatibility defect in `ceos web-preflight`:
+CEOS already supported Web-assisted reasoning, audit/repair, and visual QA, but production image creation still had no explicit engineering contract. A project could define staging and readability while still lacking real character art, expressions, backgrounds, or CG assets.
 
-```text
-WEB NOT_CONFIGURED  invalid hybrid-routing manifest: Unexpected token '﻿'
-```
+0.4.0 adds a dedicated production-art workflow without turning Web agents into unbounded tool users.
 
-The hybrid routing manifest itself was valid JSON, but Windows PowerShell had written it as UTF-8 with BOM. Node read the BOM as `U+FEFF`, and the 0.3.2 preflight passed the raw string directly to `JSON.parse`, which rejects that leading character.
+## Architecture
 
-This defect affected runtime Web-readiness detection only. The base global CEOS installation and native agents/Skills remained valid.
+### Web art direction
 
-## 0.3.3 fix
+`ceos_art_director_web`:
 
-- `src/web-preflight.mjs` strips a single leading UTF-8 BOM before parsing `hybrid-routing.json`.
-- Existing BOM-prefixed manifests created by CEOS 0.3.2 therefore work without manual migration.
-- `scripts/install-hybrid.ps1` no longer uses `Set-Content -Encoding utf8` for the manifest.
-- The installer writes `hybrid-routing.json` through `System.IO.File.WriteAllText` with `System.Text.UTF8Encoding($false)`, giving explicit UTF-8 without BOM on Windows PowerShell and PowerShell 7.
-- No audit-routing, scope-lock, safety, fallback, model, or project-manifest semantics are changed.
+- `chatgpt-web/high`;
+- reasoning-only;
+- receives bounded manifests, references, contact sheets, screenshots, and scene context supplied by the native parent;
+- defines or critiques visual canon, generation briefs, asset families, identity consistency, scene-to-art mappings, and remediation;
+- cannot claim repository inspection, image-file generation, persistence, or runtime integration.
 
-## Verification evidence
+### Native generation/integration
 
-Pre-merge PR #4 release gate:
+`ceos_asset_generator`:
 
-- version read-back: PASS (`0.3.3`);
-- Node regression tests: PASS, **55/55**;
-- BOM-prefixed manifest → healthy `READY`: PASS;
-- BOM-free Windows installer write contract: PASS;
-- existing Web-preflight state regressions: PASS;
-- syntax/lint: PASS;
-- self-test: PASS;
-- package creation: PASS;
-- artifact upload: PASS.
+- native `gpt-5.6`, medium reasoning;
+- workspace-write;
+- executes bounded generation/integration from an approved canon and manifest;
+- uses native image generation only if the current Codex runtime actually exposes it;
+- if image generation is unavailable, returns `BLOCKED` rather than fabricating assets or silently accepting placeholders;
+- persists real files, updates project-owned mappings/manifests, and gathers fresh runtime evidence.
 
-PR #4 was squash-merged into `main` as commit `c8aa074e9310842aa961c286af36728c9f2e6020`.
+### Production-art Skill
 
-Post-merge `main` release gate run `35238521880` also passed version read-back, tests, lint, self-test, packaging, and artifact upload.
+`production-art` provides:
 
-Post-merge artifact:
+1. scope/invariants lock;
+2. asset inventory/manifest;
+3. Web preflight;
+4. character/location/style canon before volume generation;
+5. bounded native generation batches;
+6. immediate file/runtime integration;
+7. batch consistency review;
+8. fresh runtime visual QA;
+9. final manifest/runtime re-audit.
 
-- name: `codex-engineering-system-0.3.3`;
-- artifact id: `10504736751`;
-- size: `74355` bytes;
-- digest: `sha256:c259cbbbe71f3aabab17b8faac51b7ed21b31215045187086b04a53a6b3ab36c`.
+## Preserved invariants
 
-The release-report-only commit must pass the same `main` release gate before this report is considered final repository evidence.
+- Web routes remain reasoning-only.
+- MCP / Full Harness is not required by CEOS.
+- Actual file persistence and runtime verification remain native/tool-backed.
+- Image-generation availability is observed at runtime, not assumed from agent registration.
+- Production-art does not authorize deployment, publication, paid provider calls, or unrelated product mutations.
+- Existing audit-repair-loop scope lock, Web preflight, deterministic fallback, BOM-safe Windows manifest handling, and project profiles remain intact.
+
+## Release gate requirements
+
+The 0.4.0 release gate must prove:
+
+- version read-back = `0.4.0`;
+- all Node regression tests pass;
+- `production-art` is registered as a first-class Skill;
+- `ceos_asset_generator` is installed and exposed in native routing;
+- `ceos_art_director_web` is installed only through the hybrid Web route and remains reasoning-only;
+- production-art fails closed when image generation is unavailable;
+- Web art-director route uses the real `chatgpt-web/high` model row;
+- existing audit-repair-loop and Web-preflight regressions remain green;
+- syntax/lint passes;
+- self-test passes;
+- source archive and SHA-256 artifact are produced;
+- PR and post-merge `main` release gates pass.
+
+Observed CI evidence and final artifact digest will be recorded after the release gate succeeds.

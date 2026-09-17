@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — 2026-09-17
+
+- Added the `production-art` Skill for asset inventory/manifest → visual canon → Web art direction → native image generation/integration → runtime visual QA → fresh consistency re-audit.
+- Added `ceos_art_director_web` (`chatgpt-web/high`) as a reasoning-only Web role for character/location/style canon, generation briefs, contact-sheet review, scene-to-art mapping, and visual consistency critique over supplied evidence.
+- Added native `ceos_asset_generator` (`gpt-5.6` medium, workspace-write) for bounded generation and integration of real project assets when the current Codex runtime actually exposes image generation.
+- Production-art now fails closed with `BLOCKED` when required image-generation capability, references, permission, or essential evidence are unavailable; it must not fabricate image files or claim placeholder output as production completion.
+- Registered the new Skill and native agent in global installation, `global-status`, routing manifests, checksums, and `ceos context` policy resolution.
+- Extended hybrid installation to install/remove the CEOS-managed `ceos_art_director_web` route and record it in `hybrid-routing.json` without changing the reasoning-only Web contract.
+- Added routing/evidence requirements for image-generation capability, generated/integrated asset counts, Web agents used, and fallback state.
+- Preserved project-native runtime verification: actual asset files, mappings, fresh desktop/mobile evidence, visual QA, and relevant test/lint/build gates remain native/tool-backed.
+- Added regression coverage for the production-art capability boundary, Web art-director route, native asset-generator route, skill registration, and installation shape.
+
 ## 0.3.3 — 2026-09-17
 
 - Fixed `ceos web-preflight` on Windows when `hybrid-routing.json` contains a UTF-8 BOM written by Windows PowerShell.
@@ -62,7 +74,7 @@
 - Twork integration auto-detection recognizes common integration/E2E/browser aliases.
 - `doctor` separates command-risk checks from npm-script existence checks.
 - `verify` preflights configured npm commands and records `CONFIGURATION_ERROR` without executing missing scripts.
-- Non-zero test-like gates are tagged `TEST_FAILURE`; other non-zero commands are `COMMAND_FAILURE`.
+- Non-zero test-like gates are tagged `TEST_FAILURE`; other non-zero commands are tagged `COMMAND_FAILURE`.
 - Added `ceos failures` with evidence auto-discovery and configurable stdout/stderr tailing.
 - Evidence schema accepts `CONFIGURATION_ERROR`.
 - Added regression coverage for the first real Yandex Games pilot failure mode.

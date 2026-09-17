@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CEOS_ROOT } from '../src/ceos.mjs';
 
-const skills = ['audit','audit-repair-loop','fix','verification','release','visual-qa','prod-check','incident-analysis'];
+const skills = ['audit','audit-repair-loop','fix','verification','release','visual-qa','production-art','prod-check','incident-analysis'];
 
 function parseFrontmatter(text) {
   assert.ok(text.startsWith('---\n'), 'missing opening frontmatter');
@@ -19,7 +19,7 @@ function parseFrontmatter(text) {
   return out;
 }
 
-test('MVP skills follow required Agent Skills metadata shape', () => {
+test('CEOS skills follow required Agent Skills metadata shape', () => {
   for (const name of skills) {
     const text = fs.readFileSync(path.join(CEOS_ROOT, 'skills', name, 'SKILL.md'), 'utf8');
     const fm = parseFrontmatter(text);

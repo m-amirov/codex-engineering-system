@@ -1,4 +1,4 @@
-name: CEOS 0.3.3 Release Gate
+name: CEOS 0.4.0 Release Gate
 
 on:
   pull_request:
@@ -20,7 +20,7 @@ jobs:
           node-version: '22'
       - name: Version read-back
         run: |
-          test "$(cat VERSION)" = "0.3.3"
+          test "$(cat VERSION)" = "0.4.0"
           node ./bin/ceos.mjs version
       - name: Unit and regression tests
         run: npm test
@@ -31,21 +31,21 @@ jobs:
       - name: Package source archive
         shell: bash
         run: |
-          mkdir -p release-stage/codex-engineering-system-0.3.3
+          mkdir -p release-stage/codex-engineering-system-0.4.0
           git ls-files -z | while IFS= read -r -d '' file; do
-            mkdir -p "release-stage/codex-engineering-system-0.3.3/$(dirname "$file")"
-            cp "$file" "release-stage/codex-engineering-system-0.3.3/$file"
+            mkdir -p "release-stage/codex-engineering-system-0.4.0/$(dirname "$file")"
+            cp "$file" "release-stage/codex-engineering-system-0.4.0/$file"
           done
-          cp INSTALL.md release-stage/codex-engineering-system-0.3.3/INSTALL-0.3.3.md
+          cp INSTALL.md release-stage/codex-engineering-system-0.4.0/INSTALL-0.4.0.md
           cd release-stage
-          zip -r ../codex-engineering-system-0.3.3.zip codex-engineering-system-0.3.3
+          zip -r ../codex-engineering-system-0.4.0.zip codex-engineering-system-0.4.0
           cd ..
-          sha256sum codex-engineering-system-0.3.3.zip > codex-engineering-system-0.3.3.zip.sha256
+          sha256sum codex-engineering-system-0.4.0.zip > codex-engineering-system-0.4.0.zip.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: codex-engineering-system-0.3.3
+          name: codex-engineering-system-0.4.0
           path: |
-            codex-engineering-system-0.3.3.zip
-            codex-engineering-system-0.3.3.zip.sha256
+            codex-engineering-system-0.4.0.zip
+            codex-engineering-system-0.4.0.zip.sha256
           if-no-files-found: error
           retention-days: 90

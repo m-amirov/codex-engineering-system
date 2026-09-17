@@ -126,6 +126,7 @@ test('routing table exposes the intended model tiers', () => {
     ['ceos_bulk_checker', 'gpt-5.6-luna', 'low'],
     ['ceos_explorer', 'gpt-5.6-terra', 'medium'],
     ['ceos_implementer', 'gpt-5.6', 'medium'],
+    ['ceos_asset_generator', 'gpt-5.6', 'medium'],
     ['ceos_debugger', 'gpt-5.6', 'high'],
     ['ceos_reviewer', 'gpt-5.6', 'high'],
     ['ceos_verifier', 'gpt-5.6', 'high']
