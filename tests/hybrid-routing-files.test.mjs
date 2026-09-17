@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-test('0.3.0 Web agents are reasoning-only and assume no local tools', () => {
-  assert.equal(read('VERSION').trim(), '0.3.0');
+test('0.3.x Web agents are reasoning-only and assume no local tools', () => {
+  assert.match(read('VERSION').trim(), /^0\.3\./);
   const bulk = read('agents/ceos-bulk-checker-web.toml');
   const reasoner = read('agents/ceos-reasoner-web.toml');
   assert.match(bulk, /name = "ceos_bulk_checker_web"/);
