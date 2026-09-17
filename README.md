@@ -1,26 +1,12 @@
-# Codex Engineering OS (CEOS) 0.3.2
+# Codex Engineering OS (CEOS) 0.3.3
 
 CEOS is a global-first engineering operating layer for Codex. It installs compact engineering instructions, reusable Skills, project policies, verification/evidence tooling, and task-specific custom agents.
 
-Version 0.3.2 hardens the universal **audit → repair → verify → fresh re-audit** workflow introduced in 0.3.1. It fixes two real pilot defects: audit scope drift into unrelated release-readiness work, and silent native-only audits when Web routing was enabled.
-
-## What 0.3.2 changes
-
-- `audit-repair-loop` now freezes a **scope lock** before audit:
-  - target;
-  - in-scope surfaces;
-  - out-of-scope surfaces;
-  - acceptance contract;
-  - mutation boundary.
-- Repository profiles and platform requirements no longer silently redefine the user's audit target.
-- Unless explicitly requested, release/publication/submission artifacts such as store metadata, screenshots, videos, marketing assets, publication forms, and deployment evidence cannot block a product/content/runtime audit verdict.
-- New command: `ceos web-preflight`.
-- Web installation and Web runtime readiness are now separate concepts. The preflight probes the local `codex-chatgpt-web` health endpoint and reports `READY`, `DISABLED`, `NOT_CONFIGURED`, `UNAVAILABLE`, or `NOT_ACCEPTING_TURNS`.
-- If hybrid routing is enabled and Web preflight is `READY`, each substantive `audit-repair-loop` cycle must actually use `ceos_bulk_checker_web` and/or `ceos_reasoner_web`.
-- Each checkpoint records routing evidence: Web preflight state, Web agents used, native fallback usage, and fallback reason.
-- If Web is unavailable, the existing single deterministic native fallback remains allowed. If the user explicitly requires Web review, Web unavailability is `BLOCKED` rather than silently treated as equivalent native review.
+Version 0.3.3 is a Windows compatibility hotfix on top of the scoped, observable Web audit flow from 0.3.2. It fixes `ceos web-preflight` when Windows PowerShell writes `hybrid-routing.json` with a UTF-8 BOM and makes future hybrid manifests BOM-free.
 
 ## Audit-repair loop
+
+`audit-repair-loop` freezes a scope lock before audit: target, in-scope surfaces, out-of-scope surfaces, acceptance contract, and mutation boundary. Release/publication/submission artifacts cannot block a product/content/runtime audit unless the user explicitly includes release readiness.
 
 ```text
 scope lock
@@ -85,6 +71,8 @@ http://127.0.0.1:17841/healthz
 
 `READY` means Web routing is enabled and the bridge is healthy and accepting turns. Non-ready states do not cause repeated reconnect storms inside CEOS: the loop may use its single native fallback unless Web was explicitly required.
 
+CEOS 0.3.3 accepts existing BOM-prefixed `hybrid-routing.json` files from Windows PowerShell and `scripts/install-hybrid.ps1` writes new manifests explicitly as UTF-8 without BOM.
+
 ## Using audit-repair-loop
 
 For a general product audit:
@@ -113,14 +101,22 @@ If Web review itself is mandatory:
 ## Recommended Windows installation
 
 1. Install/configure `Codex Web GPT` if you want Web reasoning. Browser sign-in, browser smoke test, **Install models**, and a successful ChatGPT Web turn are sufficient. MCP / Full Harness is optional for CEOS.
-2. Extract CEOS 0.3.2.
+2. Extract CEOS 0.3.3.
 3. Run:
 
 ```powershell
-.\scripts\install-global.ps1
+.\scripts\install-global.ps1 -Web auto
 ```
 
 Then fully restart Codex and start a new task.
+
+Useful checks:
+
+```powershell
+ceos version
+ceos global-status
+ceos web-preflight
+```
 
 If ChatGPT Web model rows are already visible but auto-detection does not find the launcher:
 

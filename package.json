@@ -1,6 +1,6 @@
 {
   "name": "codex-engineering-os",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "A global-first engineering operating layer for Codex with hybrid native/ChatGPT-Web routing, skills, policies, profiles, gates and evidence.",
   "type": "module",
   "private": true,

@@ -1,4 +1,4 @@
-# Install Codex Engineering OS 0.3.2
+# Install Codex Engineering OS 0.3.3
 
 ## Recommended Windows installation
 
@@ -8,7 +8,7 @@ Install `Codex Web GPT` from:
 
 https://github.com/miuuyy/codex-chatgpt-web
 
-For CEOS 0.3.2 you only need the browser/model path:
+For CEOS 0.3.3 you only need the browser/model path:
 
 1. Sign in to ChatGPT in the embedded browser.
 2. Run the browser smoke test.
@@ -16,19 +16,21 @@ For CEOS 0.3.2 you only need the browser/model path:
 4. Fully restart Codex.
 5. Confirm a `ChatGPT Web — ...` model appears in Codex and can complete a simple turn.
 
-**MCP / Full Harness is not required by CEOS 0.3.2.** The optional Web agents are reasoning-only and must not assume local Codex tools. Tool-backed evidence collection, writes, debugging and verification remain native.
+**MCP / Full Harness is not required by CEOS 0.3.3.** The optional Web agents are reasoning-only and must not assume local Codex tools. Tool-backed evidence collection, writes, debugging and verification remain native.
 
 CEOS also works without Codex Web GPT; in that case routing remains native-only.
 
 ### 2. Install CEOS
 
-From the extracted `codex-engineering-system-0.3.2` folder:
+From the extracted `codex-engineering-system-0.3.3` folder:
 
 ```powershell
 .\scripts\install-global.ps1
 ```
 
 Default `-Web auto` behavior recognizes either a legacy `codex-chatgpt-web` command or the packaged Windows launcher at `%LOCALAPPDATA%\Programs\Codex Web GPT\Codex Web GPT.exe`. It installs the base CEOS global layer, verifies it, writes `$CODEX_HOME\ceos\hybrid-routing.json`, and installs the optional reasoning-only Web agents when enabled.
+
+CEOS 0.3.3 writes `hybrid-routing.json` as UTF-8 without BOM and `ceos web-preflight` also tolerates an existing UTF-8 BOM from older Windows PowerShell installs.
 
 Useful modes:
 
@@ -85,16 +87,18 @@ Expected version:
 
 ```powershell
 ceos version
-# 0.3.2
+# 0.3.3
 ```
 
-## Upgrade from 0.3.1
+## Upgrade from 0.3.2
 
-Extract/replace the central CEOS source folder with 0.3.2, then run:
+Update the central CEOS source folder to 0.3.3, then run:
 
 ```powershell
 .\scripts\install-global.ps1 -Web auto
 ```
+
+The install rewrites the hybrid-routing manifest without BOM. Existing BOM-prefixed 0.3.2 manifests are also readable by 0.3.3 before rewrite.
 
 After installation, `ceos global-status` should include `skill:audit-repair-loop` as healthy.
 
