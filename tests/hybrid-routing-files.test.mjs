@@ -7,31 +7,38 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-test('0.3.0 hybrid Web agents are bounded read-only routes', () => {
+test('0.3.0 Web agents are reasoning-only and assume no local tools', () => {
   assert.equal(read('VERSION').trim(), '0.3.0');
   const bulk = read('agents/ceos-bulk-checker-web.toml');
-  const explorer = read('agents/ceos-explorer-web.toml');
+  const reasoner = read('agents/ceos-reasoner-web.toml');
   assert.match(bulk, /name = "ceos_bulk_checker_web"/);
   assert.match(bulk, /model = "chatgpt-web\/light"/);
-  assert.match(bulk, /sandbox_mode = "read-only"/);
-  assert.match(explorer, /name = "ceos_explorer_web"/);
-  assert.match(explorer, /model = "chatgpt-web\/medium"/);
-  assert.match(explorer, /sandbox_mode = "read-only"/);
+  assert.match(bulk, /must not inspect the repository or invoke tools/i);
+  assert.match(reasoner, /name = "ceos_reasoner_web"/);
+  assert.match(reasoner, /model = "chatgpt-web\/medium"/);
+  assert.match(reasoner, /must not inspect the repository or invoke tools/i);
+  assert.equal(fs.existsSync(path.join(root, 'agents/ceos-explorer-web.toml')), false);
 });
 
-test('hybrid policy permits only one transport-failure fallback and keeps critical path native', () => {
+test('hybrid policy keeps fresh evidence gathering and critical path native', () => {
   const global = read('global/AGENTS.md');
   const policy = read('policies/model-routing.md');
+  assert.match(global, /MCP \/ Full Harness is not required and must not be assumed/i);
+  assert.match(global, /If fresh repository\/tool evidence is required, route natively/i);
+  assert.match(global, /Web analysis is advisory reasoning over supplied evidence/i);
   assert.match(global, /fallback is allowed at most once/i);
-  assert.match(global, /only when the selected Web model\/backend\/transport cannot run/i);
-  assert.match(global, /Keep `ceos_implementer`, `ceos_debugger`, `ceos_reviewer`, and `ceos_verifier` on their native models/i);
-  assert.match(policy, /Semantic outcomes[\s\S]*must not trigger a second model run/i);
+  assert.match(policy, /Web output is not independent evidence of repository or production state/i);
+  assert.match(policy, /implementation\/debug\/review\/final-verification path remains native/i);
 });
 
-test('Windows hybrid installer uses capability detection and fail-closed ownership checks', () => {
+test('Windows hybrid installer detects packaged launcher and records no-MCP contract', () => {
   const installer = read('scripts/install-hybrid.ps1');
-  assert.match(installer, /Get-Command 'codex-chatgpt-web'/);
+  assert.match(installer, /Programs\\Codex Web GPT\\Codex Web GPT\.exe/);
+  assert.match(installer, /packaged-codex-web-gpt-detected/);
+  assert.match(installer, /routingMode = 'reasoning-only'/);
+  assert.match(installer, /mcpRequired = \$false/);
+  assert.match(installer, /localToolsAssumed = \$false/);
   assert.match(installer, /Refusing to replace non-CEOS agent target/);
-  assert.match(installer, /hybrid-routing\.json/);
+  assert.match(installer, /ceos-explorer-web\.toml/);
   assert.match(installer, /single-native-fallback-on-transport-backend-failure-only/);
 });

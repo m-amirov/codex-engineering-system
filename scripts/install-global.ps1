@@ -30,4 +30,4 @@ if ($CodexHome) { $HybridArgs += @('-CodexHome', $CodexHome) }
 & (Join-Path $PSScriptRoot 'install-hybrid.ps1') @HybridArgs
 if ($LASTEXITCODE -ne 0) { throw "install-hybrid.ps1 failed with exit code $LASTEXITCODE" }
 
-Write-Host 'CEOS global installation verified. Hybrid routing state recorded. Start a new Codex session.'
+Write-Host 'CEOS global installation verified. Optional reasoning-only Web routing state recorded. Start a new Codex session.'

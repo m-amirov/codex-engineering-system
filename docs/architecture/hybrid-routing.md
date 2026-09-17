@@ -8,28 +8,64 @@ User task
    v
 Codex parent / CEOS orchestrator
    |
-   +--> role classification -----------------------------+
-   |                                                     |
-   |  bulk checker / explorer                            | implement/debug/review/verify
-   v                                                     v
-backend policy                                        native critical path
+   +--> need fresh tools/repository evidence? -- yes --> native role
    |
-   +--> hybrid enabled? -- no --> native agent
+   no
    |
-  yes
+   +--> bounded context already available? -- no --> native evidence collection
    |
-   +--> Web read-only agent
-           |
-           +--> success / semantic failure --> return evidence
-           |
-           +--> transport failure only --> one native fallback
+   yes
+   |
+   +--> repetitive/simple supplied-evidence analysis --> Web Light
+   |
+   +--> reasoning/synthesis/planning/critique -------> Web Medium
+            |
+            +--> success / semantic outcome --> return analysis
+            |
+            +--> transport failure only ------> one native fallback
 ```
 
-`codex-chatgpt-web` remains responsible for exposing `chatgpt-web/*` model rows and, in Full Harness mode, bridging tools through MCP. CEOS remains responsible for role selection, risk policy, fallback semantics, verification, and evidence.
+`codex-chatgpt-web` remains responsible for exposing `chatgpt-web/*` model rows. CEOS remains responsible for role selection, evidence boundaries, risk policy, fallback semantics, verification, and completion claims.
 
-## Why only two Web agents in 0.3.0
+## Browser-only is sufficient
 
-The browser transport is unofficial and can fail because of UI/model/account/runtime drift. The first production integration therefore routes only bounded read-only workloads to Web models. Implementation, ambiguous debugging, security/production review, and final verification remain native. A later CEOS release can expand Web routing only after measured stability on real workloads.
+The CEOS 0.3.0 Web routes intentionally assume **no local Codex tools**. Therefore Browser-only Codex Web GPT setup is sufficient: sign in, pass the browser smoke test, install the Web model rows, restart Codex, and verify a Web turn.
+
+MCP / Full Harness is optional and outside the 0.3.0 routing contract. Even if a user configures MCP separately, CEOS 0.3.0 does not automatically move repository exploration, terminal work, implementation, debugging, security review, or final verification onto Web models.
+
+## Why reasoning-only Web routes
+
+Without MCP, a Web model can still provide useful independent reasoning over context that the parent supplies. It cannot independently inspect the workspace. Treating a Browser-only Web agent as a repository explorer would create false evidence and hidden tool assumptions.
+
+The corrected 0.3.0 design therefore uses Web models only for:
+
+- repetitive classification/checking over a complete supplied evidence bundle;
+- architecture reasoning;
+- hypothesis comparison;
+- planning and option analysis;
+- synthesis and critique of bounded context.
+
+Fresh evidence gathering stays native.
+
+## Evidence handoff pattern
+
+```text
+native explorer / native tools
+          |
+          v
+bounded evidence snapshot
+          |
+          v
+Web reasoning agent
+          |
+          v
+parent decision/orchestration
+          |
+          v
+native implementation + native verifier
+```
+
+A Web analysis can influence what to inspect next, but it is not proof that repository or production state actually has a given property. Completion evidence must come from tool-backed native checks.
 
 ## Capability manifest
 
@@ -43,15 +79,32 @@ Example enabled state:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "ceosVersion": "0.3.0",
   "enabled": true,
-  "detection": "codex-chatgpt-web-on-path",
+  "routingMode": "reasoning-only",
+  "mcpRequired": false,
+  "localToolsAssumed": false,
   "webAgents": [
-    "ceos_bulk_checker_web",
-    "ceos_explorer_web"
+    {
+      "name": "ceos_bulk_checker_web",
+      "model": "chatgpt-web/light"
+    },
+    {
+      "name": "ceos_reasoner_web",
+      "model": "chatgpt-web/medium"
+    }
   ]
 }
 ```
 
 The manifest is evidence of CEOS installation intent, not proof that a live ChatGPT account currently exposes a particular route. Runtime route failure therefore remains fail-closed and may cause the single native fallback.
+
+## Windows detection
+
+`-Web auto` checks both:
+
+- a legacy/CLI-style `codex-chatgpt-web` command on PATH; and
+- the packaged launcher at `%LOCALAPPDATA%\Programs\Codex Web GPT\Codex Web GPT.exe`.
+
+If Web models are already visible in Codex but auto-detection still cannot prove the installation, use `-Web on` explicitly.

@@ -2,14 +2,17 @@
 
 ## 0.3.0 — 2026-09-17
 
-- Added optional hybrid native / ChatGPT Web model routing without making `codex-chatgpt-web` a CEOS runtime dependency.
-- Added `ceos_bulk_checker_web` (`chatgpt-web/light`) and `ceos_explorer_web` (`chatgpt-web/medium`) as read-only preferred routes.
+- Added optional native / ChatGPT Web model routing without making `codex-chatgpt-web` a CEOS runtime dependency.
+- Corrected the Web integration contract to **reasoning-only by default**: MCP / Full Harness is not required or assumed.
+- Added `ceos_bulk_checker_web` (`chatgpt-web/light`) for repetitive analysis over complete evidence bundles already supplied by the parent.
+- Added `ceos_reasoner_web` (`chatgpt-web/medium`) for architecture reasoning, hypothesis comparison, planning, synthesis, and critique over supplied context.
+- Removed the earlier `ceos_explorer_web` route because Browser-only Web models cannot independently inspect repository state; fresh file/repository/tool evidence stays native.
+- Kept native `ceos_bulk_checker` and `ceos_explorer` for tool-backed batch checks and repository exploration.
 - Kept implementation, ambiguous debugging, security/production review, and final verification on native Codex models for the 0.3.0 critical path.
-- Added Windows capability detection and `$CODEX_HOME/ceos/hybrid-routing.json` through `scripts/install-hybrid.ps1`.
-- Updated `scripts/install-global.ps1` to apply and verify the hybrid layer after the normal CEOS global installation.
-- Added a deterministic single-fallback contract: Web → native only for backend/transport/runtime unavailability; semantic/task failures never trigger hidden reruns.
-- Added fail-closed ownership checks and backups for changed CEOS-managed Web agent definitions.
-- Added hybrid routing architecture/policy documentation and static regression coverage.
+- Added packaged Windows launcher detection at `%LOCALAPPDATA%\Programs\Codex Web GPT\Codex Web GPT.exe` in addition to legacy CLI-style detection.
+- Updated `$CODEX_HOME/ceos/hybrid-routing.json` to schema v2 with `routingMode: reasoning-only`, `mcpRequired: false`, and `localToolsAssumed: false`.
+- Added safe migration/backups for the earlier CEOS-managed `ceos_explorer_web` definition.
+- Preserved deterministic fallback: at most one Web → native fallback, only for backend/transport/runtime unavailability; semantic outcomes never trigger hidden reruns.
 - Preserved project manifest schema v1, Evidence schema v1, seven Skills, five Profiles, and the six native 0.2.0 routes.
 
 ## 0.2.0 — 2026-09-16

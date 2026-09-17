@@ -17,17 +17,36 @@ $StateRoot = Join-Path $CodexHome 'ceos'
 $ManifestFile = Join-Path $StateRoot 'hybrid-routing.json'
 $WebAgentFiles = @(
   @{ File = 'ceos-bulk-checker-web.toml'; Name = 'ceos_bulk_checker_web'; Model = 'chatgpt-web/light'; Fallback = 'ceos_bulk_checker' },
-  @{ File = 'ceos-explorer-web.toml'; Name = 'ceos_explorer_web'; Model = 'chatgpt-web/medium'; Fallback = 'ceos_explorer' }
+  @{ File = 'ceos-reasoner-web.toml'; Name = 'ceos_reasoner_web'; Model = 'chatgpt-web/medium'; Fallback = 'parent-selected-native-role' }
+)
+$LegacyWebAgentFiles = @(
+  @{ File = 'ceos-explorer-web.toml'; Name = 'ceos_explorer_web' }
 )
 
-$Command = Get-Command 'codex-chatgpt-web' -ErrorAction SilentlyContinue
-$Detected = $null -ne $Command
+$CliCommand = Get-Command 'codex-chatgpt-web' -ErrorAction SilentlyContinue
+$PackagedLauncher = $null
+if ($env:LOCALAPPDATA) {
+  $PackagedLauncher = Join-Path $env:LOCALAPPDATA 'Programs\Codex Web GPT\Codex Web GPT.exe'
+}
+$PackagedDetected = $PackagedLauncher -and (Test-Path $PackagedLauncher)
+$Detected = ($null -ne $CliCommand) -or $PackagedDetected
+$DetectedSource = if ($CliCommand) { $CliCommand.Source } elseif ($PackagedDetected) { $PackagedLauncher } else { $null }
 $Enabled = switch ($Web) {
   'on' { $true }
   'off' { $false }
   default { $Detected }
 }
-$Detection = if ($Web -eq 'on') { 'explicit-on' } elseif ($Web -eq 'off') { 'explicit-off' } elseif ($Detected) { 'codex-chatgpt-web-on-path' } else { 'codex-chatgpt-web-not-detected' }
+$Detection = if ($Web -eq 'on') {
+  'explicit-on'
+} elseif ($Web -eq 'off') {
+  'explicit-off'
+} elseif ($CliCommand) {
+  'codex-chatgpt-web-on-path'
+} elseif ($PackagedDetected) {
+  'packaged-codex-web-gpt-detected'
+} else {
+  'codex-chatgpt-web-not-detected'
+}
 
 New-Item -ItemType Directory -Force -Path $AgentsRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $StateRoot | Out-Null
@@ -37,6 +56,14 @@ function Test-CeosWebAgent([string]$Path, [string]$Name) {
   if (-not (Test-Path $Path)) { return $false }
   $Text = Get-Content $Path -Raw
   return $Text.Contains('# CEOS-managed agent;') -and $Text.Contains(('name = "{0}"' -f $Name))
+}
+
+function Ensure-BackupRoot() {
+  if (-not $script:BackupRoot) {
+    $Stamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH-mm-ss-fffZ')
+    $script:BackupRoot = Join-Path (Join-Path $StateRoot 'backups') $Stamp
+    New-Item -ItemType Directory -Force -Path (Join-Path $script:BackupRoot 'agents') | Out-Null
+  }
 }
 
 foreach ($Agent in $WebAgentFiles) {
@@ -50,11 +77,7 @@ foreach ($Agent in $WebAgentFiles) {
       $Current = (Get-FileHash $Target -Algorithm SHA256).Hash
       $Expected = (Get-FileHash $Source -Algorithm SHA256).Hash
       if ($Current -ne $Expected) {
-        if (-not $BackupRoot) {
-          $Stamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH-mm-ss-fffZ')
-          $BackupRoot = Join-Path (Join-Path $StateRoot 'backups') $Stamp
-          New-Item -ItemType Directory -Force -Path (Join-Path $BackupRoot 'agents') | Out-Null
-        }
+        Ensure-BackupRoot
         Copy-Item $Target (Join-Path (Join-Path $BackupRoot 'agents') $Agent.File) -Force
       }
     }
@@ -67,13 +90,29 @@ foreach ($Agent in $WebAgentFiles) {
   }
 }
 
+# Remove the pre-correction 0.3.0 explorer Web agent only when it is recognizably CEOS-managed.
+foreach ($Agent in $LegacyWebAgentFiles) {
+  $Target = Join-Path $AgentsRoot $Agent.File
+  if (Test-Path $Target) {
+    if (-not (Test-CeosWebAgent $Target $Agent.Name)) {
+      throw "Refusing to remove non-CEOS legacy agent target: $Target"
+    }
+    Ensure-BackupRoot
+    Copy-Item $Target (Join-Path (Join-Path $BackupRoot 'agents') $Agent.File) -Force
+    Remove-Item $Target -Force
+  }
+}
+
 $Manifest = [ordered]@{
-  schemaVersion = 1
+  schemaVersion = 2
   ceosVersion = $Version
   enabled = $Enabled
   requestedMode = $Web
   detection = $Detection
-  detectedCommand = if ($Command) { $Command.Source } else { $null }
+  detectedSource = $DetectedSource
+  routingMode = 'reasoning-only'
+  mcpRequired = $false
+  localToolsAssumed = $false
   installedAt = (Get-Date).ToUniversalTime().ToString('o')
   webAgents = @($WebAgentFiles | ForEach-Object { [ordered]@{ name = $_.Name; file = $_.File; model = $_.Model; fallback = $_.Fallback } })
   fallbackPolicy = 'single-native-fallback-on-transport-backend-failure-only'
@@ -87,9 +126,10 @@ if ($Enabled) {
   }
 }
 
-Write-Host ("CEOS {0} hybrid routing: {1} ({2})" -f $Version, $(if ($Enabled) { 'ENABLED' } else { 'DISABLED' }), $Detection)
+Write-Host ("CEOS {0} Web reasoning routes: {1} ({2})" -f $Version, $(if ($Enabled) { 'ENABLED' } else { 'DISABLED' }), $Detection)
+Write-Host 'Mode: reasoning-only; MCP / Full Harness is not required or assumed by CEOS 0.3.0.'
 Write-Host "Manifest: $ManifestFile"
 if ($BackupRoot) { Write-Host "Backups: $BackupRoot" }
 if ($Web -eq 'auto' -and -not $Detected) {
-  Write-Host 'codex-chatgpt-web was not detected on PATH. Native routing remains active. Re-run with -Web auto after installing it, or use -Web on only when the Web transport is configured.'
+  Write-Host 'Codex Web GPT was not detected. Native routing remains active. If ChatGPT Web model rows are already visible in Codex, re-run with -Web on.'
 }
