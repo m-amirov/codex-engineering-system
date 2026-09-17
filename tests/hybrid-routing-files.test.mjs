@@ -42,3 +42,11 @@ test('Windows hybrid installer detects packaged launcher and records no-MCP cont
   assert.match(installer, /ceos-explorer-web\.toml/);
   assert.match(installer, /single-native-fallback-on-transport-backend-failure-only/);
 });
+
+test('global Windows installer forwards hybrid options with named PowerShell splatting', () => {
+  const installer = read('scripts/install-global.ps1');
+  assert.match(installer, /\$HybridParams\s*=\s*@\{\s*Web\s*=\s*\$Web\s*\}/);
+  assert.match(installer, /\$HybridParams\.CodexHome\s*=\s*\$CodexHome/);
+  assert.match(installer, /install-hybrid\.ps1'\)\s+@HybridParams/);
+  assert.doesNotMatch(installer, /\$HybridArgs\s*=\s*@\('-Web'/);
+});
