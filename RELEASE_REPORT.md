@@ -2,7 +2,7 @@
 
 Date: 2026-09-17
 
-## Intended verdict
+## Final verdict
 
 `PASS_CEOS_0_3_2_SCOPED_OBSERVABLE_WEB_AUDIT`
 
@@ -70,17 +70,30 @@ If Web is unavailable, the existing single deterministic native fallback remains
 - Production access remains read-only unless separately authorized.
 - No model shopping or retries for unfavorable semantic outcomes.
 
-## Verification requirements
+## Verification evidence
 
-The 0.3.2 release gate must prove:
+Pre-merge PR #3 release gate:
 
-- `ceos version` reads `0.3.2`;
-- all Node regression tests pass;
-- new Web-preflight tests cover not-configured, disabled, ready, and unavailable states;
-- audit-repair-loop contract tests prove scope lock and observable Web routing requirements;
-- syntax/lint passes, including `src/web-preflight.mjs`;
-- self-test passes;
-- source package and SHA-256 artifact are produced;
-- pull-request and post-merge `main` release gates both pass.
+- version read-back: PASS (`0.3.2`);
+- Node regression tests: PASS, **53/53**;
+- scope-drift regression: PASS;
+- READY-Web-must-not-be-silently-skipped regression: PASS;
+- `ceos web-preflight` CLI tests: PASS;
+- Web-preflight state tests (`NOT_CONFIGURED`, `DISABLED`, `READY`, `UNAVAILABLE`): PASS;
+- syntax/lint, including `src/web-preflight.mjs`: PASS;
+- self-test: PASS;
+- packaging: PASS;
+- artifact upload: PASS.
 
-Final observed CI evidence and artifact digest will be appended only after the latest release gate succeeds.
+PR #3 was squash-merged into `main` as commit `78586bc39765e084e68096d49b41dee19956cfae`.
+
+Post-merge `main` release gate run `35234090870` passed version read-back, tests, lint, self-test, packaging, and artifact upload.
+
+Resulting post-merge artifact:
+
+- name: `codex-engineering-system-0.3.2`;
+- artifact id: `10501999870`;
+- size: `74709` bytes;
+- digest: `sha256:74866f21f7d8ffb606b914a46cf4f10e6d09f0e256ac5f2b9d5edbb97a91f4c8`.
+
+The release-report-only commit must also pass the same `main` release gate before this report is treated as final repository evidence.
