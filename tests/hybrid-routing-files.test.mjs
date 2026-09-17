@@ -7,16 +7,21 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-test('0.3.x Web agents are reasoning-only and assume no local tools', () => {
-  assert.match(read('VERSION').trim(), /^0\.3\./);
+test('0.4.x Web agents remain reasoning-only and assume no local tools', () => {
+  assert.match(read('VERSION').trim(), /^0\.4\./);
   const bulk = read('agents/ceos-bulk-checker-web.toml');
   const reasoner = read('agents/ceos-reasoner-web.toml');
+  const art = read('agents/ceos-art-director-web.toml');
   assert.match(bulk, /name = "ceos_bulk_checker_web"/);
   assert.match(bulk, /model = "chatgpt-web\/light"/);
   assert.match(bulk, /must not inspect the repository or invoke tools/i);
   assert.match(reasoner, /name = "ceos_reasoner_web"/);
   assert.match(reasoner, /model = "chatgpt-web\/medium"/);
   assert.match(reasoner, /must not inspect the repository or invoke tools/i);
+  assert.match(art, /name = "ceos_art_director_web"/);
+  assert.match(art, /model = "chatgpt-web\/high"/);
+  assert.match(art, /does not inspect the repository|Do not claim to inspect repository state/i);
+  assert.match(art, /Do not claim to.*invoke image generation/is);
   assert.equal(fs.existsSync(path.join(root, 'agents/ceos-explorer-web.toml')), false);
 });
 
@@ -47,6 +52,20 @@ test('audit-repair-loop locks target scope and makes Web routing observable', ()
   assert.match(policy, /Web preflight status/);
 });
 
+test('art-production separates Web direction from native generation truth', () => {
+  const skill = read('skills/art-production/SKILL.md');
+  const policy = read('policies/art-production.md');
+  const nativeAgent = read('agents/ceos-asset-generator.toml');
+  assert.match(skill, /art manifest/i);
+  assert.match(skill, /ceos_art_director_web/);
+  assert.match(skill, /ceos_asset_generator/);
+  assert.match(skill, /BLOCKED_CAPABILITY/);
+  assert.match(skill, /Do not claim `PASS` from prompt files, manifests, or planned assets alone/i);
+  assert.match(policy, /Actual asset generation must occur through a native image-generation capability/i);
+  assert.match(nativeAgent, /native image-generation capability/i);
+  assert.match(nativeAgent, /Do not invent binary outputs/i);
+});
+
 test('Windows hybrid installer detects packaged launcher and records no-MCP contract', () => {
   const installer = read('scripts/install-hybrid.ps1');
   assert.match(installer, /Programs\\Codex Web GPT\\Codex Web GPT\.exe/);
@@ -55,6 +74,8 @@ test('Windows hybrid installer detects packaged launcher and records no-MCP cont
   assert.match(installer, /mcpRequired = \$false/);
   assert.match(installer, /localToolsAssumed = \$false/);
   assert.match(installer, /Refusing to replace non-CEOS agent target/);
+  assert.match(installer, /ceos-art-director-web\.toml/);
+  assert.match(installer, /chatgpt-web\/high/);
   assert.match(installer, /ceos-explorer-web\.toml/);
   assert.match(installer, /single-native-fallback-on-transport-backend-failure-only/);
 });
