@@ -2,7 +2,7 @@
 
 Date: 2026-09-17
 
-## Intended verdict
+## Final verdict
 
 `PASS_CEOS_0_3_1_UNIVERSAL_AUDIT_REPAIR_LOOP`
 
@@ -73,18 +73,22 @@ CEOS 0.3.1 does **not** require MCP / Full Harness. Browser sign-in, installed C
 
 ## Verification gates for this release
 
-- `ceos version` must read `0.3.1`.
-- Node regression suite must PASS.
-- Skill-shape tests must include `audit-repair-loop`.
-- Global installation tests must prove the new Skill is installed/checksummed and does not overwrite unrelated user targets.
-- Hybrid Web-agent static-contract tests must continue proving reasoning-only behavior and absence of a Web explorer route.
-- `npm run lint` must PASS.
-- `npm run self-test` must PASS.
-- Release packaging must complete only after all gates pass.
-- GitHub Actions release gate must run for pull requests to `main` and pushes to `main`.
+- `ceos version` reads `0.3.1`.
+- Node regression suite passes 44/44 tests.
+- Skill-shape tests include `audit-repair-loop`.
+- Global installation tests prove the new Skill is installed/checksummed and unrelated user targets remain protected.
+- Hybrid Web-agent static-contract tests continue proving reasoning-only behavior and absence of a Web explorer route.
+- `npm run lint` passes.
+- `npm run self-test` passes.
+- Release packaging completes only after all gates pass.
+- GitHub Actions release gate runs for pull requests to `main` and pushes to `main`.
 
-## Observed pre-merge evidence
+## Observed release evidence
 
-The first 0.3.1 PR run reached the Node regression suite and reported 43/44 passing tests. The only failure was a stale test assertion hard-pinned to `VERSION === 0.3.0`; the product/runtime behavior was not implicated. The assertion was generalized to the 0.3.x reasoning-only baseline.
+The first 0.3.1 PR run reported 43/44 passing tests. The only failure was a stale test assertion hard-pinned to `VERSION === 0.3.0`; no product/runtime defect was implicated. The assertion was generalized to the 0.3.x reasoning-only baseline.
 
-A subsequent PR run passed version read-back, all Node regression tests, syntax/lint, self-test, source packaging, and artifact upload before release-metadata cleanup. Final release verdict requires the latest post-cleanup PR run to complete successfully.
+The final pre-merge PR run passed version read-back, 44/44 Node regression tests, syntax/lint, self-test, source packaging, and artifact upload.
+
+PR #2 was squash-merged into `main` as commit `b0aa37531eb7c0f72d2dbbb1be44b25ede013124`. The post-merge `main` release gate also passed version read-back, 44/44 tests, lint, self-test, packaging, and artifact upload.
+
+The resulting Actions artifact is `codex-engineering-system-0.3.1`, artifact id `10499799652`, digest `sha256:6d106ec3af68642d8fd986b66e77371e780b4539b5a56b3c40cf9670a7555809`.
