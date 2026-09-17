@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3 — 2026-09-17
+
+- Fixed `ceos web-preflight` on Windows when `hybrid-routing.json` contains a UTF-8 BOM written by Windows PowerShell.
+- The Web routing manifest reader now strips a leading UTF-8 BOM before `JSON.parse`, preserving compatibility with already-installed 0.3.2 manifests.
+- `scripts/install-hybrid.ps1` now writes `hybrid-routing.json` using explicit UTF-8 without BOM across Windows PowerShell and PowerShell 7.
+- Added regression coverage for BOM-prefixed manifests and for BOM-free installer writes.
+
 ## 0.3.2 — 2026-09-17
 
 - Added an explicit **scope lock** to `audit-repair-loop`: user-selected target, in-scope/out-of-scope surfaces, acceptance contract, and mutation boundary are frozen before audit.
