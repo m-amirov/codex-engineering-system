@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CEOS_ROOT, GLOBAL_AGENT_FILES, SUPPORTED_PROFILES } from '../src/ceos.mjs';
 
-const skills = ['audit','fix','verification','release','visual-qa','prod-check','incident-analysis'];
+const skills = ['audit','audit-repair-loop','fix','verification','release','visual-qa','prod-check','incident-analysis'];
 
 test('all MVP skills exist', () => {
   for (const skill of skills) assert.ok(fs.existsSync(path.join(CEOS_ROOT, 'skills', skill, 'SKILL.md')), skill);
@@ -26,6 +26,7 @@ test('global Codex layer and custom model-routing agents exist', () => {
   const globalInstructions = fs.readFileSync(path.join(CEOS_ROOT, 'global', 'AGENTS.md'), 'utf8');
   assert.ok(globalInstructions.length < 7000, `global/AGENTS.md too large: ${globalInstructions.length}`);
   assert.match(globalInstructions, /Automatic model routing/i);
+  assert.match(globalInstructions, /audit-repair-loop/i);
   for (const agent of GLOBAL_AGENT_FILES) {
     const file = path.join(CEOS_ROOT, 'agents', agent.file);
     assert.ok(fs.existsSync(file), agent.file);
