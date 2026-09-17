@@ -12,6 +12,7 @@
 - Added packaged Windows launcher detection at `%LOCALAPPDATA%\Programs\Codex Web GPT\Codex Web GPT.exe` in addition to legacy CLI-style detection.
 - Updated `$CODEX_HOME/ceos/hybrid-routing.json` to schema v2 with `routingMode: reasoning-only`, `mcpRequired: false`, and `localToolsAssumed: false`.
 - Added safe migration/backups for the earlier CEOS-managed `ceos_explorer_web` definition.
+- Fixed Windows `install-global.ps1` forwarding of `-Web` / `-CodexHome` to `install-hybrid.ps1` by using named PowerShell hashtable splatting; added regression coverage for the exact failure.
 - Preserved deterministic fallback: at most one Web → native fallback, only for backend/transport/runtime unavailability; semantic outcomes never trigger hidden reruns.
 - Preserved project manifest schema v1, Evidence schema v1, seven Skills, five Profiles, and the six native 0.2.0 routes.
 
