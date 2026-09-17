@@ -9,7 +9,7 @@ import { parseYamlLite } from './yaml-lite.mjs';
 export const CEOS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const VERSION = fs.readFileSync(path.join(CEOS_ROOT, 'VERSION'), 'utf8').trim();
 export const SUPPORTED_PROFILES = ['generic', 'node-web', 'yandex-games', 'twork-desktop', 'platibridge'];
-export const SKILL_NAMES = ['audit', 'audit-repair-loop', 'fix', 'verification', 'release', 'visual-qa', 'prod-check', 'incident-analysis'];
+export const SKILL_NAMES = ['audit', 'audit-repair-loop', 'art-production', 'fix', 'verification', 'release', 'visual-qa', 'prod-check', 'incident-analysis'];
 
 export const GLOBAL_INSTRUCTIONS_BEGIN = '<!-- CEOS:GLOBAL:BEGIN -->';
 export const GLOBAL_INSTRUCTIONS_END = '<!-- CEOS:GLOBAL:END -->';
@@ -17,6 +17,7 @@ export const GLOBAL_AGENT_FILES = [
   { file: 'ceos-bulk-checker.toml', name: 'ceos_bulk_checker', model: 'gpt-5.6-luna', effort: 'low', workload: 'high-volume deterministic checks' },
   { file: 'ceos-explorer.toml', name: 'ceos_explorer', model: 'gpt-5.6-terra', effort: 'medium', workload: 'read-heavy exploration and evidence mapping' },
   { file: 'ceos-implementer.toml', name: 'ceos_implementer', model: 'gpt-5.6', effort: 'medium', workload: 'bounded implementation and refactoring' },
+  { file: 'ceos-asset-generator.toml', name: 'ceos_asset_generator', model: 'gpt-5.6', effort: 'medium', workload: 'native image generation and production-asset integration' },
   { file: 'ceos-debugger.toml', name: 'ceos_debugger', model: 'gpt-5.6', effort: 'high', workload: 'ambiguous or cross-component debugging' },
   { file: 'ceos-reviewer.toml', name: 'ceos_reviewer', model: 'gpt-5.6', effort: 'high', workload: 'correctness, security, architecture and production-risk review' },
   { file: 'ceos-verifier.toml', name: 'ceos_verifier', model: 'gpt-5.6', effort: 'high', workload: 'independent acceptance and release verification' }
@@ -25,6 +26,7 @@ export const GLOBAL_AGENT_FILES = [
 const SKILL_POLICY_MAP = {
   audit: ['safety', 'evidence', 'git', 'testing', 'stop-conditions'],
   'audit-repair-loop': ['safety', 'evidence', 'git', 'testing', 'production', 'stop-conditions'],
+  'art-production': ['safety', 'evidence', 'git', 'testing', 'art-production', 'stop-conditions'],
   fix: ['safety', 'evidence', 'git', 'testing', 'stop-conditions'],
   verification: ['safety', 'evidence', 'testing', 'stop-conditions'],
   release: ['safety', 'evidence', 'git', 'testing', 'stop-conditions'],
