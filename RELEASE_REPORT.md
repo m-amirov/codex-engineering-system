@@ -2,7 +2,7 @@
 
 Date: 2026-09-17
 
-## Intended verdict
+## Final verdict
 
 `PASS_CEOS_0_4_0_PRODUCTION_ART_PIPELINE`
 
@@ -23,6 +23,8 @@ CEOS already supported Web-assisted reasoning, audit/repair, and visual QA, but 
 - receives bounded manifests, references, contact sheets, screenshots, and scene context supplied by the native parent;
 - defines or critiques visual canon, generation briefs, asset families, identity consistency, scene-to-art mappings, and remediation;
 - cannot claim repository inspection, image-file generation, persistence, or runtime integration.
+
+The `chatgpt-web/high` model row was separately verified against the current `miuuyy/codex-chatgpt-web` provider catalog before release configuration was finalized.
 
 ### Native generation/integration
 
@@ -58,21 +60,50 @@ CEOS already supported Web-assisted reasoning, audit/repair, and visual QA, but 
 - Production-art does not authorize deployment, publication, paid provider calls, or unrelated product mutations.
 - Existing audit-repair-loop scope lock, Web preflight, deterministic fallback, BOM-safe Windows manifest handling, and project profiles remain intact.
 
-## Release gate requirements
+## Verification evidence
 
-The 0.4.0 release gate must prove:
+PR #6 (`CEOS 0.4.0: add production-art pipeline`) was tested after correcting one over-literal regression assertion that did not change the production-art contract.
 
-- version read-back = `0.4.0`;
-- all Node regression tests pass;
-- `production-art` is registered as a first-class Skill;
-- `ceos_asset_generator` is installed and exposed in native routing;
-- `ceos_art_director_web` is installed only through the hybrid Web route and remains reasoning-only;
-- production-art fails closed when image generation is unavailable;
-- Web art-director route uses the real `chatgpt-web/high` model row;
-- existing audit-repair-loop and Web-preflight regressions remain green;
-- syntax/lint passes;
-- self-test passes;
-- source archive and SHA-256 artifact are produced;
-- PR and post-merge `main` release gates pass.
+Final PR release gate:
 
-Observed CI evidence and final artifact digest will be recorded after the release gate succeeds.
+- run: `35257778826`;
+- head: `e6c402cbb6d64d0a029c08ca6c933ecab5f0cdcd`;
+- version read-back: PASS (`0.4.0`);
+- Node regression tests: PASS, **59/59**;
+- production-art first-class Skill/native-route regression: PASS;
+- Web art-director reasoning-only/hybrid-install regression: PASS;
+- fail-closed missing-image-generation regression: PASS;
+- existing audit-repair-loop, Web-preflight, and Windows BOM regressions: PASS;
+- syntax/lint: PASS;
+- self-test: PASS;
+- packaging: PASS;
+- artifact upload: PASS.
+
+PR artifact:
+
+- name: `codex-engineering-system-0.4.0`;
+- artifact id: `10512582888`;
+- size: `83679` bytes;
+- uploaded-artifact digest: `sha256:e3daac4ac3c4d3502a271a1c457d3437af7c24dc0dd84497453d0039f12a5bbc`.
+
+PR #6 was squash-merged into `main` as commit `f16dd456342867636f9297fc3ccf5d54db877545`.
+
+Post-merge `main` release gate:
+
+- run: `35257842082`;
+- head: `f16dd456342867636f9297fc3ccf5d54db877545`;
+- version read-back: PASS;
+- tests: PASS;
+- lint: PASS;
+- self-test: PASS;
+- packaging: PASS;
+- artifact upload: PASS.
+
+Post-merge artifact:
+
+- name: `codex-engineering-system-0.4.0`;
+- artifact id: `10513697998`;
+- size: `83680` bytes;
+- digest: `sha256:3094d9ee94d81ad5a0c618e352ae24a859bc3480db8545ac6ca9d7e247c5848d`.
+
+This release-report-only commit must pass the same `main` release gate before the report is treated as final repository evidence. The artifact produced by that final gate supersedes the post-merge artifact above as the current release artifact because the archive includes this report.
