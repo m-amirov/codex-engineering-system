@@ -37,23 +37,9 @@ When Web routing is disabled or unavailable, use the native agents exactly as be
 
 ## Universal audit → repair loop
 
-When the user asks to audit a product and automatically fix confirmed defects, activate `audit-repair-loop` rather than treating audit and repair as unrelated tasks.
+When the user asks to audit a product and automatically fix confirmed defects, activate `audit-repair-loop`. Keep it product-agnostic: collect fresh evidence natively → audit supplied evidence → confirm defects → produce one consolidated remediation packet → repair natively → run project-native verification → build fresh evidence → re-audit against the original acceptance contract. Web agents remain reasoning-only and never perform mutations.
 
-The loop is product-agnostic. It may cover software behavior, UI/UX, visual presentation, narrative/content, configuration, data transformations, integrations, documentation, release readiness, or other auditable product surfaces.
-
-Use this orchestration contract:
-
-1. Resolve the target, acceptance criteria, invariants, mutation boundary, and stop conditions.
-2. Collect fresh evidence natively. Web agents receive only explicit bounded context and never discover repository/tool state themselves.
-3. Audit the supplied evidence. Use `ceos_bulk_checker_web` for bounded repetitive review and `ceos_reasoner_web` for cross-cutting reasoning when appropriate; use native equivalents when Web routing is unavailable.
-4. Confirm defects. Separate actionable defects from uncertainty, intentional behavior, missing evidence, and rejected findings.
-5. Consolidate compatible confirmed defects into one remediation packet. State evidence, violated expectation, required outcome, invariants/non-goals, acceptance criteria, dependencies, required verification, and stop conditions. Prefer outcome constraints over step-by-step edit recipes.
-6. Give the remediation packet to native `ceos_implementer`; use `ceos_debugger` when root cause or repair remains ambiguous. Web agents do not mutate files or external systems.
-7. Run mechanical/project-native verification proportional to the repair.
-8. Build a fresh post-repair evidence snapshot and perform a fresh re-audit against the original acceptance contract. Do not merely ask the reviewer to confirm its previous recommendation.
-9. Return `PASS`, `FAIL`, `BLOCKED`, or `ESCALATE` with evidence and remaining defects.
-
-Default maximum automatic repair cycles: **3**. Stop earlier on a safety/permission boundary, missing essential evidence, irreconcilable requirements, destructive/external write without authorization, or repeated failure without material progress. If the same material defect survives two repair attempts, perform one deeper native debugging/reasoning pass before another mutation.
+Default maximum automatic repair cycles: **3**. Stop on `PASS`, `BLOCKED`, `ESCALATE`, the cycle limit, a safety/permission boundary, missing essential evidence, or repeated lack of material progress. Do not let a fresh re-audit merely confirm the reviewer's previous recommendations.
 
 ### Fallback contract
 
