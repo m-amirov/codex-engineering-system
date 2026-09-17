@@ -117,7 +117,9 @@ $Manifest = [ordered]@{
   webAgents = @($WebAgentFiles | ForEach-Object { [ordered]@{ name = $_.Name; file = $_.File; model = $_.Model; fallback = $_.Fallback } })
   fallbackPolicy = 'single-native-fallback-on-transport-backend-failure-only'
 }
-$Manifest | ConvertTo-Json -Depth 6 | Set-Content $ManifestFile -Encoding utf8
+$ManifestJson = $Manifest | ConvertTo-Json -Depth 6
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($ManifestFile, $ManifestJson, $Utf8NoBom)
 
 if ($Enabled) {
   foreach ($Agent in $WebAgentFiles) {
