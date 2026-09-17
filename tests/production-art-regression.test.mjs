@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { CEOS_ROOT, GLOBAL_AGENT_FILES, SKILL_NAMES } from '../src/ceos.mjs';
 
 const read = rel => fs.readFileSync(path.join(CEOS_ROOT, rel), 'utf8');
@@ -31,7 +30,7 @@ test('production-art fails closed when native image generation is unavailable', 
   const skill = read('skills/production-art/SKILL.md');
   const native = read('agents/ceos-asset-generator.toml');
   assert.match(skill, /image generation is unavailable, stop with `BLOCKED`/i);
-  assert.match(skill, /Never claim an asset exists unless it is present in the workspace/i);
+  assert.match(skill, /generated files actually exist and are referenced by runtime\/project mappings/i);
   assert.match(native, /otherwise stop and report the missing capability rather than fabricating generated files/i);
   assert.match(native, /Never claim an asset exists unless it is present in the workspace/i);
 });
