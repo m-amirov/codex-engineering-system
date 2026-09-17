@@ -11,7 +11,7 @@ These defaults apply across repositories. More specific repository instructions 
 - Production access is read-only by default. Do not turn inspection into deployment, restart, database mutation, provider submit, payment, or other external write without explicit authorization.
 - Reuse an applicable CEOS skill when its trigger matches: audit, fix, verification, release, visual-qa, prod-check, incident-analysis.
 
-## Automatic hybrid model routing
+## Automatic model routing (hybrid)
 
 For sustained engineering work, classify the next unit by workload, complexity, uncertainty, and risk. The parent agent owns orchestration and the final answer.
 
