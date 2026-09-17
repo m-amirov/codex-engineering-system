@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.2 — 2026-09-17
+
+- Added an explicit **scope lock** to `audit-repair-loop`: user-selected target, in-scope/out-of-scope surfaces, acceptance contract, and mutation boundary are frozen before audit.
+- Prevented release/publication/submission assets from hijacking product/content/runtime audit verdicts unless the user explicitly requested release readiness.
+- Added `ceos web-preflight` to distinguish configured Web routing from a live, healthy `codex-chatgpt-web` runtime via `/healthz`.
+- Made Web routing observable in `audit-repair-loop`: when hybrid routing is enabled and preflight is `READY`, each substantive audit cycle must actually use `ceos_bulk_checker_web` and/or `ceos_reasoner_web`.
+- Added required routing trace fields (`web_preflight_status`, `web_agents_used`, fallback usage/reason) so Web-backed audit claims cannot be silent or inferred.
+- Preserved one deterministic native fallback for transport/backend/runtime unavailability; explicit user requirements for Web review now become `BLOCKED` when Web is unavailable.
+- Added regression coverage for runtime preflight states, scope drift prevention, and mandatory observable Web audit routing.
+
 ## 0.3.1 — 2026-09-17
 
 - Added the universal `audit-repair-loop` Skill for product-agnostic audit → remediation → native repair → verification → fresh re-audit workflows.
