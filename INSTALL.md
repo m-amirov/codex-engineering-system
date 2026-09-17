@@ -1,4 +1,4 @@
-# Install Codex Engineering OS 0.3.0
+# Install Codex Engineering OS 0.3.1
 
 ## Recommended Windows installation
 
@@ -8,7 +8,7 @@ Install `Codex Web GPT` from:
 
 https://github.com/miuuyy/codex-chatgpt-web
 
-For CEOS 0.3.0 you only need the browser/model path:
+For CEOS 0.3.1 you only need the browser/model path:
 
 1. Sign in to ChatGPT in the embedded browser.
 2. Run the browser smoke test.
@@ -16,19 +16,21 @@ For CEOS 0.3.0 you only need the browser/model path:
 4. Fully restart Codex.
 5. Confirm a `ChatGPT Web — ...` model appears in Codex and can complete a simple turn.
 
-**MCP / Full Harness is not required by CEOS 0.3.0.** The optional Web agents are reasoning-only and must not assume local Codex tools. If you later configure MCP for other reasons, CEOS 0.3.0 still keeps repository/tool-backed engineering roles native unless a future policy explicitly changes that boundary.
+**MCP / Full Harness is not required by CEOS 0.3.1.** The optional Web agents are reasoning-only and must not assume local Codex tools. Tool-backed evidence collection, writes, debugging and verification remain native.
 
 CEOS also works without Codex Web GPT; in that case routing remains native-only.
 
 ### 2. Install CEOS
 
-From the extracted `codex-engineering-system-0.3.0` folder:
+From the extracted `codex-engineering-system-0.3.1` folder:
 
 ```powershell
 .\scripts\install-global.ps1
 ```
 
-Default `-Web auto` behavior recognizes either a legacy `codex-chatgpt-web` command or the packaged Windows launcher at `%LOCALAPPDATA%\Programs\Codex Web GPT\Codex Web GPT.exe`. It then installs the base CEOS global layer, verifies it, writes `$CODEX_HOME\ceos\hybrid-routing.json`, and installs the optional reasoning-only Web agents when enabled.
+Default `-Web auto` behavior recognizes either a legacy `codex-chatgpt-web` command or the packaged Windows launcher at `%LOCALAPPDATA%\Programs\Codex Web GPT\Codex Web GPT.exe`. It installs the base CEOS global layer, verifies it, writes `$CODEX_HOME\ceos\hybrid-routing.json`, and installs the optional reasoning-only Web agents when enabled.
+
+The global installation now includes the `audit-repair-loop` Skill. It can orchestrate product-agnostic audit → remediation → native repair → verification → fresh re-audit workflows.
 
 Useful modes:
 
@@ -52,7 +54,7 @@ During upgrade from the earlier 0.3.0 draft, `ceos_explorer_web` is backed up an
 
 ### 3. Restart Codex
 
-Start a new Codex session/task after installation so global instructions and the custom-agent catalog reload together.
+Start a new Codex session/task after installation so global instructions and the custom-agent/Skill catalog reload together.
 
 ## Manual equivalent
 
@@ -68,18 +70,32 @@ Expected version:
 
 ```powershell
 ceos version
-# 0.3.0
+# 0.3.1
 ```
 
-## Upgrade from 0.2.0
+## Upgrade from 0.3.0
 
-Extract/replace the central CEOS source folder with 0.3.0, then run:
+Extract/replace the central CEOS source folder with 0.3.1, then run:
 
 ```powershell
 .\scripts\install-global.ps1 -Web auto
 ```
 
 The normal CEOS installer keeps its existing conflict behavior: CEOS-owned drift requires explicit replacement and is backed up; unrelated user targets are not overwritten. The hybrid installer applies the same ownership rule to its Web agent files.
+
+After installation, `ceos global-status` should include `skill:audit-repair-loop` as healthy.
+
+## Using audit-repair-loop
+
+A normal Codex request can be short:
+
+```text
+Проведи аудит продукта через CEOS audit-repair-loop.
+Исправь подтверждённые дефекты и повторяй verification + fresh re-audit до PASS,
+либо остановись на BLOCKED/ESCALATE/лимите циклов.
+```
+
+The loop defaults to a maximum of three automatic repair cycles. It does not grant permission for production writes, deployments, payments, provider submits, destructive operations, or other external mutations.
 
 ## Hybrid-routing evidence
 
@@ -89,7 +105,7 @@ Inspect:
 Get-Content "$env:USERPROFILE\.codex\ceos\hybrid-routing.json"
 ```
 
-When `CODEX_HOME` is configured, use that path instead. For the corrected 0.3.0 contract, the manifest should record:
+When `CODEX_HOME` is configured, use that path instead. The reasoning-only contract should record:
 
 ```json
 {
@@ -103,7 +119,7 @@ When `CODEX_HOME` is configured, use that path instead. For the corrected 0.3.0 
 
 ## Native-only operation
 
-No Codex Web GPT installation is required. With Web routing disabled, CEOS 0.3.0 uses the same six native routes as 0.2.0 and all project Profiles/Gates/Evidence remain available.
+No Codex Web GPT installation is required. With Web routing disabled, CEOS 0.3.1 uses the native routes and all project Profiles/Gates/Evidence plus `audit-repair-loop` remain available.
 
 ## Repository-specific integration
 
