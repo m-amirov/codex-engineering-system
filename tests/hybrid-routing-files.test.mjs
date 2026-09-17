@@ -59,6 +59,13 @@ test('Windows hybrid installer detects packaged launcher and records no-MCP cont
   assert.match(installer, /single-native-fallback-on-transport-backend-failure-only/);
 });
 
+test('Windows hybrid installer writes JSON as UTF-8 without BOM', () => {
+  const installer = read('scripts/install-hybrid.ps1');
+  assert.match(installer, /System\.Text\.UTF8Encoding\(\$false\)/);
+  assert.match(installer, /System\.IO\.File\]::WriteAllText\(\$ManifestFile, \$ManifestJson, \$Utf8NoBom\)/);
+  assert.doesNotMatch(installer, /Set-Content\s+\$ManifestFile\s+-Encoding\s+utf8/i);
+});
+
 test('global Windows installer forwards hybrid options with named PowerShell splatting', () => {
   const installer = read('scripts/install-global.ps1');
   assert.match(installer, /\$HybridParams\s*=\s*@\{\s*Web\s*=\s*\$Web\s*\}/);
