@@ -1,31 +1,41 @@
 # Hybrid model-routing policy
 
-CEOS separates **role selection** from **backend selection** and distinguishes **reasoning over supplied context** from **tool-backed evidence gathering**.
+CEOS separates **role selection** from **backend selection** and distinguishes **reasoning over supplied context** from **tool-backed evidence gathering or mutation**.
 
-## 0.3.x routing matrix
+## 0.4.x routing matrix
 
 | Work type | Preferred route when Web is enabled | Native route / evidence source | Tool assumption |
 |---|---|---|---|
 | bounded batch classification over supplied evidence | `ceos_bulk_checker_web` → `chatgpt-web/light` | `ceos_bulk_checker` → `gpt-5.6-luna` | Web: none |
 | architecture reasoning / synthesis over supplied context | `ceos_reasoner_web` → `chatgpt-web/medium` | parent-selected native role | Web: none |
+| production-art direction / visual canon / consistency critique | `ceos_art_director_web` → `chatgpt-web/high` | `ceos_reviewer` → `gpt-5.6` high | Web: none; supplied visual evidence only |
 | repository exploration / dependency tracing | — | `ceos_explorer` → `gpt-5.6-terra` | tools required |
 | tool-backed bulk checks / log-file batches | — | `ceos_bulk_checker` → `gpt-5.6-luna` | tools required |
 | implementation | — | `ceos_implementer` → `gpt-5.6` medium | workspace-write |
+| production image generation + asset integration | — | `ceos_asset_generator` → `gpt-5.6` medium | workspace-write + native image generation when actually available |
 | debugging | — | `ceos_debugger` → `gpt-5.6` high | project-defined |
 | review | — | `ceos_reviewer` → `gpt-5.6` high | read-only/tool-backed |
 | verification | — | `ceos_verifier` → `gpt-5.6` high | read-only/tool-backed |
 
-The critical implementation/debug/review/final-verification path remains native. Browser-only `codex-chatgpt-web` is sufficient for the two supplemental Web reasoning routes; MCP / Full Harness is not a prerequisite and is not assumed by CEOS routing.
+The critical evidence/write/debug/risk/final-verification path remains native. Browser-only `codex-chatgpt-web` is sufficient for supplemental Web reasoning routes; MCP / Full Harness is not a prerequisite and is not assumed by CEOS routing.
+
+## Production-art capability boundary
+
+`ceos_art_director_web` is deliberately reasoning-only. It may define or review character/location/style canon, generation briefs, reusable asset families, contact sheets, scene-to-art mappings, and supplied runtime screenshots. It must not claim that it generated, downloaded, saved, or integrated image files.
+
+`ceos_asset_generator` is the native mutation role. It may generate images only when the current Codex environment actually exposes a native image-generation capability. Tool availability is a runtime capability, not an assumption encoded by the agent definition. If image generation is unavailable, the production-art workflow returns `BLOCKED` rather than synthesizing placeholders while claiming production completion.
+
+Actual file persistence, asset-manifest updates, runtime mappings, browser evidence, tests, and final completion claims remain native/tool-backed.
 
 ## Evidence boundary
 
 A Web reasoning agent may reason only over context explicitly supplied in its delegated prompt or inherited task context. It must not claim that it inspected a file, repository state, command result, browser state, or external system unless that evidence was actually supplied to it.
 
-When fresh evidence is needed, collect it with the appropriate native agent first. The parent may then pass a bounded evidence snapshot to a Web reasoning agent for comparison, synthesis, hypothesis ranking, or critique. The Web result is advisory analysis; completion evidence still comes from tool-backed native verification.
+When fresh evidence is needed, collect it with the appropriate native agent first. The parent may then pass a bounded evidence snapshot to a Web reasoning agent for comparison, synthesis, hypothesis ranking, art-direction critique, or consistency review. The Web result is advisory analysis; completion evidence still comes from tool-backed native verification.
 
 ## Runtime capability preflight
 
-Installation detection is not runtime readiness. Before an audit-repair-loop delegates substantive review to Web, run `ceos web-preflight --json` when available.
+Installation detection is not runtime readiness. Before an audit-repair-loop or production-art workflow delegates substantive review to Web, run `ceos web-preflight --json` when available.
 
 The preflight reads `$CODEX_HOME/ceos/hybrid-routing.json` and probes the local `codex-chatgpt-web` health endpoint. Expected states are:
 
@@ -35,18 +45,13 @@ The preflight reads `$CODEX_HOME/ceos/hybrid-routing.json` and probes the local 
 - `UNAVAILABLE` — configured Web runtime/transport is not reachable or healthy;
 - `NOT_ACCEPTING_TURNS` — the bridge is alive but currently refuses new turns.
 
-For `audit-repair-loop`, `READY` means substantive audit must actually use `ceos_bulk_checker_web` and/or `ceos_reasoner_web`. Do not silently choose native-only audit merely because it is convenient. For non-ready states, use the deterministic fallback contract below unless the user explicitly requires Web review.
+For `audit-repair-loop`, `READY` means substantive audit must actually use the applicable Web reviewer. For `production-art`, `READY` means substantive art-direction/review work should use `ceos_art_director_web` when visual canon or consistency judgment is in scope. Do not silently choose native-only review merely because it is convenient when the task explicitly requires Web review.
 
 ## Observable routing
 
-Every audit-repair-loop checkpoint must report:
+Audit and production-art checkpoints should report the Web preflight status, Web agent names actually used, whether native fallback was used, and fallback reason. Production-art additionally records native asset-generator use, image-generation capability, generated asset count, and integrated asset count.
 
-- Web preflight status;
-- Web agent names actually used;
-- whether native fallback was used;
-- fallback reason.
-
-A Web-backed audit claim with no Web agent in the routing trace is invalid. This makes backend selection auditable instead of inferred from prose.
+A Web-backed claim with no Web agent in the routing trace is invalid. This makes backend selection auditable instead of inferred from prose.
 
 ## Capability source
 
@@ -67,6 +72,7 @@ This prevents hidden double execution, retry storms, quota-evasion behavior, and
 - The fallback inherits the original task scope and safety constraints.
 - Web agents are reasoning-only and assume no local tools.
 - Web output is not independent evidence of repository or production state.
+- Image-generation availability must be observed, not assumed.
 - Production writes remain forbidden without explicit authorization.
 - A missing/disabled Web capability degrades to the native routing map unless Web was explicitly required.
 - CEOS does not modify or fork `codex-chatgpt-web`; it treats it as an optional model transport provider.
