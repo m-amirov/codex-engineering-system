@@ -2,7 +2,7 @@
 
 Date: 2026-09-17
 
-## Intended verdict
+## Final verdict
 
 `PASS_CEOS_0_3_3_WINDOWS_BOM_SAFE_WEB_PREFLIGHT`
 
@@ -26,18 +26,29 @@ This defect affected runtime Web-readiness detection only. The base global CEOS 
 - The installer writes `hybrid-routing.json` through `System.IO.File.WriteAllText` with `System.Text.UTF8Encoding($false)`, giving explicit UTF-8 without BOM on Windows PowerShell and PowerShell 7.
 - No audit-routing, scope-lock, safety, fallback, model, or project-manifest semantics are changed.
 
-## Regression requirements
+## Verification evidence
 
-The 0.3.3 release gate must prove:
+Pre-merge PR #4 release gate:
 
-- `ceos version` reads `0.3.3`;
-- all Node regression tests pass;
-- a BOM-prefixed enabled hybrid-routing manifest produces `READY` when the health endpoint is healthy;
-- existing `NOT_CONFIGURED`, `DISABLED`, `READY`, and `UNAVAILABLE` preflight behavior remains intact;
-- installer static contract proves UTF-8-no-BOM writing and rejects the old `Set-Content ... -Encoding utf8` pattern;
-- lint/syntax passes;
-- self-test passes;
-- package and SHA-256 artifact are produced;
-- both PR and post-merge `main` release gates pass.
+- version read-back: PASS (`0.3.3`);
+- Node regression tests: PASS, **55/55**;
+- BOM-prefixed manifest → healthy `READY`: PASS;
+- BOM-free Windows installer write contract: PASS;
+- existing Web-preflight state regressions: PASS;
+- syntax/lint: PASS;
+- self-test: PASS;
+- package creation: PASS;
+- artifact upload: PASS.
 
-Final observed CI evidence and artifact digest will be recorded after the latest release gate succeeds.
+PR #4 was squash-merged into `main` as commit `c8aa074e9310842aa961c286af36728c9f2e6020`.
+
+Post-merge `main` release gate run `35238521880` also passed version read-back, tests, lint, self-test, packaging, and artifact upload.
+
+Post-merge artifact:
+
+- name: `codex-engineering-system-0.3.3`;
+- artifact id: `10504736751`;
+- size: `74355` bytes;
+- digest: `sha256:c259cbbbe71f3aabab17b8faac51b7ed21b31215045187086b04a53a6b3ab36c`.
+
+The release-report-only commit must pass the same `main` release gate before this report is considered final repository evidence.
