@@ -1,103 +1,105 @@
-# Codex Engineering OS (CEOS) 0.2.0
+# Codex Engineering OS (CEOS) 0.3.0
 
-CEOS is a global-first engineering operating layer for Codex. Install it once and every Codex repository inherits the same compact engineering contract, reusable Skills, and automatic multi-model routing. Project Profiles, Gates, and Evidence remain available when a repository needs a stricter local contract.
+CEOS is a global-first engineering operating layer for Codex. It installs compact engineering instructions, reusable Skills, project policies, verification/evidence tooling, and task-specific custom agents. Version 0.3.0 adds **optional hybrid native / ChatGPT Web routing** without making browser automation a required dependency.
 
-## What 0.2.0 adds
+## What 0.3.0 adds
 
-- Global Codex installation with `ceos install-global`.
-- Managed CEOS instructions in the active `$CODEX_HOME/AGENTS.override.md` or `$CODEX_HOME/AGENTS.md` without replacing unrelated user text.
-- Six personal custom agents under `$CODEX_HOME/agents/` with task-specific model and reasoning settings.
-- Seven CEOS Skills under `$HOME/.agents/skills/`, available in every repository.
-- Automatic semantic routing based on workload shape, complexity, uncertainty, and risk.
-- Drift detection with `ceos global-status` and checksummed `$CODEX_HOME/ceos/installation.json`.
-- Conflict-safe upgrades: differing CEOS-owned agent/skill targets fail closed unless `--force` is explicit; forced replacement is backed up first, while unrelated user targets are never overwritten.
-- Dry-run planning with `ceos install-global --dry-run`.
+- Optional integration with [`miuuyy/codex-chatgpt-web`](https://github.com/miuuyy/codex-chatgpt-web).
+- Two bounded read-only Web agents:
+  - `ceos_bulk_checker_web` → `chatgpt-web/light`;
+  - `ceos_explorer_web` → `chatgpt-web/medium`.
+- Automatic Windows capability detection through `codex-chatgpt-web` on PATH.
+- `$CODEX_HOME/ceos/hybrid-routing.json` records whether hybrid routing is enabled.
+- Deterministic fallback: at most one Web → native fallback, and only for backend/transport/runtime unavailability.
+- Semantic failures, failed tests, discovered bugs, uncertainty, and unfavorable results never trigger hidden model reruns.
+- Implementation, ambiguous debugging, security/production review, and final verification remain on native Codex models in 0.3.0.
+- Existing CEOS 0.2.0 project manifests, Gates, Evidence, Skills, and six native agents remain compatible.
 
-Existing 0.1.1 project manifests and verification behavior remain compatible.
+## Routing matrix
 
-## Automatic model routing
-
-CEOS uses Codex custom subagents, not a wrapper API, to route bounded units of work:
-
-| Agent | Model | Reasoning | Typical work |
+| Role | Hybrid preferred route | Native route | 0.3.0 policy |
 |---|---|---|---|
-| `ceos_bulk_checker` | `gpt-5.6-luna` | low | repetitive/high-volume deterministic checks |
-| `ceos_explorer` | `gpt-5.6-terra` | medium | repository exploration, tracing, evidence gathering |
-| `ceos_implementer` | `gpt-5.6` | medium | bounded implementation/refactor after scope is known |
-| `ceos_debugger` | `gpt-5.6` | high | ambiguous bugs, state/concurrency, failed gates |
-| `ceos_reviewer` | `gpt-5.6` | high | correctness/security/architecture/production-risk review |
-| `ceos_verifier` | `gpt-5.6` | high | independent final acceptance and release verification |
+| bulk checker | `chatgpt-web/light` | `gpt-5.6-luna` | Web when enabled, one native transport fallback |
+| explorer | `chatgpt-web/medium` | `gpt-5.6-terra` | Web when enabled, one native transport fallback |
+| implementer | — | `gpt-5.6` medium | native critical path |
+| debugger | — | `gpt-5.6` high | native critical path |
+| reviewer | — | `gpt-5.6` high | native critical path |
+| verifier | — | `gpt-5.6` high | native final gate |
 
-The parent Codex thread remains the orchestrator. CEOS does **not** hot-swap the model of an already-running parent thread; it automatically delegates suitable subtasks to the configured agents. This is the native Codex model-routing mechanism.
+CEOS chooses the engineering **role**; `codex-chatgpt-web` supplies optional `chatgpt-web/*` model routes. The projects remain separate. CEOS does not fork or modify the Web bridge.
 
-## One-time global install
+## Recommended Windows installation
 
-```powershell
-npm install -g E:\Tools\codex-engineering-os
-ceos install-global --mode copy --force
-ceos global-status
-ceos routing
-```
-
-Then start a new Codex session. The global layer applies regardless of repository. Project-local `AGENTS.md`, Skills, and config can still add narrower constraints and take precedence where Codex normally allows them.
-
-For Windows, the package also includes a one-command installer from the extracted folder:
+1. Install/configure `codex-chatgpt-web` first if you want Web routing. Complete its Full Harness setup and make sure `codex-chatgpt-web` is available on PATH.
+2. Extract CEOS 0.3.0.
+3. Run:
 
 ```powershell
 .\scripts\install-global.ps1
 ```
 
-It installs the local package globally, applies the CEOS global layer with safe CEOS-owned replacement, and runs `global-status`.
+The installer:
 
-Use `--mode link` instead of `copy` if you want user-level Skills linked to the central CEOS checkout:
+- installs this CEOS folder globally with npm;
+- updates CEOS-managed global Codex instructions, native agents, and Skills;
+- verifies `ceos global-status`;
+- detects `codex-chatgpt-web`;
+- installs the two Web agent definitions when detected;
+- writes `$CODEX_HOME\ceos\hybrid-routing.json`.
+
+Then restart Codex and start a **new task**.
+
+Force Web routing definitions when the bridge is configured but not discoverable on PATH:
 
 ```powershell
-ceos install-global --mode link --force
+.\scripts\install-global.ps1 -Web on
 ```
 
-Preview an upgrade without changing the Codex home:
+Disable the optional Web routes and retain native CEOS:
 
 ```powershell
-ceos install-global --dry-run --mode copy
+.\scripts\install-global.ps1 -Web off
 ```
+
+To re-detect only the hybrid layer later:
+
+```powershell
+.\scripts\install-hybrid.ps1 -Web auto
+```
+
+## Manual base installation
+
+```powershell
+npm install -g <path-to-codex-engineering-system>
+ceos install-global --mode copy --force
+ceos global-status
+ceos routing
+.\scripts\install-hybrid.ps1 -Web auto
+```
+
+The base `ceos routing` command still reports the six native custom-agent routes because those are the always-available CEOS baseline. The two optional Web routes are governed by the hybrid manifest and global routing policy.
 
 ## Project-specific integration remains optional
 
-Global CEOS does not require `.codex-os/project.yml`. Add a project manifest only when you want executable project gates, evidence bundles, or a family-specific profile:
+Global CEOS works without `.codex-os/project.yml`. Add a project manifest only when executable project gates/evidence or a family profile are required:
 
-```bash
-ceos init --profile yandex-games --project /path/to/project
-ceos doctor --project /path/to/project
-ceos verify --project /path/to/project
-ceos failures --project /path/to/project
+```powershell
+ceos init --profile yandex-games --project E:\Work\YandexGames\MyGame
+ceos doctor --project E:\Work\YandexGames\MyGame
+ceos verify --project E:\Work\YandexGames\MyGame
 ```
 
-When `package.json` is present, `init` detects profile-relevant scripts instead of inventing commands. The Yandex Games profile, for example, recognizes existing browser/E2E script aliases and omits the E2E gate when no compatible script exists.
+For Yandex Games, bootstrap new projects only through the official Starter Kit before attaching CEOS.
 
-## Reusable Skills
-
-The global installation exposes:
-
-```text
-$audit
-$fix
-$verification
-$release
-$visual-qa
-$prod-check
-$incident-analysis
-```
-
-Codex can also invoke a skill implicitly when its description matches the task.
-
-## Engineering contract
+## Engineering invariants
 
 - Evidence, not assertion, determines PASS.
 - Production access is read-only by default.
 - Unknown permission is not permission.
-- Reuse repository-native infrastructure; do not build parallel test/build systems without need.
-- Prefer goal + constraints + acceptance criteria over prescriptive multi-thousand-line prompts.
-- Route noisy exploration, batch checks, debugging, review, and verification to bounded subagents when delegation is beneficial.
-- Prefer the lowest-cost model that is adequate, then escalate on uncertainty, failed attempts, expanded scope, or high risk.
+- Reuse repository-native infrastructure.
+- Prefer goal + constraints + acceptance criteria over oversized procedural prompts.
+- Prefer the lowest-cost adequate role/model and escalate when uncertainty or risk requires it.
+- Hybrid routing never weakens sandbox, approval, production-write, or project-specific constraints.
+- Do not retry/switch Web modes to evade usage limits.
 
-See `docs/architecture/model-routing.md` and `docs/architecture/overview.md`.
+See `docs/architecture/hybrid-routing.md`, `policies/model-routing.md`, and `INSTALL.md`.

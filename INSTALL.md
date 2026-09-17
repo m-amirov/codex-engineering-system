@@ -1,109 +1,101 @@
-# Install and integrate CEOS 0.2.0
+# Install Codex Engineering OS 0.3.0
 
-## Windows: upgrade the central CEOS installation
+## Recommended Windows installation
 
-Replace/update the central CEOS folder, then reinstall the package globally:
+### 1. Optional: install ChatGPT Web transport
 
-```powershell
-npm install -g E:\Tools\codex-engineering-os
-ceos version
-```
+Hybrid routing requires `codex-chatgpt-web`. Install and configure it separately from:
 
-Expected:
+https://github.com/miuuyy/codex-chatgpt-web
 
-```text
-0.2.0
-```
-
-## Install CEOS globally into Codex
-
-Run once for the user account:
+Complete its browser sign-in and, for tool-using agents, Full Harness/MCP setup. Verify that this command is available in PowerShell:
 
 ```powershell
-ceos install-global --mode copy --force
-ceos global-status
-ceos routing
+codex-chatgpt-web --help
 ```
 
-`install-global` writes only CEOS-owned global surfaces:
+CEOS works without it; in that case routing remains native-only.
 
-- a managed marked block inside the active Codex global instructions file;
-- CEOS custom agents under `$CODEX_HOME\agents`;
-- CEOS Skills under `$HOME\.agents\skills`;
-- `$CODEX_HOME\ceos\installation.json` for drift/version checks.
+### 2. Install CEOS
 
-If a non-empty `$CODEX_HOME\AGENTS.override.md` exists, Codex uses it as the global instruction source, so CEOS updates that file. Otherwise it uses `$CODEX_HOME\AGENTS.md`. Existing user text outside the CEOS markers is preserved.
-
-Before replacing an existing CEOS agent or Skill that differs, installation fails unless `--force` is supplied. A forced replacement first creates a timestamped backup under `$CODEX_HOME\ceos\backups`. A target that is not recognizably CEOS-managed is never overwritten, even with `--force`; it must be moved or renamed explicitly.
-
-For a no-write preview:
-
-```powershell
-ceos install-global --dry-run --mode copy
-```
-
-For development from a central checkout, link the Skills instead of copying them:
-
-```powershell
-ceos install-global --mode link --force
-```
-
-For the common Windows case, run this from the extracted CEOS folder instead of the three manual commands:
+From the extracted `codex-engineering-system-0.3.0` folder:
 
 ```powershell
 .\scripts\install-global.ps1
 ```
 
-The script installs the current folder with npm, runs the global installer, and requires `global-status` PASS.
+Default `-Web auto` behavior detects `codex-chatgpt-web` on PATH. The script installs the base CEOS global layer, verifies it, then writes `$CODEX_HOME\ceos\hybrid-routing.json` and installs the optional Web agents only when enabled.
 
-After installation, start a new Codex session so the new global instructions and agent catalog are loaded consistently.
-
-## Verify the global layer later
+Useful modes:
 
 ```powershell
-ceos global-status
+# Detect automatically
+.\scripts\install-global.ps1 -Web auto
+
+# Explicitly enable Web agent definitions
+.\scripts\install-global.ps1 -Web on
+
+# Explicitly disable/remove CEOS-managed Web agent definitions
+.\scripts\install-global.ps1 -Web off
+
+# Non-default Codex home
+.\scripts\install-global.ps1 -CodexHome 'D:\CodexHome' -Web auto
 ```
 
-A PASS verifies the active managed instruction block, all six agent definitions, all seven Skills, and the installation manifest against the installed CEOS version. Drift is reported per target.
+`-Web off` removes only Web agent files that are recognizably CEOS-managed. The installer refuses to overwrite or delete unrelated user agents.
 
-## Repository-specific integration (optional)
+### 3. Restart Codex
 
-Global CEOS works without modifying individual repositories. Add a project manifest only when you need CEOS Profiles/Gates/Evidence:
+Start a new Codex session/task after installation so global instructions and the custom-agent catalog reload together.
+
+## Manual equivalent
+
+```powershell
+npm install -g .
+ceos install-global --mode copy --force
+ceos global-status
+ceos routing
+.\scripts\install-hybrid.ps1 -Web auto
+```
+
+Expected version:
+
+```powershell
+ceos version
+# 0.3.0
+```
+
+## Upgrade from 0.2.0
+
+Extract/replace the central CEOS source folder with 0.3.0, then run:
+
+```powershell
+.\scripts\install-global.ps1 -Web auto
+```
+
+The normal CEOS installer keeps its existing conflict behavior: CEOS-owned drift requires explicit replacement and is backed up; unrelated user targets are not overwritten. The hybrid installer applies the same ownership rule to its two Web agent files.
+
+## Hybrid-routing evidence
+
+Inspect:
+
+```powershell
+Get-Content "$env:USERPROFILE\.codex\ceos\hybrid-routing.json"
+```
+
+When `CODEX_HOME` is configured, use that path instead. `enabled: true` means CEOS installation policy permits the Web routes; it is not a guarantee that the live ChatGPT account currently exposes every model. A runtime transport failure may therefore cause the single native fallback defined by policy.
+
+## Native-only operation
+
+No `codex-chatgpt-web` installation is required. With hybrid disabled, CEOS 0.3.0 uses the same six native routes as 0.2.0 and all project Profiles/Gates/Evidence remain available.
+
+## Repository-specific integration
 
 ```powershell
 $project = 'E:\Work\YandexGames\MyGame'
 ceos init --profile yandex-games --project $project --force
 ceos doctor --project $project
-ceos gates --project $project
 ceos verify --project $project
 ```
 
-For Yandex Games, create a new project through the official Starter Kit first, then attach CEOS. CEOS must not replace Starter Kit bootstrap/runtime infrastructure.
-
-Available profiles:
-
-```text
-generic
-node-web
-yandex-games
-twork-desktop
-platibridge
-```
-
-## Diagnose failed verification
-
-```powershell
-ceos failures --project $project --tail 200
-```
-
-Missing configured npm scripts are `CONFIGURATION_ERROR`; non-zero test gates remain real test/command failures.
-
-## Evidence
-
-`ceos verify` writes project evidence under:
-
-```text
-<repo>\.ceos-evidence\<timestamp>-<mode>\
-```
-
-Add `.ceos-evidence/` to `.gitignore` if the repository does not intentionally track it.
+For Yandex Games, create the project through the official Starter Kit first; CEOS attaches after bootstrap and does not replace Starter Kit infrastructure.

@@ -1,91 +1,49 @@
-# CEOS 0.2.0 Release Report
+# CEOS 0.3.0 Release Report
 
-Date: 2026-09-16
+Date: 2026-09-17
 
-## Verdict
+## Intended verdict
 
-`PASS_CEOS_0_2_0_GLOBAL_MODEL_ROUTING`
+`PASS_CEOS_0_3_0_HYBRID_ROUTING`
 
 ## Scope
 
-CEOS 0.2.0 upgrades the 0.1.1 engineering layer from project-attached tooling to a global-first Codex operating layer. The project Profiles/Gates/Evidence system remains compatible, while a one-time global installation now makes CEOS instructions, Skills, and model-routed custom agents available regardless of repository.
+CEOS 0.3.0 adds an optional backend dimension to the existing role-based custom-agent routing. `codex-chatgpt-web` remains a separate transport project; CEOS uses its model rows when present and degrades to the unchanged native routing baseline when absent.
 
-## Global Codex integration
+## Hybrid routing
 
-`ceos install-global` installs and verifies:
+- `ceos_bulk_checker_web` → `chatgpt-web/light`, low, read-only; native fallback `ceos_bulk_checker`.
+- `ceos_explorer_web` → `chatgpt-web/medium`, medium, read-only; native fallback `ceos_explorer`.
+- `ceos_implementer` → native `gpt-5.6`, medium.
+- `ceos_debugger` → native `gpt-5.6`, high.
+- `ceos_reviewer` → native `gpt-5.6`, high.
+- `ceos_verifier` → native `gpt-5.6`, high.
 
-- a CEOS-managed block in the active Codex-home global instructions file;
-- six personal custom agents in `$CODEX_HOME/agents`;
-- seven CEOS Skills in `$HOME/.agents/skills`;
-- `$CODEX_HOME/ceos/installation.json` with version, paths, model routing, and content checksums.
+The Web routes are deliberately bounded to read-only workloads in 0.3.0. Critical writes, ambiguous debugging, security/production-risk review, and final acceptance remain native.
 
-The installer preserves unrelated global `AGENTS.md` content. A non-empty `AGENTS.override.md` is respected as the active global source. CEOS-owned conflicting targets require explicit `--force` and are backed up first. Targets not recognized as CEOS-managed are never overwritten, including with `--force`.
+## Capability and fallback contract
 
-## Model routing
+`scripts/install-hybrid.ps1` supports `auto|on|off`. In `auto`, it detects the `codex-chatgpt-web` executable and records the resulting state in `$CODEX_HOME/ceos/hybrid-routing.json`.
 
-- `ceos_bulk_checker` → `gpt-5.6-luna`, low
-- `ceos_explorer` → `gpt-5.6-terra`, medium
-- `ceos_implementer` → `gpt-5.6`, medium
-- `ceos_debugger` → `gpt-5.6`, high
-- `ceos_reviewer` → `gpt-5.6`, high
-- `ceos_verifier` → `gpt-5.6`, high
-
-Routing is based on workload shape, complexity, uncertainty, and risk. The parent session remains the orchestrator; model selection occurs through native Codex custom-subagent delegation rather than in-place mutation of the parent model.
-
-## OpenAI alignment checked
-
-Checked against current Codex documentation on 2026-09-16:
-
-- global `AGENTS.override.md` / `AGENTS.md` discovery;
-- personal agents under `~/.codex/agents/`;
-- custom agent `model`, `model_reasoning_effort`, and `sandbox_mode` configuration;
-- user Skills under `$HOME/.agents/skills`;
-- documented model guidance for `gpt-5.6`, `gpt-5.6-terra`, and `gpt-5.6-luna`.
-
-## Verification
-
-- Unit/regression tests: **40/40 PASS**
-- Node syntax/lint gate: **PASS**
-- Self-test: **40/40 PASS**
-- Version read-back: **0.2.0**
-- Custom-agent TOML parse/schema smoke: **6/6 PASS**
-- Global install isolated smoke, copy mode: **PASS**
-- Global status isolated smoke, copy mode: **PASS**
-- Global install isolated smoke, link mode: **PASS**
-- Global status isolated smoke, link mode: **PASS**
-- Existing-user-instructions preservation: **PASS**
-- Global install idempotency: **PASS**
-- `AGENTS.override.md` precedence: **PASS**
-- CEOS-owned conflict fail-closed without force: **PASS**
-- Forced backup + replace: **PASS**
-- Unmanaged user target preservation even with force: **PASS**
-- Dry-run no-write behavior: **PASS**
-- Drift detection: **PASS**
-- R2/R3 verification non-execution regressions: **PASS**
+A Web task may fall back to its native peer at most once and only for model/backend/transport/runtime unavailability. A failed test, found defect, inconclusive investigation, rejected hypothesis, or otherwise unfavorable task outcome is not a transport failure and does not cause model shopping or hidden double execution.
 
 ## Compatibility
 
 - Node: >=22
-- Project manifest schema: v1 (unchanged)
-- Evidence summary schema: v1 (unchanged from 0.1.1 behavior)
-- 0.1.1 project manifests: supported
-- Existing CEOS user Skills: upgradeable with `ceos install-global --force`
+- Project manifest schema: v1 unchanged
+- Evidence schema: v1 unchanged
+- Existing seven Skills and five Profiles unchanged
+- Existing six native routes unchanged
+- `codex-chatgpt-web`: optional; CEOS remains functional without it
 
-## Installation
+## Verification gates for this release
 
-Recommended Windows path after extracting the release:
+- Existing Node regression suite must remain PASS.
+- New hybrid static-contract tests must PASS.
+- `npm run lint` must PASS.
+- `npm run self-test` must PASS.
+- `ceos version` must read `0.3.0`.
+- Web agent definitions must use the expected `chatgpt-web/*` rows and `read-only` sandbox.
+- Hybrid installer must detect the bridge, protect unrelated agent files, emit the capability manifest, and preserve the single-fallback contract.
 
-```powershell
-.\scripts\install-global.ps1
-```
-
-Manual equivalent:
-
-```powershell
-npm install -g <path-to-codex-engineering-os>
-ceos install-global --mode copy --force
-ceos global-status
-ceos routing
-```
-
-Start a new Codex session after installation.
+Actual validation evidence is reported in the release commit/response; this document describes the release contract rather than fabricating test results.

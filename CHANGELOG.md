@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-09-17
+
+- Added optional hybrid native / ChatGPT Web model routing without making `codex-chatgpt-web` a CEOS runtime dependency.
+- Added `ceos_bulk_checker_web` (`chatgpt-web/light`) and `ceos_explorer_web` (`chatgpt-web/medium`) as read-only preferred routes.
+- Kept implementation, ambiguous debugging, security/production review, and final verification on native Codex models for the 0.3.0 critical path.
+- Added Windows capability detection and `$CODEX_HOME/ceos/hybrid-routing.json` through `scripts/install-hybrid.ps1`.
+- Updated `scripts/install-global.ps1` to apply and verify the hybrid layer after the normal CEOS global installation.
+- Added a deterministic single-fallback contract: Web → native only for backend/transport/runtime unavailability; semantic/task failures never trigger hidden reruns.
+- Added fail-closed ownership checks and backups for changed CEOS-managed Web agent definitions.
+- Added hybrid routing architecture/policy documentation and static regression coverage.
+- Preserved project manifest schema v1, Evidence schema v1, seven Skills, five Profiles, and the six native 0.2.0 routes.
+
 ## 0.2.0 — 2026-09-16
 
 - Added global Codex installation via `ceos install-global`.
