@@ -1,91 +1,86 @@
-# CEOS 0.5.0 Release Report
+# CEOS 0.5.1 Release Report
 
 Date: 2026-09-18
 
-## Final verdict
+## Intended verdict
 
-`PASS_CEOS_0_5_0_DETERMINISTIC_EXECUTION_ENGINE`
+`PASS_CEOS_0_5_1_WINDOWS_INSTALL_ISOLATION`
 
 ## Release objective
 
-Move CEOS from instruction-only orchestration toward an explicit deterministic control plane for long Codex workflows.
+Eliminate recurring Windows worktree drift around `bin/ceos.mjs` by isolating the globally installed npm package from the source Git checkout.
 
-0.5.0 does not hide model/tool execution inside the standalone Node CLI. The parent Codex agent performs semantic work; CEOS owns legal stage transitions, scope/capability snapshots, cycle limits, checkpoint evidence, routing trace, resumability, and final verdict acceptance.
+## Root cause addressed
 
-## Implemented surface
+The prior Windows installer executed:
 
-- `src/capabilities.mjs`: filesystem/read-write probe, Node/npm/Git availability, project manifest/browser hints, installed native-agent definitions, live Web-preflight snapshot supplied by CLI, and explicit native Image Gen attestation.
-- `src/execution-engine.mjs`: durable run state, atomic JSON writes, immutable scope hash, refreshable capability hash, strict next-stage enforcement, checkpoint artifact SHA-256, bounded retry cycles, deterministic terminal verdicts, resume integrity checks, and current-cycle Web routing acceptance.
-- CLI: `ceos capabilities`, `ceos run`, `ceos checkpoint`, `ceos resume`, `ceos run-status`, `ceos routing-trace`.
+```powershell
+npm install -g $Root
+```
 
-## Engine-backed pipelines
+where `$Root` was the live CEOS Git worktree. Local-package global installation can couple the global npm package/shim to the source directory instead of producing an independent package installation. The same checkout therefore remained part of the runtime installation path.
 
-### audit-repair-loop
+0.5.1 replaces that with:
 
-`SCOPE_LOCKED → CAPABILITIES_CHECKED → EVIDENCE_COLLECTED → AUDITED → DEFECTS_CONFIRMED → REPAIRING → VERIFIED → REAUDITED → terminal verdict`
+```text
+Git worktree
+    ↓
+npm pack → OS temp directory
+    ↓
+temporary .tgz
+    ↓
+npm install -g <temporary .tgz>
+    ↓
+delete temporary package
+```
 
-### production-art
+The repository also gains `.gitattributes` to make source/text EOL normalization deterministic across Windows and Unix checkouts.
 
-`SCOPE_LOCKED → CAPABILITIES_CHECKED → INVENTORIED → CANON_READY → GENERATING → INTEGRATED → VISUAL_VERIFIED → REAUDITED → terminal verdict`
+## Implemented changes
 
-## Safety and truthfulness invariants
+- `scripts/install-global.ps1`
+  - creates a unique OS-temp packaging directory;
+  - runs `npm pack $Root --pack-destination $PackRoot --json`;
+  - validates JSON output and package filename;
+  - verifies the tarball exists;
+  - installs the tarball with `npm install -g $PackagePath`;
+  - always removes the temporary package directory in `finally`;
+  - no longer contains `npm install -g $Root`.
+- `.gitattributes`
+  - explicit LF policy for `mjs/js/json/md/yml/yaml/toml/ps1`.
+- Regression coverage
+  - static installer contract;
+  - metadata/archive validation contract;
+  - EOL policy contract;
+  - real Windows installation smoke.
+- Documentation
+  - supported installation path now explicitly avoids direct global install from the source worktree.
 
-- A CLI transition never substitutes for real semantic evidence.
-- Scope cannot be silently reconstructed after restart; it is persisted and hash-checked.
-- Existing checkpoint evidence cannot silently change before later stages.
-- Capability snapshots may be refreshed because runtime availability can legitimately change.
-- Image-generation availability is never inferred from the existence of `ceos_asset_generator`.
-- Production-art cannot enter `GENERATING` while image capability is `unknown` or `unavailable`.
-- Explicit Web-required work cannot be satisfied by native fallback.
-- READY Web final review cannot be silently skipped.
-- Existing production-write restrictions remain unchanged.
+## Compatibility
 
-## Release gate requirements
+No changes to:
 
-Before finalizing this report:
+- deterministic execution-engine state machine;
+- `audit-repair-loop` or `production-art` semantics;
+- native/Web routing;
+- global agent definitions;
+- safety and production-write boundaries;
+- project manifests or evidence schema.
 
-- version read-back must be `0.5.0`;
-- all Node tests must pass;
-- CLI syntax/lint must pass;
-- CEOS self-test must pass;
-- capability probe smoke must pass;
-- run/checkpoint/resume regressions must pass;
-- stale evidence must produce integrity failure;
-- Web-required blocked→refresh→resume regression must pass;
-- production-art Image Gen capability gate must pass;
-- existing audit scope-lock/Web routing and BOM-safe preflight regressions must remain green;
-- PR gate and post-merge main gate must pass;
-- final source artifact ID, size, and SHA-256 digest must be recorded.
+## Release gates
 
-## Verification evidence
+A final PASS requires:
 
-PR #7 (`CEOS 0.5.0: deterministic execution engine`):
+- version `0.5.1`;
+- all Node tests PASS;
+- lint/syntax PASS;
+- capability CLI smoke PASS;
+- self-test PASS;
+- source package artifact PASS;
+- `windows-latest` installation smoke PASS;
+- post-install `git status --porcelain` empty on Windows;
+- global npm package directory is not a reparse-point link;
+- PR gate PASS;
+- post-merge main gate PASS.
 
-- PR head: `059452d5bb6995b9e016279c9ca1dcdbb1d15de4`;
-- release gate run: `35309724686`;
-- unit/regression tests: **71/71 PASS**;
-- syntax/lint: PASS;
-- capability CLI smoke: PASS;
-- self-test: **71/71 PASS**;
-- package creation/upload: PASS;
-- PR artifact id: `10533555152`;
-- PR artifact size: `99310` bytes;
-- PR artifact digest: `sha256:3512d53aaf79b453780215500a516ed51245faddbe84ddfe7370693d9baf5f9d`.
-
-PR #7 was squash-merged into `main` as:
-
-- `850fc0ba973d50707c948656916726c577e7cf5d`.
-
-Post-merge `main` release gate:
-
-- run: `35309824003`;
-- unit/regression tests: **71/71 PASS**;
-- syntax/lint: PASS;
-- capability CLI smoke: PASS;
-- self-test: **71/71 PASS**;
-- package creation/upload: PASS;
-- artifact id: `10532323717`;
-- artifact size: `99254` bytes;
-- artifact digest: `sha256:c72638db98d170e4ace612bb2f4ae041d61a349dadb992f9f5def93db6275591`.
-
-The release-report-only commit must pass the same `main` release gate before this report is considered final repository evidence.
+Observed CI evidence will be appended after successful gates.
