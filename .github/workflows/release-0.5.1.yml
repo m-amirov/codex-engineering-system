@@ -1,0 +1,102 @@
+name: CEOS 0.5.1 Release Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Version read-back
+        run: |
+          test "$(cat VERSION)" = "0.5.1"
+          node ./bin/ceos.mjs version
+      - name: Unit and regression tests
+        run: npm test
+      - name: Syntax gate
+        run: npm run lint
+      - name: Capability CLI smoke
+        run: |
+          tmp="$(mktemp -d)"
+          CODEX_HOME="$tmp/codex" node ./bin/ceos.mjs capabilities --project . --image-generation unknown --json > "$tmp/capabilities.json"
+          node -e "const fs=require('fs'); const x=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); if(x.schemaVersion!==1 || !x.filesystem.readable) process.exit(1)" "$tmp/capabilities.json"
+      - name: Self-test
+        run: npm run self-test
+      - name: Package source archive
+        shell: bash
+        run: |
+          mkdir -p release-stage/codex-engineering-system-0.5.1
+          git ls-files -z | while IFS= read -r -d '' file; do
+            mkdir -p "release-stage/codex-engineering-system-0.5.1/$(dirname "$file")"
+            cp "$file" "release-stage/codex-engineering-system-0.5.1/$file"
+          done
+          cp INSTALL.md release-stage/codex-engineering-system-0.5.1/INSTALL-0.5.1.md
+          cd release-stage
+          zip -r ../codex-engineering-system-0.5.1.zip codex-engineering-system-0.5.1
+          cd ..
+          sha256sum codex-engineering-system-0.5.1.zip > codex-engineering-system-0.5.1.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-engineering-system-0.5.1
+          path: |
+            codex-engineering-system-0.5.1.zip
+            codex-engineering-system-0.5.1.zip.sha256
+          if-no-files-found: error
+          retention-days: 90
+
+  windows-install-isolation:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pre-install worktree must be clean
+        shell: powershell
+        run: |
+          $dirty = git status --porcelain
+          if ($dirty) { throw "Worktree dirty before install: $dirty" }
+      - name: Install CEOS through isolated package path
+        shell: powershell
+        run: |
+          .\scripts\install-global.ps1 -Web off
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify installed package is isolated from worktree
+        shell: powershell
+        run: |
+          if ((ceos version).Trim() -ne '0.5.1') { throw "Unexpected CEOS version: $(ceos version)" }
+
+          $globalRoot = (& npm root -g).Trim()
+          $packageDir = Join-Path $globalRoot 'codex-engineering-os'
+          if (-not (Test-Path -LiteralPath $packageDir -PathType Container)) {
+            throw "Global package directory missing: $packageDir"
+          }
+
+          $item = Get-Item -LiteralPath $packageDir -Force
+          if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Global package must not be a reparse-point link: $packageDir"
+          }
+
+          $sourceRoot = (Resolve-Path '.').Path
+          $installedRoot = (Resolve-Path $packageDir).Path
+          if ($installedRoot.StartsWith($sourceRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Global package resolves inside source worktree: $installedRoot"
+          }
+
+          $dirty = git status --porcelain
+          if ($dirty) { throw "Installer modified source worktree: $dirty" }
+
+          $eol = git ls-files --eol bin/ceos.mjs
+          Write-Host "bin/ceos.mjs EOL: $eol"
+          if ($eol -notmatch 'w/lf') { throw "bin/ceos.mjs working-tree EOL is not LF: $eol" }
