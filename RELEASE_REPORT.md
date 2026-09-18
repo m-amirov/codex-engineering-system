@@ -1,109 +1,60 @@
-# CEOS 0.4.0 Release Report
+# CEOS 0.5.0 Release Report
 
-Date: 2026-09-17
+Date: 2026-09-18
 
-## Final verdict
+## Intended verdict
 
-`PASS_CEOS_0_4_0_PRODUCTION_ART_PIPELINE`
+`PASS_CEOS_0_5_0_DETERMINISTIC_EXECUTION_ENGINE`
 
-## Why 0.4.0 exists
+## Release objective
 
-CEOS already supported Web-assisted reasoning, audit/repair, and visual QA, but production image creation still had no explicit engineering contract. A project could define staging and readability while still lacking real character art, expressions, backgrounds, or CG assets.
+Move CEOS from instruction-only orchestration toward an explicit deterministic control plane for long Codex workflows.
 
-0.4.0 adds a dedicated production-art workflow without turning Web agents into unbounded tool users.
+0.5.0 does not hide model/tool execution inside the standalone Node CLI. The parent Codex agent performs semantic work; CEOS owns legal stage transitions, scope/capability snapshots, cycle limits, checkpoint evidence, routing trace, resumability, and final verdict acceptance.
 
-## Architecture
+## Implemented surface
 
-### Web art direction
+- `src/capabilities.mjs`: filesystem/read-write probe, Node/npm/Git availability, project manifest/browser hints, installed native-agent definitions, live Web-preflight snapshot supplied by CLI, and explicit native Image Gen attestation.
+- `src/execution-engine.mjs`: durable run state, atomic JSON writes, immutable scope hash, refreshable capability hash, strict next-stage enforcement, checkpoint artifact SHA-256, bounded retry cycles, deterministic terminal verdicts, resume integrity checks, and current-cycle Web routing acceptance.
+- CLI: `ceos capabilities`, `ceos run`, `ceos checkpoint`, `ceos resume`, `ceos run-status`, `ceos routing-trace`.
 
-`ceos_art_director_web`:
+## Engine-backed pipelines
 
-- `chatgpt-web/high`;
-- reasoning-only;
-- receives bounded manifests, references, contact sheets, screenshots, and scene context supplied by the native parent;
-- defines or critiques visual canon, generation briefs, asset families, identity consistency, scene-to-art mappings, and remediation;
-- cannot claim repository inspection, image-file generation, persistence, or runtime integration.
+### audit-repair-loop
 
-The `chatgpt-web/high` model row was separately verified against the current `miuuyy/codex-chatgpt-web` provider catalog before release configuration was finalized.
+`SCOPE_LOCKED → CAPABILITIES_CHECKED → EVIDENCE_COLLECTED → AUDITED → DEFECTS_CONFIRMED → REPAIRING → VERIFIED → REAUDITED → terminal verdict`
 
-### Native generation/integration
+### production-art
 
-`ceos_asset_generator`:
+`SCOPE_LOCKED → CAPABILITIES_CHECKED → INVENTORIED → CANON_READY → GENERATING → INTEGRATED → VISUAL_VERIFIED → REAUDITED → terminal verdict`
 
-- native `gpt-5.6`, medium reasoning;
-- workspace-write;
-- executes bounded generation/integration from an approved canon and manifest;
-- uses native image generation only if the current Codex runtime actually exposes it;
-- if image generation is unavailable, returns `BLOCKED` rather than fabricating assets or silently accepting placeholders;
-- persists real files, updates project-owned mappings/manifests, and gathers fresh runtime evidence.
+## Safety and truthfulness invariants
 
-### Production-art Skill
+- A CLI transition never substitutes for real semantic evidence.
+- Scope cannot be silently reconstructed after restart; it is persisted and hash-checked.
+- Existing checkpoint evidence cannot silently change before later stages.
+- Capability snapshots may be refreshed because runtime availability can legitimately change.
+- Image-generation availability is never inferred from the existence of `ceos_asset_generator`.
+- Production-art cannot enter `GENERATING` while image capability is `unknown` or `unavailable`.
+- Explicit Web-required work cannot be satisfied by native fallback.
+- READY Web final review cannot be silently skipped.
+- Existing production-write restrictions remain unchanged.
 
-`production-art` provides:
+## Release gate requirements
 
-1. scope/invariants lock;
-2. asset inventory/manifest;
-3. Web preflight;
-4. character/location/style canon before volume generation;
-5. bounded native generation batches;
-6. immediate file/runtime integration;
-7. batch consistency review;
-8. fresh runtime visual QA;
-9. final manifest/runtime re-audit.
+Before finalizing this report:
 
-## Preserved invariants
+- version read-back must be `0.5.0`;
+- all Node tests must pass;
+- CLI syntax/lint must pass;
+- CEOS self-test must pass;
+- capability probe smoke must pass;
+- run/checkpoint/resume regressions must pass;
+- stale evidence must produce integrity failure;
+- Web-required blocked→refresh→resume regression must pass;
+- production-art Image Gen capability gate must pass;
+- existing audit scope-lock/Web routing and BOM-safe preflight regressions must remain green;
+- PR gate and post-merge main gate must pass;
+- final source artifact ID, size, and SHA-256 digest must be recorded.
 
-- Web routes remain reasoning-only.
-- MCP / Full Harness is not required by CEOS.
-- Actual file persistence and runtime verification remain native/tool-backed.
-- Image-generation availability is observed at runtime, not assumed from agent registration.
-- Production-art does not authorize deployment, publication, paid provider calls, or unrelated product mutations.
-- Existing audit-repair-loop scope lock, Web preflight, deterministic fallback, BOM-safe Windows manifest handling, and project profiles remain intact.
-
-## Verification evidence
-
-PR #6 (`CEOS 0.4.0: add production-art pipeline`) was tested after correcting one over-literal regression assertion that did not change the production-art contract.
-
-Final PR release gate:
-
-- run: `35257778826`;
-- head: `e6c402cbb6d64d0a029c08ca6c933ecab5f0cdcd`;
-- version read-back: PASS (`0.4.0`);
-- Node regression tests: PASS, **59/59**;
-- production-art first-class Skill/native-route regression: PASS;
-- Web art-director reasoning-only/hybrid-install regression: PASS;
-- fail-closed missing-image-generation regression: PASS;
-- existing audit-repair-loop, Web-preflight, and Windows BOM regressions: PASS;
-- syntax/lint: PASS;
-- self-test: PASS;
-- packaging: PASS;
-- artifact upload: PASS.
-
-PR artifact:
-
-- name: `codex-engineering-system-0.4.0`;
-- artifact id: `10512582888`;
-- size: `83679` bytes;
-- uploaded-artifact digest: `sha256:e3daac4ac3c4d3502a271a1c457d3437af7c24dc0dd84497453d0039f12a5bbc`.
-
-PR #6 was squash-merged into `main` as commit `f16dd456342867636f9297fc3ccf5d54db877545`.
-
-Post-merge `main` release gate:
-
-- run: `35257842082`;
-- head: `f16dd456342867636f9297fc3ccf5d54db877545`;
-- version read-back: PASS;
-- tests: PASS;
-- lint: PASS;
-- self-test: PASS;
-- packaging: PASS;
-- artifact upload: PASS.
-
-Post-merge artifact:
-
-- name: `codex-engineering-system-0.4.0`;
-- artifact id: `10513697998`;
-- size: `83680` bytes;
-- digest: `sha256:3094d9ee94d81ad5a0c618e352ae24a859bc3480db8545ac6ca9d7e247c5848d`.
-
-This release-report-only commit must pass the same `main` release gate before the report is treated as final repository evidence. The artifact produced by that final gate supersedes the post-merge artifact above as the current release artifact because the archive includes this report.
+Observed CI evidence will be appended after successful gates.
