@@ -1,4 +1,4 @@
-# Install Codex Engineering OS 0.5.0
+# Install Codex Engineering OS 0.5.1
 
 ## Upgrade on Windows
 
@@ -17,7 +17,15 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.0`. Fully restart Codex and start a new task/session after the global install.
+Expected version: `0.5.1`. Fully restart Codex and start a new task/session after the global install.
+
+## Isolated global install
+
+`scripts/install-global.ps1` builds a temporary npm tarball with `npm pack` and installs that tarball globally. It does not globally install directly from the Git worktree. This keeps the global npm package independent from `E:\\Tools\\codex-engineering-os` and prevents the CLI installation path from mutating or linking back to `bin/ceos.mjs`.
+
+The temporary tarball is created under the OS temp directory and removed in a `finally` block.
+
+`.gitattributes` also forces LF for CEOS source/text formats to avoid recurring Windows EOL-only worktree drift.
 
 ## Deterministic Execution Engine
 
@@ -100,12 +108,13 @@ Optional Web routes remain reasoning-only: `ceos_bulk_checker_web`, `ceos_reason
 
 ## Manual base installation
 
+Prefer the supported installer:
+
 ```powershell
-npm install -g .
-ceos install-global --mode copy --force
-.\scripts\install-hybrid.ps1 -Web auto
-ceos global-status
+.\scripts\install-global.ps1 -Web auto
 ```
+
+If manual packaging is required, install a packed tarball rather than the source directory directly. This preserves worktree isolation.
 
 ## Repository-specific integration
 

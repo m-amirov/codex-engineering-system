@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.1 — 2026-09-18
+
+- Changed Windows/global installation to build a temporary `npm pack` archive and install the archive instead of running `npm install -g` directly against the CEOS Git worktree.
+- Added fail-closed validation for npm pack JSON metadata and archive existence before global installation.
+- Added guaranteed cleanup of the temporary package directory.
+- Added `.gitattributes` with deterministic LF rules for CEOS source/text files, including `*.mjs` and `*.ps1`.
+- Added regression tests ensuring the installer cannot regress to `npm install -g $Root`.
+- Added a real `windows-latest` CI smoke that installs CEOS with `-Web off`, verifies `ceos version`, checks that the global npm package is not a reparse-point link back to the repository, and asserts the source worktree remains clean after installation.
+- No changes to the 0.5.0 execution-engine state machine, routing semantics, Skills, or production safety contracts.
+
 ## 0.5.0 — 2026-09-18
 
 - Added the deterministic execution engine for `audit-repair-loop` and `production-art`.
