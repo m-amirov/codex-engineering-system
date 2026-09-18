@@ -1,6 +1,6 @@
 {
   "name": "codex-engineering-os",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "A global-first Codex engineering operating layer with deterministic execution state, hybrid routing, skills, gates and evidence.",
   "type": "module",
   "private": true,
