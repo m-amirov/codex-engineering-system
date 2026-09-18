@@ -2,7 +2,7 @@
 
 Date: 2026-09-18
 
-## Intended verdict
+## Final verdict
 
 `PASS_CEOS_0_5_1_WINDOWS_INSTALL_ISOLATION`
 
@@ -83,4 +83,41 @@ A final PASS requires:
 - PR gate PASS;
 - post-merge main gate PASS.
 
-Observed CI evidence will be appended after successful gates.
+## Verification evidence
+
+PR #8 (`CEOS 0.5.1: isolate Windows global install from worktree`):
+
+- PR head: `79d542dde06289023d9ae0ea37ef93ce92d1a7ab`;
+- release gate run: `35311246655`;
+- unit/regression tests: **74/74 PASS**;
+- self-test: **74/74 PASS**;
+- lint/syntax: PASS;
+- capability CLI smoke: PASS;
+- Windows install-isolation job: PASS;
+- Windows post-install worktree: clean;
+- Windows global npm package: not a reparse-point link;
+- Windows `bin/ceos.mjs`: `i/lf w/lf attr/text eol=lf`;
+- PR artifact id: `10533720084`;
+- PR artifact size: `102032` bytes;
+- PR artifact digest: `sha256:c4abfcb0e96b22de4e6ab91b27c620e08e142c5936d0a8d43319c8631d12df1c`.
+
+PR #8 was squash-merged into `main` as:
+
+- `63a29b48af1948dab39d5ccf72d945c778f4055b`.
+
+Post-merge `main` release gate:
+
+- run: `35311329050`;
+- unit/regression tests: **74/74 PASS**;
+- self-test: **74/74 PASS**;
+- lint/syntax: PASS;
+- capability CLI smoke: PASS;
+- Windows install-isolation job: PASS;
+- Windows post-install worktree: clean;
+- Windows global npm package: isolated from source worktree;
+- Windows `bin/ceos.mjs`: `i/lf w/lf attr/text eol=lf`;
+- artifact id: `10533700225`;
+- artifact size: `101819` bytes;
+- artifact digest: `sha256:8c8795cbc023370b71cc76876f29063237a81200afe436a264b4339d77af3d0c`.
+
+The release-report-only commit must pass the same Ubuntu and Windows gates before this report is considered final repository evidence.
