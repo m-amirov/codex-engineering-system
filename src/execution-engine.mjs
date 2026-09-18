@@ -44,7 +44,7 @@ export const EXECUTION_PIPELINES = {
         finalReview: true
       }
     ],
-    retryAfterVerification: 'REPAIRING',
+    retryAfterVerification: 'EVIDENCE_COLLECTED',
     retryAfterReaudit: 'EVIDENCE_COLLECTED'
   },
   'production-art': {
@@ -308,6 +308,7 @@ function assertRunIntegrity(runDir, run) {
         issues.push(`invalid checkpoint ${file}: ${error.message}`);
         continue;
       }
+      if (checkpoint.stage === 'CAPABILITIES_CHECKED' || checkpoint.stage === 'CAPABILITIES_REFRESHED') continue;
       for (const artifact of checkpoint.artifacts ?? []) {
         if (!fs.existsSync(artifact.path)) {
           issues.push(`artifact missing for ${checkpoint.stage}: ${artifact.path}`);
@@ -391,7 +392,8 @@ export function createRun(projectDir, pipeline, {
       webPreflightStatus: capabilities.web?.status ?? 'UNKNOWN',
       webAgentsUsed: [],
       nativeFallbackUsed: false,
-      fallbackReason: null
+      fallbackReason: null,
+      byCycle: { '1': { webAgentsUsed: [], nativeFallbackUsed: false, fallbackReason: null } }
     }
   };
 
@@ -447,6 +449,29 @@ function retryOrFail(run, stage, nextStage, reason) {
   run.cycle += 1;
   run.state = stage;
   run.nextStage = nextStage;
+  run.routingTrace.byCycle ||= {};
+  run.routingTrace.byCycle[String(run.cycle)] ||= { webAgentsUsed: [], nativeFallbackUsed: false, fallbackReason: null };
+}
+
+function assertFinalRouting(run, capabilities) {
+  const trace = run.routingTrace.byCycle?.[String(run.cycle)] ?? {
+    webAgentsUsed: run.routingTrace.webAgentsUsed ?? [],
+    nativeFallbackUsed: run.routingTrace.nativeFallbackUsed ?? false,
+    fallbackReason: run.routingTrace.fallbackReason ?? null
+  };
+  const allowed = run.pipeline === 'production-art'
+    ? ['ceos_art_director_web']
+    : ['ceos_bulk_checker_web', 'ceos_reasoner_web'];
+  const used = (trace.webAgentsUsed ?? []).some(name => allowed.includes(name));
+  const fallbackValid = trace.nativeFallbackUsed === true && Boolean(trace.fallbackReason);
+
+  if (run.webRequired && capabilities.web?.status !== 'READY') {
+    throw new Error(`Web review is required but current capability snapshot is ${capabilities.web?.status ?? 'UNKNOWN'}; refresh capabilities before final PASS`);
+  }
+  if ((run.webRequired || capabilities.web?.status === 'READY') && !used) {
+    if (!run.webRequired && fallbackValid) return;
+    throw new Error(`Final PASS requires observable Web review for cycle ${run.cycle}; record an allowed Web agent in routing-trace`);
+  }
 }
 
 export function recordCheckpoint(projectDir, runRef, {
@@ -470,11 +495,15 @@ export function recordCheckpoint(projectDir, runRef, {
 
     const definition = stageDefinition(run.pipeline, stage);
     const normalizedOutcome = checkpointOutcome(outcome);
+    if (stage === 'REAUDITED' && !['PASS', 'FAIL', 'BLOCKED', 'ESCALATE'].includes(normalizedOutcome)) {
+      throw new Error('REAUDITED requires explicit outcome PASS, FAIL, BLOCKED, or ESCALATE');
+    }
     if (normalizedOutcome === 'FAIL' && !['VERIFIED', 'VISUAL_VERIFIED', 'REAUDITED'].includes(stage)) {
       throw new Error(`FAIL outcome is not valid for stage ${stage}; record defects and continue instead`);
     }
 
     const currentCapabilities = readJson(path.join(resolved.runDir, 'capabilities.json'));
+    if (stage === 'REAUDITED' && normalizedOutcome === 'PASS') assertFinalRouting(run, currentCapabilities);
     if (definition.requiresImageGeneration && currentCapabilities.imageGeneration?.status !== 'available') {
       throw new Error('GENERATING requires image-generation capability = available; refresh capabilities before continuing');
     }
@@ -522,8 +551,6 @@ export function recordCheckpoint(projectDir, runRef, {
         terminalize(run, 'PASS', { code: 'ACCEPTANCE_SATISFIED', stage, reason: note || 'fresh re-audit passed' });
       } else if (normalizedOutcome === 'FAIL') {
         retryOrFail(run, stage, EXECUTION_PIPELINES[run.pipeline].retryAfterReaudit, note);
-      } else {
-        throw new Error('REAUDITED requires explicit outcome PASS, FAIL, BLOCKED, or ESCALATE');
       }
     } else {
       setNextAfterStage(run, stage);
@@ -623,9 +650,22 @@ export function recordRoutingTrace(projectDir, runRef, {
   const resolved = resolveRun(resolvedProject, runRef);
   return withRunLock(resolved.runDir, () => {
     const run = readJson(resolved.file);
-    if (webAgentsUsed !== undefined) run.routingTrace.webAgentsUsed = normalizeList(webAgentsUsed);
-    if (nativeFallbackUsed !== undefined) run.routingTrace.nativeFallbackUsed = Boolean(nativeFallbackUsed);
-    if (fallbackReason !== undefined) run.routingTrace.fallbackReason = fallbackReason || null;
+    run.routingTrace.byCycle ||= {};
+    const cycleKey = String(run.cycle);
+    const cycleTrace = run.routingTrace.byCycle[cycleKey] ||= { webAgentsUsed: [], nativeFallbackUsed: false, fallbackReason: null };
+    if (webAgentsUsed !== undefined) {
+      const merged = [...new Set([...(cycleTrace.webAgentsUsed ?? []), ...normalizeList(webAgentsUsed)])];
+      cycleTrace.webAgentsUsed = merged;
+      run.routingTrace.webAgentsUsed = [...new Set([...(run.routingTrace.webAgentsUsed ?? []), ...merged])];
+    }
+    if (nativeFallbackUsed !== undefined) {
+      cycleTrace.nativeFallbackUsed = Boolean(nativeFallbackUsed);
+      run.routingTrace.nativeFallbackUsed = Boolean(nativeFallbackUsed);
+    }
+    if (fallbackReason !== undefined) {
+      cycleTrace.fallbackReason = fallbackReason || null;
+      run.routingTrace.fallbackReason = fallbackReason || null;
+    }
     run.updatedAt = now();
     atomicWriteJson(resolved.file, run);
     return { runDir: resolved.runDir, run };
