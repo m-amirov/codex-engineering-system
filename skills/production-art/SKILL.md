@@ -2,10 +2,18 @@
 name: production-art
 description: Plan, generate, integrate, and verify production image assets with a Web art-director + native asset-generation workflow. Use for character sheets, expressions, backgrounds, CGs, visual canon, asset manifests, image-generation batches, consistency review, and runtime integration.
 metadata:
-  ceos-version: "0.4.0"
+  ceos-version: "0.5.0"
 ---
 
 # Skill: production-art
+
+## Deterministic execution contract
+
+When CEOS 0.5.0+ is available, start a persisted `ceos run production-art` instead of tracking the pipeline only in prose. Use `ceos checkpoint` for inventory, canon, generation, integration, visual verification, and fresh re-audit; use `ceos resume` after interruption.
+
+The engine mechanically prevents generation before the capability snapshot says native image generation is `available`, hashes persisted evidence, enforces stage order/cycle limits, and refuses a final PASS when required observable Web review is missing. Refresh host capability attestation with `ceos resume <run> --refresh-capabilities --image-generation available|unavailable|unknown` when the runtime changes.
+
+The parent Codex agent remains responsible for actual Image Gen calls, file integration, browser evidence, and Web art-direction delegation. CEOS run-state proves orchestration, not the content of an image.
 
 At activation, run `ceos context --skill production-art --project .` when the CEOS CLI is available. Treat the returned profile/policies as the resolved project contract. If CEOS is unavailable, use repository instructions and state the evidence gap.
 
