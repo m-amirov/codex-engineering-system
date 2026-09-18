@@ -1,6 +1,6 @@
-# Codex Engineering OS (CEOS) 0.5.0
+# Codex Engineering OS (CEOS) 0.5.1
 
-CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 adds a **Deterministic Execution Engine** so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardens Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
 
 ## Deterministic Execution Engine
 
@@ -98,6 +98,12 @@ Native routes remain responsible for tool-backed evidence, writes, debugging, as
 
 The engine complements rather than replaces `ceos status`, `doctor`, `gates`, `verify`, `evidence`, `failures`, `web-preflight`, `global-status`, and `routing`.
 
+## Windows installation isolation
+
+CEOS 0.5.1 no longer runs `npm install -g <source-worktree>` from `scripts/install-global.ps1`. The installer first builds a temporary `npm pack` archive outside the repository, installs that archive globally, and deletes the temporary package. This prevents npm's local-package linking behavior from coupling the global `ceos` command to `bin/ceos.mjs` in the Git checkout.
+
+The repository also includes `.gitattributes` with deterministic LF rules for CEOS source/text files, including `*.mjs` and `*.ps1`.
+
 ## Windows upgrade
 
 ```powershell
@@ -110,7 +116,7 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.0`. Fully restart Codex after installation.
+Expected version: `0.5.1`. Fully restart Codex after installation.
 
 For Yandex Games, new projects must still be created through the official Starter Kit before CEOS is attached.
 
