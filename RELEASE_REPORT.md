@@ -2,7 +2,7 @@
 
 Date: 2026-09-18
 
-## Intended verdict
+## Final verdict
 
 `PASS_CEOS_0_5_0_DETERMINISTIC_EXECUTION_ENGINE`
 
@@ -57,4 +57,35 @@ Before finalizing this report:
 - PR gate and post-merge main gate must pass;
 - final source artifact ID, size, and SHA-256 digest must be recorded.
 
-Observed CI evidence will be appended after successful gates.
+## Verification evidence
+
+PR #7 (`CEOS 0.5.0: deterministic execution engine`):
+
+- PR head: `059452d5bb6995b9e016279c9ca1dcdbb1d15de4`;
+- release gate run: `35309724686`;
+- unit/regression tests: **71/71 PASS**;
+- syntax/lint: PASS;
+- capability CLI smoke: PASS;
+- self-test: **71/71 PASS**;
+- package creation/upload: PASS;
+- PR artifact id: `10533555152`;
+- PR artifact size: `99310` bytes;
+- PR artifact digest: `sha256:3512d53aaf79b453780215500a516ed51245faddbe84ddfe7370693d9baf5f9d`.
+
+PR #7 was squash-merged into `main` as:
+
+- `850fc0ba973d50707c948656916726c577e7cf5d`.
+
+Post-merge `main` release gate:
+
+- run: `35309824003`;
+- unit/regression tests: **71/71 PASS**;
+- syntax/lint: PASS;
+- capability CLI smoke: PASS;
+- self-test: **71/71 PASS**;
+- package creation/upload: PASS;
+- artifact id: `10532323717`;
+- artifact size: `99254` bytes;
+- artifact digest: `sha256:c72638db98d170e4ace612bb2f4ae041d61a349dadb992f9f5def93db6275591`.
+
+The release-report-only commit must pass the same `main` release gate before this report is considered final repository evidence.
