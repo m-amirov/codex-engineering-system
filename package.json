@@ -1,7 +1,7 @@
 {
   "name": "codex-engineering-os",
-  "version": "0.4.0",
-  "description": "A global-first engineering operating layer for Codex with hybrid native/ChatGPT-Web routing, skills, policies, profiles, gates and evidence.",
+  "version": "0.5.0",
+  "description": "A global-first Codex engineering operating layer with deterministic execution state, hybrid routing, skills, gates and evidence.",
   "type": "module",
   "private": true,
   "bin": {
@@ -11,7 +11,7 @@
     "test": "node --test",
     "self-test": "node ./bin/ceos.mjs self-test",
     "doctor": "node ./bin/ceos.mjs doctor",
-    "lint": "node --check ./bin/ceos.mjs && node --check ./src/ceos.mjs && node --check ./src/yaml-lite.mjs && node --check ./src/web-preflight.mjs"
+    "lint": "node --check ./bin/ceos.mjs && node --check ./src/ceos.mjs && node --check ./src/yaml-lite.mjs && node --check ./src/web-preflight.mjs && node --check ./src/capabilities.mjs && node --check ./src/execution-engine.mjs"
   },
   "engines": {
     "node": ">=22"

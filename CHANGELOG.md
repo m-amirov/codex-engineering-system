@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0 — 2026-09-18
+
+- Added the deterministic execution engine for `audit-repair-loop` and `production-art`.
+- Added `ceos capabilities` with live Web-preflight integration plus explicit host attestation for native Image Gen.
+- Added durable project-local run state under `.ceos-runs/` with immutable scope locks, refreshable capability snapshots, atomic JSON writes, and checkpoint history.
+- Added `ceos run`, `ceos checkpoint`, `ceos resume`, `ceos run-status`, and `ceos routing-trace`.
+- Enforced legal stage transitions and bounded repair/regeneration cycles mechanically instead of relying only on prose instructions.
+- Added SHA-256 provenance for checkpoint evidence and `INTEGRITY_BLOCKED` resume behavior when persisted evidence changes or disappears.
+- Added deterministic no-defect repair skipping while still requiring verification and fresh re-audit.
+- Added final-PASS routing enforcement: READY Web cycles require observable appropriate Web review unless a permitted non-required transport fallback is explicitly recorded.
+- `--web-required` now creates a durable BLOCKED run when Web is unavailable and can reopen after a READY capability refresh.
+- Production-art generation is mechanically gated on `imageGeneration.status=available`.
+- Preserved reasoning-only Web boundaries, production-write safety, Starter Kit policy, existing verification/evidence commands, and 0.4.0 production-art contracts.
 ## 0.4.0 — 2026-09-17
 
 - Added the `production-art` Skill for asset inventory/manifest → visual canon → Web art direction → native image generation/integration → runtime visual QA → fresh consistency re-audit.

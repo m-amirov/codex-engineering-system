@@ -11,11 +11,24 @@ These defaults apply across repositories. More specific repository instructions 
 - Production access is read-only by default. Do not turn inspection into deployment, restart, database mutation, provider submit, payment, or other external write without explicit authorization.
 - Reuse an applicable CEOS skill when its trigger matches: audit, audit-repair-loop, fix, verification, release, visual-qa, production-art, prod-check, incident-analysis.
 
+## Deterministic execution engine
+
+For engine-backed multi-stage workflows (`audit-repair-loop` and `production-art`), use the CEOS control plane when 0.5.0+ is available:
+
+- create the immutable scope/capability snapshot with `ceos run <pipeline> ...`;
+- execute only the `nextStage` returned by CEOS;
+- persist stage evidence and advance with `ceos checkpoint`;
+- record actual Web/fallback use with `ceos routing-trace`;
+- after interruption, call `ceos resume` instead of inferring progress from conversation history;
+- do not claim PASS when run integrity is stale, the state machine has not reached terminal PASS, or required evidence is absent.
+
+The standalone CLI does not secretly execute Codex/Web agents. The parent agent performs semantic work; CEOS deterministically controls ordering, cycle limits, capability gates, evidence provenance, resumability, and verdict acceptance.
+
 ## Automatic model routing (hybrid)
 
 For sustained engineering work, classify the next unit by workload, complexity, uncertainty, risk, and whether fresh tool access is required. The parent agent owns orchestration and the final answer.
 
-CEOS 0.4.x can use optional `chatgpt-web/*` model rows exposed by `codex-chatgpt-web`. Web routes are **reasoning-only** unless a future policy explicitly changes that contract; MCP / Full Harness is not required and must not be assumed.
+CEOS 0.5.x can use optional `chatgpt-web/*` model rows exposed by `codex-chatgpt-web`. Web routes are **reasoning-only** unless a future policy explicitly changes that contract; MCP / Full Harness is not required and must not be assumed.
 
 When Web routing is enabled:
 

@@ -1,188 +1,117 @@
-# Codex Engineering OS (CEOS) 0.4.0
+# Codex Engineering OS (CEOS) 0.5.0
 
-CEOS is a global-first engineering operating layer for Codex. It installs compact engineering instructions, reusable Skills, project policies, verification/evidence tooling, and task-specific custom agents.
+CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 adds a **Deterministic Execution Engine** so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
 
-Version 0.4.0 adds a production-art pipeline that separates **Web art direction** from **native image generation and integration** without weakening the existing reasoning-only Web contract.
+## Deterministic Execution Engine
 
-## Production-art pipeline
+The first engine-backed pipelines are `audit-repair-loop` and `production-art`.
 
-Use `production-art` when a project needs real character art, expressions, backgrounds, CGs, location masters, production image assets, or a systematic replacement of placeholders.
+Each run persists under `.ceos-runs/<run-id>/` with `run.json`, immutable `scope.json`, refreshable `capabilities.json`, `checkpoints/`, `artifacts/`, and `evidence/`.
 
-```text
-scope + invariants lock
-        ↓
-asset inventory / manifest
-        ↓
-ceos web-preflight
-        ↓
-Web art direction when READY
-ceos_art_director_web → chatgpt-web/high
-        ↓
-character/location/style canon
-        ↓
-native generation batches
-ceos_asset_generator → gpt-5.6
-        ↓
-real files + runtime mappings
-        ↓
-contact sheets / runtime evidence
-        ↓
-Web consistency review
-        ↓
-visual-qa + project-native gates
-        ↓
-PASS | BLOCKED | ESCALATE
-```
+The engine owns legal stage order, scope/capability snapshots, cycle limits, checkpoint SHA-256 provenance, routing-trace acceptance, terminal verdicts, and restart recovery. The parent Codex agent still performs repository/tool work, model delegation, implementation, Image Gen, browser QA, and semantic review. A CLI transition never substitutes for real evidence.
 
-The Web art director is reasoning-only. It may define canon, generation briefs, reusable asset families, and review supplied screenshots/contact sheets/manifests, but it does not generate or persist files.
-
-The native `ceos_asset_generator` may use image generation only when the current Codex environment actually exposes that capability. If native image generation is unavailable, the workflow returns `BLOCKED` instead of fabricating assets or silently substituting placeholders.
-
-Production-art completion requires real files in the workspace, complete required manifest coverage, valid runtime mappings, no confirmed identity/style/location drift, fresh runtime evidence, and relevant tests/lint/build passing.
-
-## Audit-repair loop
-
-`audit-repair-loop` freezes a scope lock before audit: target, in-scope surfaces, out-of-scope surfaces, acceptance contract, and mutation boundary. Release/publication/submission artifacts cannot block a product/content/runtime audit unless the user explicitly includes release readiness.
-
-```text
-scope lock
-    ↓
-native evidence collection
-    ↓
-ceos web-preflight
-    ↓
-web audit when READY
-    ↓
-confirmed in-scope defects
-    ↓
-consolidated remediation packet
-    ↓
-native implement/debug
-    ↓
-target-proportional verification
-    ↓
-fresh evidence snapshot
-    ↓
-fresh web audit when READY
-    ↓
-PASS | FAIL | BLOCKED | ESCALATE
-```
-
-Default maximum automatic repair cycles: **3**. Production remains read-only unless separately authorized.
-
-## Hybrid routing baseline
-
-CEOS integrates optionally with [`miuuyy/codex-chatgpt-web`](https://github.com/miuuyy/codex-chatgpt-web) without making MCP / Full Harness a CEOS requirement.
-
-Web reasoning routes:
-
-- `ceos_bulk_checker_web` → `chatgpt-web/light`: repetitive classification/comparison over complete supplied evidence.
-- `ceos_reasoner_web` → `chatgpt-web/medium`: architecture, product logic, causal analysis, synthesis, critique, and remediation consolidation.
-- `ceos_art_director_web` → `chatgpt-web/high`: visual canon, asset briefs, art-direction reasoning, and consistency critique over supplied visual evidence.
-
-Web agents do not discover repository state, run commands/tests, or write files.
-
-Native routes:
-
-| Role | Native model | Purpose |
-|---|---|---|
-| `ceos_bulk_checker` | `gpt-5.6-luna` low | tool-backed batch checks |
-| `ceos_explorer` | `gpt-5.6-terra` medium | repository exploration/evidence mapping |
-| `ceos_implementer` | `gpt-5.6` medium | bounded implementation/refactor |
-| `ceos_asset_generator` | `gpt-5.6` medium | bounded native image generation + asset integration when capability exists |
-| `ceos_debugger` | `gpt-5.6` high | ambiguous/cross-component debugging |
-| `ceos_reviewer` | `gpt-5.6` high | correctness/security/risk review |
-| `ceos_verifier` | `gpt-5.6` high | independent acceptance verification |
-
-## Web runtime preflight
-
-Use:
+## Core commands
 
 ```powershell
-ceos web-preflight
-ceos web-preflight --json
+ceos capabilities --project . --json
+
+ceos run audit-repair-loop `
+  --project . `
+  --target 'full-season reader experience' `
+  --in-scope 'comprehension;continuity;causality' `
+  --out-of-scope 'release readiness;store metadata' `
+  --acceptance 'fresh re-audit has no confirmed in-scope defects' `
+  --mutation-boundary 'scenario/runtime files required for confirmed defects' `
+  --web-required
+
+ceos checkpoint latest --stage EVIDENCE_COLLECTED --artifact '.ceos-evidence/current/evidence.json'
+ceos resume latest
+ceos run-status latest
+ceos routing-trace latest --web-agents 'ceos_reasoner_web'
 ```
 
-Default health endpoint:
+`ceos run` returns the only valid next stage. `ceos checkpoint` refuses out-of-order transitions.
+
+## Audit-repair-loop state machine
 
 ```text
-http://127.0.0.1:17841/healthz
+SCOPE_LOCKED
+  → CAPABILITIES_CHECKED
+  → EVIDENCE_COLLECTED
+  → AUDITED
+  → DEFECTS_CONFIRMED
+  → REPAIRING
+  → VERIFIED
+  → REAUDITED
+  → PASS | FAIL | BLOCKED | ESCALATE
 ```
 
-`READY` means Web routing is enabled and the bridge is healthy and accepting turns. CEOS accepts BOM-prefixed `hybrid-routing.json` files from older Windows installs and writes new manifests as UTF-8 without BOM.
+When `defectCount=0`, CEOS records a deterministic skipped-repair checkpoint but still requires verification and fresh re-audit. Failed verification/re-audit consumes a cycle and moves to the pipeline-defined retry stage; the cycle limit becomes a mechanical terminal boundary.
 
-## Example: production art
+When the persisted Web capability is `READY`, final PASS requires observable pipeline-appropriate Web review in the current cycle unless a permitted non-required transport fallback was explicitly recorded. `--web-required` never accepts native fallback as equivalent Web review.
+
+## Production-art state machine
 
 ```text
-Проведи CEOS production-art pass проекта.
-Сначала построй asset manifest и visual canon.
-При Web READY используй ceos_art_director_web для art direction и consistency review.
-Генерируй и интегрируй изображения только нативно через ceos_asset_generator и только если image-generation capability реально доступна.
-После каждого batch собирай fresh runtime evidence и делай visual-qa.
-Не меняй product topology/character cores ради удобства генерации.
-Заверши PASS, BLOCKED или ESCALATE.
+SCOPE_LOCKED
+  → CAPABILITIES_CHECKED
+  → INVENTORIED
+  → CANON_READY
+  → GENERATING
+  → INTEGRATED
+  → VISUAL_VERIFIED
+  → REAUDITED
+  → PASS | FAIL | BLOCKED | ESCALATE
 ```
 
-## Recommended Windows installation
+`GENERATING` is mechanically rejected unless the current capability snapshot says `imageGeneration.status=available`.
 
-1. Install/configure `Codex Web GPT` if you want Web reasoning. MCP / Full Harness is optional for CEOS.
-2. Update/extract CEOS 0.4.0.
-3. Run:
+The standalone Node CLI cannot inspect the host model's private tool catalog. Image Gen therefore uses explicit runtime attestation:
 
 ```powershell
+ceos capabilities --image-generation available
+# or
+$env:CEOS_IMAGE_GENERATION_CAPABILITY='available'
+```
+
+Allowed values: `available`, `unavailable`, `unknown`. If capability state changes after a run starts:
+
+```powershell
+ceos resume latest --refresh-capabilities --image-generation available
+```
+
+## Evidence integrity and resume
+
+Every semantic checkpoint records the path, type, size, and SHA-256 of its persisted evidence. `ceos resume` revalidates the scope hash, current capability hash, and immutable checkpoint artifacts. Missing or modified evidence yields `INTEGRITY_BLOCKED`; conversation history cannot override the mechanical mismatch.
+
+## Hybrid routing
+
+Web routes remain reasoning-only:
+
+- `ceos_bulk_checker_web` → `chatgpt-web/light`
+- `ceos_reasoner_web` → `chatgpt-web/medium`
+- `ceos_art_director_web` → `chatgpt-web/high`
+
+Native routes remain responsible for tool-backed evidence, writes, debugging, asset persistence, and final verification. MCP / Full Harness is not required by CEOS.
+
+## Existing verification commands
+
+The engine complements rather than replaces `ceos status`, `doctor`, `gates`, `verify`, `evidence`, `failures`, `web-preflight`, `global-status`, and `routing`.
+
+## Windows upgrade
+
+```powershell
+cd E:\Tools\codex-engineering-os
+git pull --ff-only
 .\scripts\install-global.ps1 -Web auto
-```
-
-Then fully restart Codex and start a new task.
-
-Useful checks:
-
-```powershell
 ceos version
 ceos global-status
-ceos routing
+ceos capabilities --project .
 ceos web-preflight
 ```
 
-If ChatGPT Web model rows are already visible but auto-detection does not find the launcher:
+Expected version: `0.5.0`. Fully restart Codex after installation.
 
-```powershell
-.\scripts\install-global.ps1 -Web on
-```
+For Yandex Games, new projects must still be created through the official Starter Kit before CEOS is attached.
 
-## Manual base installation
-
-```powershell
-npm install -g <path-to-codex-engineering-system>
-ceos install-global --mode copy --force
-.\scripts\install-hybrid.ps1 -Web auto
-ceos global-status
-ceos routing
-ceos web-preflight
-```
-
-## Project-specific integration
-
-Global CEOS works without `.codex-os/project.yml`. Add a project manifest when executable project gates/evidence or a family profile are required:
-
-```powershell
-ceos init --profile yandex-games --project E:\Work\YandexGames\MyGame
-ceos doctor --project E:\Work\YandexGames\MyGame
-ceos verify --project E:\Work\YandexGames\MyGame
-```
-
-For Yandex Games, bootstrap new projects only through the official Starter Kit before attaching CEOS.
-
-## Engineering invariants
-
-- User scope controls the audit verdict; project profiles do not silently broaden it.
-- Evidence, not assertion, determines PASS.
-- Web reasoning may analyze supplied evidence but must never pretend it inspected fresh repository state.
-- Generated assets count as complete only when real files exist and are integrated.
-- Image-generation availability is observed at runtime, not assumed from configuration.
-- Fresh re-audit evaluates the repaired/generated state against the original locked contract.
-- Production access is read-only by default unless separately authorized.
-- Hybrid routing never weakens sandbox, approval, production-write, or project-specific constraints.
-- Do not retry/switch Web modes to evade usage limits.
-
-See `policies/model-routing.md`, `skills/production-art/SKILL.md`, `skills/audit-repair-loop/SKILL.md`, and `INSTALL.md`.
+See `docs/execution-engine-0.5.0.md`, `skills/audit-repair-loop/SKILL.md`, `skills/production-art/SKILL.md`, and `policies/model-routing.md`.

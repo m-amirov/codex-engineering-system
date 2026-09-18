@@ -3,6 +3,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { CEOS_ROOT, VERSION, SUPPORTED_PROFILES, SKILL_NAMES, resolveProject, loadManifest, doctor, gitState, resolveGates, runVerification, validateEvidence, createManifest, detectManifestForProject, latestEvidenceDir, readFailures, renderContext, installSkills, installGlobal, globalStatus, routingTable } from '../src/ceos.mjs';
 import { webPreflight } from '../src/web-preflight.mjs';
+import { collectCapabilities } from '../src/capabilities.mjs';
+import { createRun, recordCheckpoint, refreshRunCapabilities, resumeRun, executionStatus, recordRoutingTrace, EXECUTION_PIPELINES } from '../src/execution-engine.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -23,8 +25,94 @@ function print(obj, json = false) {
   else if (typeof obj === 'string') console.log(obj);
   else console.log(JSON.stringify(obj, null, 2));
 }
+function listArg(value) {
+  if (value === undefined || value === null || value === true) return [];
+  return String(value).split(';').map(x => x.trim()).filter(Boolean);
+}
+function metadataArg(args) {
+  let metadata = {};
+  if (args['metadata-json']) {
+    try { metadata = JSON.parse(String(args['metadata-json'])); }
+    catch (e) { throw new Error(`--metadata-json must be valid JSON: ${e.message}`); }
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) throw new Error('--metadata-json must be a JSON object');
+  }
+  if (args['defect-count'] !== undefined) {
+    const count = Number(args['defect-count']);
+    if (!Number.isInteger(count) || count < 0) throw new Error('--defect-count must be a non-negative integer');
+    metadata.defectCount = count;
+  }
+  return metadata;
+}
+function timeoutArg(args) {
+  const timeoutMs = args['timeout-ms'] ? Number(args['timeout-ms']) : 1200;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10000) throw new Error('--timeout-ms must be an integer from 100 to 10000');
+  return timeoutMs;
+}
+async function capabilitySnapshot(args, project) {
+  const web = await webPreflight({
+    codexHome: args['codex-home'] || undefined,
+    healthUrl: args.url || undefined,
+    timeoutMs: timeoutArg(args)
+  });
+  return collectCapabilities(project, {
+    codexHome: args['codex-home'] || undefined,
+    webPreflightResult: web,
+    imageGeneration: args['image-generation'] === true ? undefined : args['image-generation']
+  });
+}
+function executionExitCode(run, integrity = { ok: true }) {
+  if (!integrity.ok) return 2;
+  if (run.verdict === 'FAIL') return 1;
+  if (run.verdict === 'BLOCKED') return 2;
+  if (run.verdict === 'ESCALATE') return 3;
+  return 0;
+}
+function printExecution(result) {
+  const run = result.run;
+  console.log(`Run: ${run.runId}`);
+  console.log(`Pipeline: ${run.pipeline}`);
+  console.log(`State: ${run.state}`);
+  console.log(`Cycle: ${run.cycle}/${run.maxCycles}`);
+  if (result.integrity) console.log(`Integrity: ${result.integrity.ok ? 'PASS' : 'FAIL'}`);
+  if (result.nextAction?.terminal) {
+    console.log(`VERDICT: ${result.nextAction.verdict}`);
+    if (result.nextAction.reason) console.log(`Reason: ${JSON.stringify(result.nextAction.reason)}`);
+  } else if (result.nextAction) {
+    console.log(`Next: ${result.nextAction.stage}`);
+    console.log(result.nextAction.description);
+    for (const requirement of result.nextAction.requirements ?? []) console.log(`- ${requirement}`);
+  }
+  console.log(`State: ${result.runDir}/run.json`);
+}
 function usage() {
-  console.log(`Codex Engineering OS ${VERSION}\n\nUsage:\n  ceos init --profile <profile> [--project dir]\n  ceos status [--project dir] [--json]\n  ceos doctor [--project dir] [--json]\n  ceos gates [--mode verification|release] [--project dir] [--json]\n  ceos verify [--mode verification|release] [--project dir] [--evidence dir] [--dry-run] [--json]\n  ceos evidence [--path dir | --project dir] [--json]\n  ceos failures [--path dir | --project dir] [--tail lines] [--json]\n  ceos profile [--project dir]\n  ceos context --skill <name> [--project dir]\n  ceos web-preflight [--codex-home dir] [--url http://127.0.0.1:17841/healthz] [--timeout-ms 1200] [--json]\n  ceos install-skills --scope repo|user [--mode copy|link] [--project dir] [--force]\n  ceos install-global [--mode copy|link] [--force] [--dry-run] [--codex-home dir] [--json]\n  ceos global-status [--codex-home dir] [--json]\n  ceos routing [--json]\n  ceos self-test\n\nProfiles: ${SUPPORTED_PROFILES.join(', ')}\nSkills: ${SKILL_NAMES.join(', ')}`);
+  console.log(`Codex Engineering OS ${VERSION}
+
+Usage:
+  ceos init --profile <profile> [--project dir]
+  ceos status [--project dir] [--json]
+  ceos doctor [--project dir] [--json]
+  ceos gates [--mode verification|release] [--project dir] [--json]
+  ceos verify [--mode verification|release] [--project dir] [--evidence dir] [--dry-run] [--json]
+  ceos evidence [--path dir | --project dir] [--json]
+  ceos failures [--path dir | --project dir] [--tail lines] [--json]
+  ceos profile [--project dir]
+  ceos context --skill <name> [--project dir]
+  ceos web-preflight [--codex-home dir] [--url http://127.0.0.1:17841/healthz] [--timeout-ms 1200] [--json]
+  ceos capabilities [--project dir] [--image-generation available|unavailable|unknown] [--json]
+  ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--web-required] [--max-cycles N] [--image-generation state] [--json]
+  ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
+  ceos resume [run-id|latest] [--refresh-capabilities] [--image-generation state] [--json]
+  ceos run-status [run-id|latest] [--json]
+  ceos routing-trace [run-id|latest] [--web-agents <a;b>] [--native-fallback] [--fallback-reason text] [--json]
+  ceos install-skills --scope repo|user [--mode copy|link] [--project dir] [--force]
+  ceos install-global [--mode copy|link] [--force] [--dry-run] [--codex-home dir] [--json]
+  ceos global-status [--codex-home dir] [--json]
+  ceos routing [--json]
+  ceos self-test
+
+Pipelines: ${Object.keys(EXECUTION_PIPELINES).join(', ')}
+Profiles: ${SUPPORTED_PROFILES.join(', ')}
+Skills: ${SKILL_NAMES.join(', ')}`);
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -111,9 +199,7 @@ try {
       process.stdout.write(renderContext(project, args.skill)); break;
     }
     case 'web-preflight': {
-      const timeoutMs = args['timeout-ms'] ? Number(args['timeout-ms']) : 1200;
-      if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10000) throw new Error('--timeout-ms must be an integer from 100 to 10000');
-      const result = await webPreflight({ codexHome: args['codex-home'] || undefined, healthUrl: args.url || undefined, timeoutMs });
+      const result = await webPreflight({ codexHome: args['codex-home'] || undefined, healthUrl: args.url || undefined, timeoutMs: timeoutArg(args) });
       if (args.json) print(result, true); else {
         console.log(`WEB ${result.status}  ${result.reason}`);
         console.log(`Manifest: ${result.manifestFile}`);
@@ -121,6 +207,85 @@ try {
         if (result.activity) console.log(`Activity: ${JSON.stringify(result.activity)}`);
       }
       process.exitCode = result.status === 'UNAVAILABLE' || result.status === 'NOT_ACCEPTING_TURNS' ? 2 : 0;
+      break;
+    }
+    case 'capabilities': {
+      const result = await capabilitySnapshot(args, project);
+      if (args.json) print(result, true); else {
+        console.log(`CEOS ${VERSION} capabilities`);
+        console.log(`Filesystem: read=${result.filesystem.readable} write=${result.filesystem.writable}`);
+        console.log(`Git: ${result.executables.git.available ? 'available' : 'unavailable'}`);
+        console.log(`Web: ${result.web.status}`);
+        console.log(`Image generation: ${result.imageGeneration.status} (${result.imageGeneration.source})`);
+        console.log(`Project manifest: ${result.project.manifest.available ? result.project.manifest.profile : 'not resolved'}`);
+        for (const limitation of result.limitations) console.log(`LIMITATION: ${limitation}`);
+      }
+      break;
+    }
+    case 'run': {
+      const pipeline = args._[1];
+      if (!pipeline) throw new Error('pipeline is required');
+      const capabilities = await capabilitySnapshot(args, project);
+      const result = createRun(project, pipeline, {
+        scope: {
+          target: args.target,
+          inScope: listArg(args['in-scope']),
+          outOfScope: listArg(args['out-of-scope']),
+          acceptanceContract: args.acceptance,
+          mutationBoundary: args['mutation-boundary']
+        },
+        capabilities,
+        webRequired: Boolean(args['web-required']),
+        maxCycles: args['max-cycles']
+      });
+      if (args.json) print(result, true); else printExecution(result);
+      process.exitCode = executionExitCode(result.run);
+      break;
+    }
+    case 'checkpoint': {
+      const runRef = args._[1] || 'latest';
+      if (!args.stage) throw new Error('--stage is required');
+      const result = recordCheckpoint(project, runRef, {
+        stage: String(args.stage).toUpperCase(),
+        artifacts: listArg(args.artifact),
+        outcome: args.outcome || 'CONTINUE',
+        metadata: metadataArg(args),
+        note: args.note === true ? null : args.note,
+        skipped: Boolean(args.skip)
+      });
+      if (args.json) print(result, true); else printExecution(result);
+      process.exitCode = executionExitCode(result.run, result.integrity);
+      break;
+    }
+    case 'resume': {
+      const runRef = args._[1] || 'latest';
+      let result;
+      if (args['refresh-capabilities']) {
+        const capabilities = await capabilitySnapshot(args, project);
+        result = refreshRunCapabilities(project, runRef, capabilities);
+      } else result = resumeRun(project, runRef);
+      if (args.json) print(result, true); else printExecution(result);
+      process.exitCode = executionExitCode(result.run, result.integrity);
+      break;
+    }
+    case 'run-status': {
+      const result = executionStatus(project, args._[1] || 'latest');
+      if (args.json) print(result, true); else printExecution(result);
+      process.exitCode = executionExitCode(result.run, result.integrity);
+      break;
+    }
+    case 'routing-trace': {
+      const result = recordRoutingTrace(project, args._[1] || 'latest', {
+        webAgentsUsed: args['web-agents'] === undefined ? undefined : listArg(args['web-agents']),
+        nativeFallbackUsed: args['native-fallback'] === undefined ? undefined : Boolean(args['native-fallback']),
+        fallbackReason: args['fallback-reason'] === true ? null : args['fallback-reason']
+      });
+      if (args.json) print(result, true); else {
+        console.log(`Run: ${result.run.runId}`);
+        console.log(`Web agents: ${result.run.routingTrace.webAgentsUsed.join(', ') || '(none)'}`);
+        console.log(`Native fallback: ${result.run.routingTrace.nativeFallbackUsed}`);
+        if (result.run.routingTrace.fallbackReason) console.log(`Fallback reason: ${result.run.routingTrace.fallbackReason}`);
+      }
       break;
     }
     case 'install-skills': {

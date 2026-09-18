@@ -2,10 +2,18 @@
 name: audit-repair-loop
 description: Run a bounded audit, remediation, repair, verification, and fresh re-audit cycle for any product artifact or engineering surface. Use when the user wants discovered defects to be fixed automatically and rechecked to an evidence-based verdict.
 metadata:
-  ceos-version: "0.3.2"
+  ceos-version: "0.5.0"
 ---
 
 # Skill: audit-repair-loop
+
+## Deterministic execution contract
+
+When CEOS 0.5.0+ is available, this workflow is engine-backed. The parent agent must create a persisted run with `ceos run audit-repair-loop`, then advance only through the stage returned by `ceos resume` / `ceos run-status`. Record each semantic stage with `ceos checkpoint` and persist the supporting artifact before advancing.
+
+The engine owns stage order, cycle limits, scope/capability snapshots, evidence hashes, routing-trace acceptance, terminal verdicts, and crash recovery. The parent Codex agent still performs the actual repository/tool work and model delegations; a CLI state transition is never a substitute for real evidence.
+
+Use `ceos routing-trace` after Web/native routing decisions. After interruption or restart, use `ceos resume latest` rather than reconstructing progress from prose. If the execution engine is unavailable, fall back to the prose contract below and explicitly state that deterministic run-state enforcement is unavailable.
 
 At activation, run `ceos context --skill audit-repair-loop --project .` when the CEOS CLI is available. Treat the returned profile/policies as the resolved project contract. If CEOS is unavailable, use repository instructions and explicitly state the policy/evidence gap.
 
