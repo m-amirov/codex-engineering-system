@@ -9,6 +9,7 @@ Keep this file short. Load only the skill/profile/policy required by the task.
 - Independent completion check → `skills/verification/SKILL.md`
 - Prepare a release candidate → `skills/release/SKILL.md`
 - Browser/presentation QA → `skills/visual-qa/SKILL.md`
+- Romance-first interactive fiction: concept development and editorial review → `skills/romance-narrative/SKILL.md` (combine with `audit` / `audit-repair-loop` for existing drafts)
 - Production image assets / character sheets / backgrounds / CG integration → `skills/production-art/SKILL.md`
 - Production inspection → `skills/prod-check/SKILL.md`
 - Runtime/log incident diagnosis → `skills/incident-analysis/SKILL.md`
