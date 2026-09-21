@@ -2,7 +2,7 @@
 name: audit-repair-loop
 description: Run a bounded audit, remediation, repair, verification, and fresh re-audit cycle for any product artifact or engineering surface. Use when the user wants discovered defects to be fixed automatically and rechecked to an evidence-based verdict.
 metadata:
-  ceos-version: "0.5.0"
+  ceos-version: "0.5.3"
 ---
 
 # Skill: audit-repair-loop
