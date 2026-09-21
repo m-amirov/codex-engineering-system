@@ -1,4 +1,4 @@
-# Codex Engineering OS (CEOS) 0.5.2
+# Codex Engineering OS (CEOS) 0.5.3
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
 
@@ -84,6 +84,12 @@ ceos resume latest --refresh-capabilities --image-generation available
 
 Every semantic checkpoint records the path, type, size, and SHA-256 of its persisted evidence. `ceos resume` revalidates the scope hash, current capability hash, and immutable checkpoint artifacts. Missing or modified evidence yields `INTEGRITY_BLOCKED`; conversation history cannot override the mechanical mismatch.
 
+## Native delegation budget (0.5.3)
+
+Long-form writing and editorial repair run in the parent native Codex session **without parallel native scene writers/reviewers by default**. A large requested scope proceeds sequentially, one episode per persisted checkpoint; completion of a checkpoint is not completion of the whole task. At the end of each completed episode use one bounded Web High editorial review when required/available; repair locally, then re-review the changed text and causally affected branch context. The full execution-engine audit-repair-loop retains its mandatory routing/stage/evidence contracts. Independent native tool-backed verification remains available when genuinely necessary; explicit user-requested parallel work remains permitted with disjoint file ownership. See `policies/native-delegation.md` and `skills/romance-narrative/SKILL.md`.
+
+**Scope of enforcement:** CEOS installs instructions and skill policies; it cannot hard-limit the host Codex subagent scheduler, guarantee quota savings, or cancel running subagents. Observe actual active sessions and provider usage separately. Existing Web routes remain `chatgpt-web/high` with no fallback to lower Web tiers.
+
 ## Hybrid routing
 
 Web routes remain reasoning-only. As of 0.5.2, every CEOS-managed Web route selects **High**, including bulk checking and general reasoning. Native model routes are unchanged; when High is unavailable, do not silently use a lower Web model:
@@ -116,8 +122,8 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.2`. Restart Codex and verify that all three CEOS-managed Web agent TOML files and `$CODEX_HOME/ceos/hybrid-routing.json` specify `chatgpt-web/high`. This checks configured routing, not the success of a substantive delegation. Fully restart Codex after installation.
+Expected version: `0.5.3`. Restart Codex and verify that all three CEOS-managed Web agent TOML files and `$CODEX_HOME/ceos/hybrid-routing.json` specify `chatgpt-web/high`. This checks configured routing, not the success of a substantive delegation. Fully restart Codex after installation.
 
 For Yandex Games, new projects must still be created through the official Starter Kit before CEOS is attached.
 
-See `docs/execution-engine-0.5.0.md`, `skills/audit-repair-loop/SKILL.md`, `skills/production-art/SKILL.md`, and `policies/model-routing.md`.
+See `docs/execution-engine-0.5.0.md`, `skills/audit-repair-loop/SKILL.md`, `skills/romance-narrative/SKILL.md`, `policies/native-delegation.md`, `skills/production-art/SKILL.md`, and `policies/model-routing.md`.
