@@ -17,7 +17,7 @@ Use `ceos routing-trace` after Web/native routing decisions. After interruption 
 
 At activation, run `ceos context --skill audit-repair-loop --project .` when the CEOS CLI is available. Treat the returned profile/policies as the resolved project contract. If CEOS is unavailable, use repository instructions and explicitly state the policy/evidence gap.
 
-**Intent:** convert an audit into a bounded repair cycle without allowing the reviewing model to mutate the product directly.
+**Intent:** convert an audit into a bounded repair cycle without allowing the reviewing model to mutate the product directly. Follow `policies/native-delegation.md`: literary content edits stay in the parent Codex session by default; avoid parallel native editorial subagents. Preserve stage/evidence/Web obligations.
 
 ## Scope lock
 
@@ -63,9 +63,9 @@ A claimed Web-backed audit with no Web agent in the trace is non-compliant.
 3. **Audit** — apply the Web routing contract above. When Web is ready, substantive review must use Web. When Web is unavailable, use the single explicit native fallback unless Web was required by the user.
 4. **Confirm defects** — separate confirmed in-scope defects from uncertainty, intentional behavior, missing evidence, rejected findings, and out-of-scope observations. Do not repair speculative findings.
 5. **Build one remediation packet** — consolidate compatible confirmed defects into a single repair task for native Codex. For each defect include evidence/location, violated expectation, required outcome, invariants/non-goals, acceptance criteria, and dependencies/conflicts. Prefer outcomes and constraints over procedural edit instructions.
-6. **Native repair** — route implementation to `ceos_implementer`; escalate ambiguous/root-cause work to `ceos_debugger`. Web agents remain reasoning-only and must not write files, run commands, or claim fresh state.
+6. **Native repair** — for content-only/literary changes, the parent Codex session repairs the locked file directly by default; do not spawn parallel native editors or an implementer solely for role symmetry. For tool-heavy engineering where an independent implementer is justified, route to `ceos_implementer`; escalate ambiguous/root-cause work to `ceos_debugger` only if needed. Web agents remain reasoning-only and must not write files, run commands, or claim fresh state.
 7. **Mechanical verification** — run project-native checks proportional to the target and changed surface. Do not import unrelated release gates into the target verdict.
-8. **Fresh re-audit** — construct a new evidence snapshot from the repaired state and review it afresh against the original scope/acceptance contract. If Web is ready, the fresh re-audit must again include substantive Web review; do not ask the reviewer merely to validate its previous recommendations.
+8. **Fresh re-audit** — construct a new evidence snapshot from the repaired state and review it afresh against the original scope/acceptance contract. For a content-only repair, send changed text and the causally affected scene/branch context, together with a recorded impact analysis proving what remains unchanged; if scope, impacts or the locked acceptance contract require full coverage, re-review the complete target. If Web is ready, the fresh re-audit must again include substantive Web review; do not ask the reviewer merely to validate its previous recommendations.
 9. **Verdict** — return `PASS`, `FAIL`, `BLOCKED`, or `ESCALATE` for the locked target, plus routing trace, evidence, remaining in-scope defects, and any separate out-of-scope observations.
 
 ## Loop limits
