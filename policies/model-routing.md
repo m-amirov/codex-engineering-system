@@ -21,6 +21,10 @@ Whenever CEOS selects a Web route, every CEOS-managed Web role MUST use `chatgpt
 
 The critical evidence/write/debug/risk/final-verification path remains native. Browser-only `codex-chatgpt-web` is sufficient for supplemental Web reasoning routes; MCP / Full Harness is not a prerequisite and is not assumed by CEOS routing.
 
+## Native agent orchestration
+
+Routing a task to a *native role* does not automatically justify spawning another native Codex subagent. Follow `policies/native-delegation.md`: the parent performs long-form literary drafting, content repair and simple local checks by default, with one bounded Web High independent critique after each finished episode when required. Launch an additional native specialist only with a recorded reason (e.g. mandatory independent tool-backed verification or a genuinely distinct high-risk task). Web High selection remains unchanged and does not imply Web execution consumes the same Codex quota as native subagents.
+
 ## Production-art capability boundary
 
 `ceos_art_director_web` is deliberately reasoning-only. It may define or review character/location/style canon, generation briefs, reusable asset families, contact sheets, scene-to-art mappings, and supplied runtime screenshots. It must not claim that it generated, downloaded, saved, or integrated image files.
