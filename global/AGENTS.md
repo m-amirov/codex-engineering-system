@@ -9,7 +9,7 @@ These defaults apply across repositories. More specific repository instructions 
 - Preserve unrelated work, existing project conventions, and project-native build/test/release infrastructure.
 - Evidence, not assertion, determines completion. Run validation proportional to the change and do not claim PASS without supporting evidence.
 - Production access is read-only by default. Do not turn inspection into deployment, restart, database mutation, provider submit, payment, or other external write without explicit authorization.
-- Reuse an applicable CEOS skill when its trigger matches: audit, audit-repair-loop, fix, verification, release, visual-qa, production-art, prod-check, incident-analysis.
+- Reuse an applicable CEOS skill when its trigger matches: audit, audit-repair-loop, fix, verification, release, visual-qa, romance-narrative, production-art, prod-check, incident-analysis.
 
 ## Deterministic execution engine
 
@@ -30,10 +30,11 @@ For sustained engineering work, classify the next unit by workload, complexity, 
 
 CEOS 0.5.x can use optional `chatgpt-web/*` model rows exposed by `codex-chatgpt-web`. Web routes are **reasoning-only** unless a future policy explicitly changes that contract; MCP / Full Harness is not required and must not be assumed.
 
-When Web routing is enabled:
+When Web routing is enabled, **all CEOS-managed Web roles use `chatgpt-web/high` with high reasoning effort**. Never silently substitute a light/medium Web mode if High is unavailable; use the existing explicit failure/fallback rules, or `BLOCKED` when Web is required. Preflight READY alone does not prove a completed High-mode delegation.
 
-- `ceos_bulk_checker_web` (`chatgpt-web/light`): repetitive classification/comparison over a complete bounded evidence bundle supplied by the parent.
-- `ceos_reasoner_web` (`chatgpt-web/medium`): architecture reasoning, hypothesis comparison, planning, synthesis, or critique over supplied context.
+
+- `ceos_bulk_checker_web` (`chatgpt-web/high`): repetitive classification/comparison over a complete bounded evidence bundle supplied by the parent.
+- `ceos_reasoner_web` (`chatgpt-web/high`): architecture reasoning, hypothesis comparison, planning, synthesis, or critique over supplied context.
 - `ceos_art_director_web` (`chatgpt-web/high`): art direction, visual canon, asset briefs, and consistency review over supplied manifests/contact sheets/screenshots. It does not generate or persist files.
 - Do not ask a Web agent to discover files, inspect the workspace, run commands/tests, browse, call local tools, or perform writes.
 - If fresh repository/tool evidence is required, route natively: `ceos_bulk_checker` for batch checks, `ceos_explorer` for repository exploration, `ceos_asset_generator` for bounded asset generation/integration when native image generation is actually available, and the existing native implement/debug/review/verify agents for their roles.
@@ -76,4 +77,4 @@ A Web-to-native fallback is allowed at most once for a delegated unit and only w
 
 Do not create retry loops, cycle among Web modes, or switch models to evade usage limits. Fallback preserves task scope and safety constraints. Routing never weakens sandbox, approval, production-write, or project-specific constraints.
 
-Prefer the lowest-cost adequate route. Escalate strength when uncertainty remains, scope expands, a first reasoning pass is insufficient, or the task touches security, production, concurrency, data integrity, or irreversible behavior. Parallelize independent read-only work when useful; do not delegate trivial work when overhead exceeds the task.
+For native routes, prefer the lowest-cost adequate route and escalate strength when uncertainty remains or risk warrants it. Web routes are fixed to High; do not optimize Web costs by selecting a lower Web mode. Parallelize independent read-only work when useful; do not delegate trivial work when overhead exceeds the task.
