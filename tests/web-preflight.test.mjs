@@ -72,3 +72,41 @@ test('Web preflight converts bridge transport failure into explicit fallback sta
   assert.equal(result.fallbackAllowed, true);
   assert.match(result.reason, /ECONNREFUSED/);
 });
+
+test('Web preflight refuses stale non-High CEOS Web model mapping', async () => {
+  const homeDir = makeHome({
+    schemaVersion: 2,
+    enabled: true,
+    webAgents: [
+      { name: 'ceos_bulk_checker_web', model: 'chatgpt-web/light' },
+      { name: 'ceos_reasoner_web', model: 'chatgpt-web/high' },
+      { name: 'ceos_art_director_web', model: 'chatgpt-web/high' }
+    ]
+  });
+  let probed = false;
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => { probed = true; throw new Error('should not probe stale Web config'); }
+  });
+  assert.equal(result.status, 'NOT_CONFIGURED');
+  assert.equal(result.ready, false);
+  assert.equal(probed, false);
+  assert.match(result.reason, /non-High/);
+});
+
+test('Web preflight accepts the all-High CEOS routing manifest', async () => {
+  const homeDir = makeHome({
+    schemaVersion: 2,
+    enabled: true,
+    webAgents: [
+      { name: 'ceos_bulk_checker_web', model: 'chatgpt-web/high' },
+      { name: 'ceos_reasoner_web', model: 'chatgpt-web/high' },
+      { name: 'ceos_art_director_web', model: 'chatgpt-web/high' }
+    ]
+  });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ status: 'ok', accepting_turns: true }) })
+  });
+  assert.equal(result.status, 'READY');
+});
