@@ -1,6 +1,6 @@
-# Codex Engineering OS (CEOS) 0.5.1
+# Codex Engineering OS (CEOS) 0.5.2
 
-CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardens Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
 
 ## Deterministic Execution Engine
 
@@ -86,10 +86,10 @@ Every semantic checkpoint records the path, type, size, and SHA-256 of its persi
 
 ## Hybrid routing
 
-Web routes remain reasoning-only:
+Web routes remain reasoning-only. As of 0.5.2, every CEOS-managed Web route selects **High**, including bulk checking and general reasoning. Native model routes are unchanged; when High is unavailable, do not silently use a lower Web model:
 
-- `ceos_bulk_checker_web` → `chatgpt-web/light`
-- `ceos_reasoner_web` → `chatgpt-web/medium`
+- `ceos_bulk_checker_web` → `chatgpt-web/high`
+- `ceos_reasoner_web` → `chatgpt-web/high`
 - `ceos_art_director_web` → `chatgpt-web/high`
 
 Native routes remain responsible for tool-backed evidence, writes, debugging, asset persistence, and final verification. MCP / Full Harness is not required by CEOS.
@@ -116,7 +116,7 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.1`. Fully restart Codex after installation.
+Expected version: `0.5.2`. Restart Codex and verify that all three CEOS-managed Web agent TOML files and `$CODEX_HOME/ceos/hybrid-routing.json` specify `chatgpt-web/high`. This checks configured routing, not the success of a substantive delegation. Fully restart Codex after installation.
 
 For Yandex Games, new projects must still be created through the official Starter Kit before CEOS is attached.
 
