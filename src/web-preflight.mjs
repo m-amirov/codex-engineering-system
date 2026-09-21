@@ -49,6 +49,17 @@ export async function webPreflight({
       manifestFile: routing.file, healthUrl
     };
   }
+  // An enabled installer-generated manifest with a non-High CEOS Web route is stale.
+  // Preflight must not report READY and allow silent execution on a lower Web mode.
+  const managedWebRoles = new Set(['ceos_bulk_checker_web', 'ceos_reasoner_web', 'ceos_art_director_web']);
+  const routes = routing.manifest?.webAgents;
+  if (Array.isArray(routes) && routes.some(route => managedWebRoles.has(route?.name) && route.model !== 'chatgpt-web/high')) {
+    return {
+      status: 'NOT_CONFIGURED', enabled: false, ready: false, fallbackAllowed: true,
+      reason: 'CEOS Web routing manifest contains a non-High managed Web route; reinstall CEOS Web agents with install-hybrid.ps1',
+      manifestFile: routing.file, healthUrl
+    };
+  }
   if (typeof fetchImpl !== 'function') {
     return {
       status: 'UNAVAILABLE', enabled: true, ready: false, fallbackAllowed: true,
