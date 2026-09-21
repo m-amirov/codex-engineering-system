@@ -14,6 +14,8 @@ Keep this file short. Load only the skill/profile/policy required by the task.
 - Production inspection → `skills/prod-check/SKILL.md`
 - Runtime/log incident diagnosis → `skills/incident-analysis/SKILL.md`
 
+For narrative drafting/editorial repair, the parent is the sole native writer/editor by default; see `policies/native-delegation.md`. Do not spawn parallel native scene editors/reviewers by routine. Web High independent critique is allowed and retains all mandatory evidence gates.
+
 Always load `policies/safety.md`, `policies/evidence.md`, and the resolved project profile. Load other policies only when relevant.
 
 ## Invariants
