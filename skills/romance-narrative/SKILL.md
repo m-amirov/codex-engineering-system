@@ -2,7 +2,7 @@
 name: romance-narrative
 description: Design and audit romance-first interactive fiction and visual novels. Use when the user wants a new romantic concept, character/route architecture, or a romance-focused script review; load alongside audit or audit-repair-loop when existing material is being examined.
 metadata:
-  ceos-version: "0.5.1"
+  ceos-version: "0.5.3"
 ---
 
 # Skill: romance-narrative
@@ -30,6 +30,12 @@ This is a semantic editorial contract, **not** a claim that automated tests can 
 6. **Pacing and dialogue:** track scene-level emotional change, subtext, tension/release, natural introductions, physical location/time, who knows what, and redundancies. Do not demand conflict in every scene; quiet intimacy may be functional.
 7. **Consistency and endings:** verify chronology, presence, objects, knowledge, promises, consent/boundaries, behavior patterns, route reachability and ending causality against project-owned canon/state contracts.
 8. **Presentation:** after art exists, verify character identity and expression, staging, framing, mobile legibility and that key romantic beats have meaningful visual support. Do not classify missing assets as a script defect when concept-only work is in scope.
+
+## Token-conscious execution and agent boundaries
+
+Use `policies/native-delegation.md`. Long-form prose and editorial repair are owned by **one parent native Codex session** unless an explicitly justified exception applies. Do not spawn simultaneous native writers/reviewers for episodes or route variants; avoid rereading large approved manuscripts or copying shared text into every agent context. Preserve already completed work and process large requested scopes sequentially, one episode per checkpoint.
+
+For each finished episode, request one **bounded Web High** independent editorial review when Web is enabled/required and actually callable. Web receives the complete relevant new text and necessary canon/choice excerpts, not the entire repository or repeated unchanged alternative paths. After fixes, inspect the changed passages and dependent transitions; respect any full-scope re-audit required by a locked acceptance contract. Use project commands for word counts, branch IDs and consistency checks. Native independent tool-backed review is an exception only when specifically required and cannot be evidenced by the parent plus Web; state the reason and keep it narrowly scoped.
 
 ## Evidence and gates
 
