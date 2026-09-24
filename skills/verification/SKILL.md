@@ -12,3 +12,5 @@ At activation, run `ceos context --skill verification --project .` when the CEOS
 **Intent:** independently test whether stated acceptance criteria are actually satisfied.
 
 Treat implementation claims as hypotheses. Map each acceptance criterion to evidence, run the strongest safe project-native checks available, and produce exactly one overall verdict: `PASS`, `FAIL`, or `BLOCKED`.
+
+Do not promote a narrow green check to a broader PASS. Distinguish functional behavior, runtime presentation, authored content/cue correctness, release materials and infrastructure availability. Missing or stale evidence is `BLOCKED`; a failed check is `FAIL`. Visual claims require current-runtime pixels and proof that actual image content was supplied to an independent reviewer, not a text-only assertion.

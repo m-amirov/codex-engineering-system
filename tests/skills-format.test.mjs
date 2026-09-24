@@ -7,10 +7,11 @@ import { CEOS_ROOT } from '../src/ceos.mjs';
 const skills = ['audit','audit-repair-loop','fix','verification','release','visual-qa','production-art','prod-check','incident-analysis'];
 
 function parseFrontmatter(text) {
-  assert.ok(text.startsWith('---\n'), 'missing opening frontmatter');
-  const end = text.indexOf('\n---\n', 4);
+  const normalized = text.replaceAll('\r\n', '\n');
+  assert.ok(normalized.startsWith('---\n'), 'missing opening frontmatter');
+  const end = normalized.indexOf('\n---\n', 4);
   assert.ok(end > 4, 'missing closing frontmatter');
-  const fm = text.slice(4, end).split('\n');
+  const fm = normalized.slice(4, end).split('\n');
   const out = {};
   for (const line of fm) {
     const m = line.match(/^([a-z0-9-]+):\s*(.*)$/);

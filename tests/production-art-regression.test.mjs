@@ -34,3 +34,14 @@ test('production-art fails closed when native image generation is unavailable', 
   assert.match(native, /otherwise stop and report the missing capability rather than fabricating generated files/i);
   assert.match(native, /Never claim an asset exists unless it is present in the workspace/i);
 });
+
+test('visual acceptance requires actual pixels and mechanical runtime measurements', () => {
+  const visual = read('skills/visual-qa/SKILL.md');
+  const evidence = read('policies/evidence.md');
+  const stop = read('policies/stop-conditions.md');
+  assert.match(visual, /actual screenshot and character\/reference pixels were supplied/i);
+  assert.match(visual, /all four viewport edges/i);
+  assert.match(visual, /stale or missing ledgers are evidence gaps/i);
+  assert.match(evidence, /actual pixels were supplied/i);
+  assert.match(stop, /screenshot pixels or reference-image pixels/i);
+});

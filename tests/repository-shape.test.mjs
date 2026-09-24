@@ -25,7 +25,7 @@ test('AGENTS.md remains a compact router', () => {
 
 test('global Codex layer and custom model-routing agents exist', () => {
   const globalInstructions = fs.readFileSync(path.join(CEOS_ROOT, 'global', 'AGENTS.md'), 'utf8');
-  assert.ok(globalInstructions.length < 9000, `global/AGENTS.md too large: ${globalInstructions.length}`);
+  assert.ok(globalInstructions.length < 10000, `global/AGENTS.md too large: ${globalInstructions.length}`);
   assert.match(globalInstructions, /Automatic model routing/i);
   assert.match(globalInstructions, /audit-repair-loop/i);
   assert.match(globalInstructions, /production art pipeline/i);

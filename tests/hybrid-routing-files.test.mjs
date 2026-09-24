@@ -13,10 +13,10 @@ test('0.5.x Web agents are reasoning-only and assume no local tools', () => {
   const reasoner = read('agents/ceos-reasoner-web.toml');
   const artDirector = read('agents/ceos-art-director-web.toml');
   assert.match(bulk, /name = "ceos_bulk_checker_web"/);
-  assert.match(bulk, /model = "chatgpt-web\/light"/);
+  assert.match(bulk, /model = "chatgpt-web\/high"/);
   assert.match(bulk, /must not inspect the repository or invoke tools/i);
   assert.match(reasoner, /name = "ceos_reasoner_web"/);
-  assert.match(reasoner, /model = "chatgpt-web\/medium"/);
+  assert.match(reasoner, /model = "chatgpt-web\/high"/);
   assert.match(reasoner, /must not inspect the repository or invoke tools/i);
   assert.match(artDirector, /name = "ceos_art_director_web"/);
   assert.match(artDirector, /model = "chatgpt-web\/high"/);

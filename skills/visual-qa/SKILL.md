@@ -12,3 +12,9 @@ At activation, run `ceos context --skill visual-qa --project .` when the CEOS CL
 **Intent:** verify rendered presentation in the real runtime/browser.
 
 Inspect declared viewport/locale/input matrix. Look for clipping, overflow, overlaps, unreadable text, stale/wrong locale, touch/control defects, console/page errors and runtime 404s. Source review alone does not satisfy a runtime visual claim when browser execution is available.
+
+## Pixel and mechanical gate
+
+Every visual verdict references current-runtime image evidence and records SHA-256, bytes, dimensions, current commit, viewport, state/cue and URL. A textual capture log, DOM assertion, OCR result, or `screenshot created` message is not visual evidence. Before independent multimodal review, validate that actual screenshot and character/reference pixels were supplied; otherwise return `BLOCKED`.
+
+For each affected viewport assert mechanically: content reaches all four viewport edges, no document or internal scroll chain, readable text, and no overlap of the primary action with text or controls. For authored cues, capture before/after pairs and match observed event id and asset hash to the current coverage ledger. Stale or missing ledgers are evidence gaps. Playwright timeout, unavailable browser, or inaccessible screenshot is `BLOCKED`/`EVIDENCE_GAP`, never `PASS`; functional, DOM, save/load, pagination and route checks cannot promote visual acceptance.
