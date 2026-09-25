@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { detectManifestForProject, gitState, loadPackageJson, manifestCandidates, SUPPORTED_PROFILES } from './ceos.mjs';
 
 const MANAGED_DIR = '.codex-os';
@@ -8,10 +9,11 @@ const REPORT_FILE = `${MANAGED_DIR}/adoption-report.json`;
 const STARTER_KIT_MARKERS = ['game-spec.yaml', 'config/skill-policy.json', '.starter-kit'];
 
 function exists(project, relative) { return fs.existsSync(path.join(project, relative)); }
-function readJson(file) {
+function hasScript(pkg, names) { return names.some(name => typeof pkg?.scripts?.[name] === 'string'); }
+function sha256(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
+function readReport(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
 }
-function hasScript(pkg, names) { return names.some(name => typeof pkg?.scripts?.[name] === 'string'); }
 
 export function detectAdoptionProfile(projectDir) {
   const project = path.resolve(projectDir);
@@ -55,24 +57,39 @@ export function planAdoption(projectDir, { profile, force = false } = {}) {
   const current = fs.existsSync(manifestFile) ? fs.readFileSync(manifestFile, 'utf8') : null;
   const proposed = manifestText(detected.manifest);
   const conflicts = [];
-  if (current !== null && !fs.existsSync(reportFile) && current !== proposed) {
+  const reportExists = fs.existsSync(reportFile);
+  const existingReport = reportExists ? readReport(reportFile) : null;
+  const currentSha = current === null ? null : sha256(current);
+  let confirmedManagedDrift = false;
+  if (current !== null && reportExists) {
+    if (!existingReport?.manifestSha256) {
+      conflicts.push(`Legacy or invalid adoption report has no manifestSha256; recovery is required before overwrite: ${reportFile}`);
+    } else if (existingReport.manifestSha256 !== currentSha) {
+      confirmedManagedDrift = true;
+      conflicts.push(`Managed drift: CEOS manifest checksum differs from adoption report: ${manifestFile}`);
+    }
+  } else if (current !== null && current !== proposed) {
     conflicts.push(`Existing CEOS manifest is not adoption-managed: ${manifestFile}`);
   }
+  const canRepairDrift = confirmedManagedDrift && force;
   const changes = [];
   if (current === null) changes.push({ action: 'create', path: MANAGED_MANIFEST });
-  else if (current !== proposed) changes.push({ action: 'update', path: MANAGED_MANIFEST });
+  else if (current !== proposed && (canRepairDrift || (!reportExists && conflicts.length === 0))) changes.push({ action: 'update', path: MANAGED_MANIFEST });
   const report = {
     schemaVersion: 1,
     operation: 'adoption',
     profile: detection.profile,
     detection,
+    manifestSha256: sha256(proposed),
     managedFiles: [MANAGED_MANIFEST, REPORT_FILE],
     projectOwnedPreserved: ['package.json', 'src/', 'public/', 'assets/', 'scripts/', 'tests/', 'game-spec.yaml'],
     manifest: detected.manifest
   };
-  if (!fs.existsSync(reportFile)) changes.push({ action: 'create', path: REPORT_FILE });
-  else if (fs.readFileSync(reportFile, 'utf8') !== `${JSON.stringify(report, null, 2)}\n`) changes.push({ action: 'update', path: REPORT_FILE });
-  return { status: conflicts.length ? 'CONFLICT' : (changes.length ? 'READY' : 'IN_SYNC'), project, profile: detection.profile, detection, manifest: detected.manifest, conflicts, changes, writes: changes.map(x => x.path), report };
+  if (!reportExists) changes.push({ action: 'create', path: REPORT_FILE });
+  else if (!confirmedManagedDrift && existingReport?.manifestSha256 === currentSha && current !== null) return { status: 'IN_SYNC', project, profile: detection.profile, detection, manifest: detected.manifest, conflicts: [], changes: [], writes: [], report: existingReport };
+  else if (canRepairDrift || (existingReport?.manifestSha256 === currentSha && current === null)) changes.push({ action: 'update', path: REPORT_FILE });
+  const status = conflicts.length && !canRepairDrift ? 'CONFLICT' : (changes.length ? 'READY' : 'IN_SYNC');
+  return { status, project, profile: detection.profile, detection, manifest: detected.manifest, conflicts, changes, writes: changes.map(x => x.path), report };
 }
 
 export function applyAdoption(plan) {
@@ -80,9 +97,11 @@ export function applyAdoption(plan) {
   if (plan.status === 'IN_SYNC') return { ...plan, applied: false };
   const root = path.join(plan.project, MANAGED_DIR);
   fs.mkdirSync(root, { recursive: true });
-  fs.writeFileSync(path.join(plan.project, ...MANAGED_MANIFEST.split('/')), manifestText(plan.manifest), 'utf8');
-  fs.writeFileSync(path.join(plan.project, ...REPORT_FILE.split('/')), `${JSON.stringify(plan.report, null, 2)}\n`, 'utf8');
-  return { ...plan, applied: true, status: 'APPLIED' };
+  const manifestFile = path.join(plan.project, ...MANAGED_MANIFEST.split('/'));
+  fs.writeFileSync(manifestFile, manifestText(plan.manifest), 'utf8');
+  const actualReport = { ...plan.report, manifestSha256: sha256(fs.readFileSync(manifestFile)) };
+  fs.writeFileSync(path.join(plan.project, ...REPORT_FILE.split('/')), `${JSON.stringify(actualReport, null, 2)}\n`, 'utf8');
+  return { ...plan, report: actualReport, applied: true, status: 'APPLIED' };
 }
 
 export function adoptionStatus(projectDir) {

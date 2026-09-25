@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { planAdoption, applyAdoption, detectAdoptionProfile } from '../src/adoption.mjs';
 
 function project({ starter = false, scripts = { test: 'node --test', build: 'node build.mjs' } } = {}) {
@@ -13,6 +14,9 @@ function project({ starter = false, scripts = { test: 'node --test', build: 'nod
   if (starter) fs.writeFileSync(path.join(root, 'game-spec.yaml'), 'title: test\n');
   return root;
 }
+function sha256(file) { return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
+function manifestFile(root) { return path.join(root, '.codex-os', 'project.yml'); }
+function reportFile(root) { return path.join(root, '.codex-os', 'adoption-report.json'); }
 
 test('adopts a clean existing Node project in dry-run without writes', () => {
   const root = project();
@@ -40,6 +44,30 @@ test('repeated adoption is idempotent', () => {
   assert.deepEqual(repeat.changes, []);
 });
 
+test('manual manifest edit is managed drift and is blocked without force', () => {
+  const root = project();
+  applyAdoption(planAdoption(root, { profile: 'node-web' }));
+  const before = fs.readFileSync(manifestFile(root));
+  fs.appendFileSync(manifestFile(root), '# user edit\n');
+  const plan = planAdoption(root, { profile: 'node-web' });
+  assert.equal(plan.status, 'CONFLICT');
+  assert.match(plan.conflicts[0], /Managed drift/);
+  assert.notDeepEqual(fs.readFileSync(manifestFile(root)), before);
+  assert.equal(fs.readFileSync(reportFile(root)).includes('manifestSha256'), true);
+});
+
+test('force repairs confirmed managed drift and records the new actual checksum', () => {
+  const root = project();
+  applyAdoption(planAdoption(root, { profile: 'node-web' }));
+  fs.appendFileSync(manifestFile(root), '# user edit\n');
+  const plan = planAdoption(root, { profile: 'node-web', force: true });
+  assert.equal(plan.status, 'READY');
+  const applied = applyAdoption(plan);
+  assert.equal(applied.status, 'APPLIED');
+  assert.equal(JSON.parse(fs.readFileSync(reportFile(root))).manifestSha256, sha256(manifestFile(root)));
+  assert.equal(planAdoption(root, { profile: 'node-web' }).status, 'IN_SYNC');
+});
+
 test('fails closed on an existing unmanaged CEOS manifest', () => {
   const root = project();
   fs.mkdirSync(path.join(root, '.codex-os'));
@@ -47,6 +75,47 @@ test('fails closed on an existing unmanaged CEOS manifest', () => {
   const plan = planAdoption(root, { profile: 'node-web' });
   assert.equal(plan.status, 'CONFLICT');
   assert.match(plan.conflicts[0], /not adoption-managed/);
+});
+
+test('force does not take over an unmanaged manifest', () => {
+  const root = project();
+  fs.mkdirSync(path.join(root, '.codex-os'));
+  const file = manifestFile(root);
+  fs.writeFileSync(file, 'user: owned\n');
+  const before = fs.readFileSync(file);
+  const plan = planAdoption(root, { profile: 'node-web', force: true });
+  assert.equal(plan.status, 'CONFLICT');
+  assert.deepEqual(fs.readFileSync(file), before);
+});
+
+test('legacy adoption report without checksum fails closed', () => {
+  const root = project();
+  applyAdoption(planAdoption(root, { profile: 'node-web' }));
+  fs.writeFileSync(reportFile(root), '{"schemaVersion":1}\n');
+  const before = fs.readFileSync(manifestFile(root));
+  const plan = planAdoption(root, { profile: 'node-web', force: true });
+  assert.equal(plan.status, 'CONFLICT');
+  assert.match(plan.conflicts[0], /no manifestSha256/);
+  assert.deepEqual(fs.readFileSync(manifestFile(root)), before);
+});
+
+test('dry-run managed drift performs zero writes', () => {
+  const root = project();
+  applyAdoption(planAdoption(root, { profile: 'node-web' }));
+  fs.appendFileSync(manifestFile(root), '# user edit\n');
+  const manifestBefore = fs.readFileSync(manifestFile(root));
+  const reportBefore = fs.readFileSync(reportFile(root));
+  const plan = planAdoption(root, { profile: 'node-web', force: true });
+  assert.equal(plan.status, 'READY');
+  assert.deepEqual(fs.readFileSync(manifestFile(root)), manifestBefore);
+  assert.deepEqual(fs.readFileSync(reportFile(root)), reportBefore);
+});
+
+test('adoption report checksum matches the manifest actually written', () => {
+  const root = project();
+  applyAdoption(planAdoption(root, { profile: 'node-web' }));
+  const report = JSON.parse(fs.readFileSync(reportFile(root)));
+  assert.equal(report.manifestSha256, sha256(manifestFile(root)));
 });
 
 test('preserves user files and npm scripts', () => {
@@ -71,7 +140,6 @@ test('partially CEOS-managed project remains safe and converges', () => {
   fs.writeFileSync(path.join(root, '.codex-os', 'project.yml'), 'version: 1\nprofile: node-web\ncommands: {}\n');
   fs.writeFileSync(path.join(root, '.codex-os', 'adoption-report.json'), '{}\n');
   const plan = planAdoption(root, { profile: 'node-web' });
-  assert.equal(plan.status, 'READY');
-  applyAdoption(plan);
-  assert.equal(planAdoption(root, { profile: 'node-web' }).status, 'IN_SYNC');
+  assert.equal(plan.status, 'CONFLICT');
+  assert.match(plan.conflicts[0], /no manifestSha256/);
 });
