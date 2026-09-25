@@ -1,4 +1,4 @@
-name: CEOS 0.5.1 Release Gate
+name: CEOS 0.5.3 Release Gate
 
 on:
   pull_request:
@@ -20,7 +20,7 @@ jobs:
           node-version: '22'
       - name: Version read-back
         run: |
-          test "$(cat VERSION)" = "0.5.1"
+          test "$(cat VERSION)" = "0.5.3"
           node ./bin/ceos.mjs version
       - name: Unit and regression tests
         run: npm test
@@ -36,22 +36,22 @@ jobs:
       - name: Package source archive
         shell: bash
         run: |
-          mkdir -p release-stage/codex-engineering-system-0.5.1
+          mkdir -p release-stage/codex-engineering-system-0.5.3
           git ls-files -z | while IFS= read -r -d '' file; do
-            mkdir -p "release-stage/codex-engineering-system-0.5.1/$(dirname "$file")"
-            cp "$file" "release-stage/codex-engineering-system-0.5.1/$file"
+            mkdir -p "release-stage/codex-engineering-system-0.5.3/$(dirname "$file")"
+            cp "$file" "release-stage/codex-engineering-system-0.5.3/$file"
           done
-          cp INSTALL.md release-stage/codex-engineering-system-0.5.1/INSTALL-0.5.1.md
+          cp INSTALL.md release-stage/codex-engineering-system-0.5.3/INSTALL-0.5.3.md
           cd release-stage
-          zip -r ../codex-engineering-system-0.5.1.zip codex-engineering-system-0.5.1
+          zip -r ../codex-engineering-system-0.5.3.zip codex-engineering-system-0.5.3
           cd ..
-          sha256sum codex-engineering-system-0.5.1.zip > codex-engineering-system-0.5.1.zip.sha256
+          sha256sum codex-engineering-system-0.5.3.zip > codex-engineering-system-0.5.3.zip.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: codex-engineering-system-0.5.1
+          name: codex-engineering-system-0.5.3
           path: |
-            codex-engineering-system-0.5.1.zip
-            codex-engineering-system-0.5.1.zip.sha256
+            codex-engineering-system-0.5.3.zip
+            codex-engineering-system-0.5.3.zip.sha256
           if-no-files-found: error
           retention-days: 90
 
@@ -75,7 +75,7 @@ jobs:
       - name: Verify installed package is isolated from worktree
         shell: powershell
         run: |
-          if ((ceos version).Trim() -ne '0.5.1') { throw "Unexpected CEOS version: $(ceos version)" }
+          if ((ceos version).Trim() -ne '0.5.3') { throw "Unexpected CEOS version: $(ceos version)" }
 
           $globalRoot = (& npm root -g).Trim()
           $packageDir = Join-Path $globalRoot 'codex-engineering-os'
