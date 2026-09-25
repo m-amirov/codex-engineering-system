@@ -63,7 +63,13 @@ test('visual workflows carry bounded Web rate-limit and attachment transport pol
   const os = await import('node:os');
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ceos-web-transport-context-'));
   fs.mkdirSync(path.join(temp, '.codex-os'), { recursive: true });
-  fs.writeFileSync(path.join(temp, '.codex-os', 'project.yml'), 'version: 1\nprofile: generic\ncommands: {}\ngates: {}\nproduction:\n  access: read-only\n');
+  fs.writeFileSync(path.join(temp, '.codex-os', 'project.json'), JSON.stringify({
+    version: 1,
+    profile: 'generic',
+    commands: { ok: 'node -e ""' },
+    gates: { verification: ['ok'] },
+    production: { access: 'read-only' }
+  }));
   const context = renderContext(temp, 'visual-qa');
   assert.match(context, /Web Transport, Rate Limit & Attachment Policy/);
 });

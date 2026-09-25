@@ -23,7 +23,7 @@ function retryAfterSeconds(response, body) {
       if (Number.isFinite(at)) candidates.push(Math.max(0, (at - Date.now()) / 1000));
     }
   }
-  const finite = candidates.map(Number).filter(x => Number.isFinite(x) && x >= 0);
+  const finite = candidates.filter(x => x !== null && x !== undefined && x !== '').map(Number).filter(x => Number.isFinite(x) && x >= 0);
   return finite.length ? Math.ceil(Math.max(...finite)) : null;
 }
 
