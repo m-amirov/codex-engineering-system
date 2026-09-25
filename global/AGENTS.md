@@ -59,11 +59,9 @@ When Web routing is disabled or unavailable, use the native agents:
 
 ## Web transport pacing and cooldown
 
-Follow `policies/web-transport.md` whenever a CEOS Web route is used. Attachment-heavy Web High review is sequential, with a conservative minimum 20-second gap between attachment-bearing turns. Explicit "too many requests", HTTP 429, usage-limit or Retry-After signals are `RATE_LIMITED`: use 120s, then 300s, then 600s cooldowns for consecutive events and stop the automated route as `BLOCKED: WEB_RATE_LIMITED` after the third event instead of retry-storming. A longer explicit Retry-After wins.
+Follow `policies/web-transport.md`. For attachment-heavy Web High review, send turns sequentially with at least 20s between attachment-bearing turns. Explicit 429/"too many requests"/usage-limit signals use bounded 120s → 300s → 600s cooldown; after the third event stop as `BLOCKED: WEB_RATE_LIMITED`. A longer Retry-After wins.
 
-Generic attachment failures are not automatically rate limits. Retry only the failed attachment turn after 30s, then 60s; after two retries, block the required review. Transport/rate-limit retries do not consume image-generation or repair-cycle budgets. If required visual pixels were actually received and the reviewer returned REWORK/FAIL, treat that as a semantic result, not transport failure.
-
-For runtime visual review, production dialogue/navigation UI is expected runtime chrome and must not be confused with baked UI inside the underlying generated asset. Review raw asset pixels separately when this distinction is ambiguous.
+Generic attachment failures are not rate limits: retry only the failed turn after 30s, then 60s, and block after two retries. Transport retries do not consume generation/repair cycles. A pixel-backed REWORK/FAIL is semantic, not transport. Runtime dialogue/navigation chrome is expected UI, not baked UI inside the asset.
 
 ## Production art pipeline
 
