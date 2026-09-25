@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { planAdoption, applyAdoption, detectAdoptionProfile } from '../src/adoption.mjs';
 
 function project({ starter = false, scripts = { test: 'node --test', build: 'node build.mjs' } } = {}) {
@@ -116,6 +117,14 @@ test('adoption report checksum matches the manifest actually written', () => {
   applyAdoption(planAdoption(root, { profile: 'node-web' }));
   const report = JSON.parse(fs.readFileSync(reportFile(root)));
   assert.equal(report.manifestSha256, sha256(manifestFile(root)));
+});
+
+test('adopt help is side-effect free and does not enter adoption', () => {
+  const result = spawnSync(process.execPath, ['bin/ceos.mjs', 'adopt', '--help'], {
+    cwd: path.resolve('.'), encoding: 'utf8'
+  });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Usage: ceos adopt --project/);
 });
 
 test('preserves user files and npm scripts', () => {

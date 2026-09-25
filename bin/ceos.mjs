@@ -137,6 +137,11 @@ try {
       break;
     }
     case 'adopt': {
+      if (args.help) {
+        console.log('Usage: ceos adopt --project <dir> [--profile <profile>] [--dry-run] [--force] [--json]');
+        console.log('Adds only CEOS-owned .codex-os adoption files; dry-run plans without writes.');
+        break;
+      }
       const plan = planAdoption(project, { profile: args.profile, force: Boolean(args.force) });
       if (args['dry-run']) {
         print(plan, Boolean(args.json));
