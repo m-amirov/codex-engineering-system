@@ -5,6 +5,7 @@ import { CEOS_ROOT, VERSION, SUPPORTED_PROFILES, SKILL_NAMES, resolveProject, lo
 import { webPreflight } from '../src/web-preflight.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { createRun, recordCheckpoint, refreshRunCapabilities, resumeRun, executionStatus, recordRoutingTrace, EXECUTION_PIPELINES } from '../src/execution-engine.mjs';
+import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -89,6 +90,7 @@ function usage() {
 
 Usage:
   ceos init --profile <profile> [--project dir]
+  ceos adopt --project dir [--profile profile] [--dry-run] [--force] [--json]
   ceos status [--project dir] [--json]
   ceos doctor [--project dir] [--json]
   ceos gates [--mode verification|release] [--project dir] [--json]
@@ -132,6 +134,23 @@ try {
         if (selected.length) console.log(`Detected npm scripts: ${selected.join(', ')}`);
         if (detection.missing?.length) console.log(`Not configured (no known npm script): ${detection.missing.join(', ')}`);
       } else for (const note of detection.notes ?? []) console.log(`Note: ${note}`);
+      break;
+    }
+    case 'adopt': {
+      const plan = planAdoption(project, { profile: args.profile, force: Boolean(args.force) });
+      if (args['dry-run']) {
+        print(plan, Boolean(args.json));
+      } else if (!args.json) {
+        console.log(`Adoption ${plan.status}: ${plan.project}`);
+        console.log(`Profile: ${plan.profile ?? '(undetermined)'}`);
+        for (const change of plan.changes) console.log(`${change.action}: ${change.path}`);
+        for (const conflict of plan.conflicts) console.log(`CONFLICT: ${conflict}`);
+      }
+      if (!args['dry-run'] && plan.status === 'READY') {
+        const applied = applyAdoption(plan);
+        if (args.json) print(applied, true); else console.log('VERDICT: APPLIED');
+      } else if (!args['dry-run'] && args.json) print(plan, true);
+      process.exitCode = ['READY', 'IN_SYNC', 'APPLIED'].includes(plan.status) ? 0 : 2;
       break;
     }
     case 'status': {

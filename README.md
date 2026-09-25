@@ -12,6 +12,20 @@ The engine owns legal stage order, scope/capability snapshots, cycle limits, che
 
 ## Core commands
 
+### Adopt an existing project
+
+Adoption adds only the CEOS-owned `.codex-os` manifest and report to an
+existing project. Discovery is dry-run first; source, npm scripts, Starter Kit
+files, assets, and release infrastructure remain project-owned.
+
+```powershell
+ceos adopt --project E:/Work/existing-project --dry-run --json
+ceos adopt --project E:/Work/existing-project --profile yandex-games
+```
+
+An undetermined profile or unmanaged existing CEOS manifest fails closed. A
+successful repeat reports `IN_SYNC` and performs no writes.
+
 ```powershell
 ceos capabilities --project . --json
 
