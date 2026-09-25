@@ -57,6 +57,14 @@ When Web routing is disabled or unavailable, use the native agents:
 - `ceos_reviewer`: correctness/security/architecture/production-risk review.
 - `ceos_verifier`: independent final verification.
 
+## Web transport pacing and cooldown
+
+Follow `policies/web-transport.md` whenever a CEOS Web route is used. Attachment-heavy Web High review is sequential, with a conservative minimum 20-second gap between attachment-bearing turns. Explicit "too many requests", HTTP 429, usage-limit or Retry-After signals are `RATE_LIMITED`: use 120s, then 300s, then 600s cooldowns for consecutive events and stop the automated route as `BLOCKED: WEB_RATE_LIMITED` after the third event instead of retry-storming. A longer explicit Retry-After wins.
+
+Generic attachment failures are not automatically rate limits. Retry only the failed attachment turn after 30s, then 60s; after two retries, block the required review. Transport/rate-limit retries do not consume image-generation or repair-cycle budgets. If required visual pixels were actually received and the reviewer returned REWORK/FAIL, treat that as a semantic result, not transport failure.
+
+For runtime visual review, production dialogue/navigation UI is expected runtime chrome and must not be confused with baked UI inside the underlying generated asset. Review raw asset pixels separately when this distinction is ambiguous.
+
 ## Production art pipeline
 
 When the user asks to create, replace, or integrate production image assets, activate `production-art` rather than treating image generation as an incidental implementation detail.

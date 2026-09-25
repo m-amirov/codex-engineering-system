@@ -110,3 +110,36 @@ test('Web preflight accepts the all-High CEOS routing manifest', async () => {
   });
   assert.equal(result.status, 'READY');
 });
+
+
+test('Web preflight classifies HTTP 429 as RATE_LIMITED and preserves Retry-After', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({
+      ok: false,
+      status: 429,
+      headers: { get: name => name.toLowerCase() === 'retry-after' ? '180' : null },
+      json: async () => ({ message: 'Too many requests' })
+    })
+  });
+  assert.equal(result.status, 'RATE_LIMITED');
+  assert.equal(result.ready, false);
+  assert.equal(result.fallbackAllowed, true);
+  assert.equal(result.retryAfterSeconds, 180);
+});
+
+test('Web preflight classifies explicit bridge cooldown body as RATE_LIMITED', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({ status: 'ok', accepting_turns: false, rate_limited: true, retry_after_ms: 125000 })
+    })
+  });
+  assert.equal(result.status, 'RATE_LIMITED');
+  assert.equal(result.retryAfterSeconds, 125);
+});

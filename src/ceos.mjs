@@ -24,14 +24,14 @@ export const GLOBAL_AGENT_FILES = [
 ];
 
 const SKILL_POLICY_MAP = {
-  audit: ['safety', 'evidence', 'git', 'testing', 'stop-conditions'],
-  'audit-repair-loop': ['safety', 'evidence', 'git', 'testing', 'production', 'native-delegation', 'stop-conditions'],
+  audit: ['safety', 'evidence', 'git', 'testing', 'web-transport', 'stop-conditions'],
+  'audit-repair-loop': ['safety', 'evidence', 'git', 'testing', 'production', 'native-delegation', 'web-transport', 'stop-conditions'],
   fix: ['safety', 'evidence', 'git', 'testing', 'stop-conditions'],
-  verification: ['safety', 'evidence', 'testing', 'stop-conditions'],
+  verification: ['safety', 'evidence', 'testing', 'web-transport', 'stop-conditions'],
   release: ['safety', 'evidence', 'git', 'testing', 'stop-conditions'],
-  'visual-qa': ['safety', 'evidence', 'testing', 'stop-conditions'],
+  'visual-qa': ['safety', 'evidence', 'testing', 'web-transport', 'stop-conditions'],
   'romance-narrative': ['safety', 'evidence', 'native-delegation', 'stop-conditions'],
-  'production-art': ['safety', 'evidence', 'git', 'testing', 'stop-conditions'],
+  'production-art': ['safety', 'evidence', 'git', 'testing', 'web-transport', 'stop-conditions'],
   'prod-check': ['safety', 'evidence', 'production', 'stop-conditions'],
   'incident-analysis': ['safety', 'evidence', 'testing', 'stop-conditions']
 };

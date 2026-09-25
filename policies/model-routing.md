@@ -49,7 +49,8 @@ The preflight reads `$CODEX_HOME/ceos/hybrid-routing.json` and probes the local 
 - `DISABLED` — CEOS policy disables Web routing;
 - `NOT_CONFIGURED` — no usable hybrid-routing manifest exists;
 - `UNAVAILABLE` — configured Web runtime/transport is not reachable or healthy;
-- `NOT_ACCEPTING_TURNS` — the bridge is alive but currently refuses new turns.
+- `NOT_ACCEPTING_TURNS` — the bridge is alive but currently refuses new turns;
+- `RATE_LIMITED` — the bridge/backend explicitly reports HTTP 429 or a rate/cooldown condition; obey Retry-After when present and follow `policies/web-transport.md`.
 
 For `audit-repair-loop`, `READY` means substantive audit must actually use the applicable Web reviewer. For `production-art`, `READY` means substantive art-direction/review work should use `ceos_art_director_web` when visual canon or consistency judgment is in scope. Do not silently choose native-only review merely because it is convenient when the task explicitly requires Web review.
 
@@ -70,6 +71,8 @@ A Web-backed claim with no Web agent in the routing trace is invalid. This makes
 Each delegated Web task gets at most one native fallback. The fallback is permitted only for route/backend/transport/runtime unavailability. Semantic outcomes — defects, uncertainty, rejected hypotheses, or poor task results — are not transport failures and must not trigger a second model run.
 
 If the user explicitly requires Web review, a non-ready Web route is `BLOCKED`; native fallback may provide diagnostic help but does not satisfy the requested audit backend.
+
+Rate-limit and attachment failures must first be classified under `policies/web-transport.md`. Explicit rate limits use bounded cooldown rather than immediate repeated requests; generic attachment-stream failure is not enough to infer a rate limit. A semantic REWORK/FAIL after the reviewer received the supplied evidence is never a transport failure.
 
 This prevents hidden double execution, retry storms, quota-evasion behavior, and result shopping.
 

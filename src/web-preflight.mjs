@@ -9,6 +9,35 @@ function stripUtf8Bom(text) {
   return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
 }
 
+function retryAfterSeconds(response, body) {
+  const candidates = [
+    body?.retry_after_seconds,
+    Number.isFinite(body?.retry_after_ms) ? body.retry_after_ms / 1000 : null
+  ];
+  const header = response?.headers?.get?.('retry-after');
+  if (header != null && header !== '') {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) candidates.push(seconds);
+    else {
+      const at = Date.parse(header);
+      if (Number.isFinite(at)) candidates.push(Math.max(0, (at - Date.now()) / 1000));
+    }
+  }
+  const finite = candidates.map(Number).filter(x => Number.isFinite(x) && x >= 0);
+  return finite.length ? Math.ceil(Math.max(...finite)) : null;
+}
+
+function bodySignalsRateLimit(body) {
+  const status = String(body?.status ?? '').toLowerCase();
+  const code = String(body?.code ?? body?.error?.code ?? '').toLowerCase();
+  const detail = String(body?.reason ?? body?.message ?? body?.error?.message ?? '').toLowerCase();
+  return body?.rate_limited === true ||
+    status === 'rate_limited' ||
+    code === '429' ||
+    code === 'rate_limited' ||
+    /too many requests|rate[ _-]?limit|usage limit|cooldown/.test(detail);
+}
+
 export function readHybridRoutingManifest({ homeDir = os.homedir(), codexHome } = {}) {
   const resolvedCodexHome = resolveCodexHome({ homeDir, codexHome });
   const file = path.join(resolvedCodexHome, 'ceos', 'hybrid-routing.json');
@@ -71,6 +100,17 @@ export async function webPreflight({
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchImpl(healthUrl, { method: 'GET', signal: controller.signal });
+    let body = null;
+    try { body = await response.json(); } catch {}
+    const retryAfter = retryAfterSeconds(response, body);
+    if (response.status === 429 || bodySignalsRateLimit(body)) {
+      return {
+        status: 'RATE_LIMITED', enabled: true, ready: false, fallbackAllowed: true,
+        reason: response.status === 429 ? 'health endpoint returned HTTP 429' : 'Web bridge reported an explicit rate/cooldown condition',
+        manifestFile: routing.file, healthUrl, httpStatus: response.status,
+        retryAfterSeconds: retryAfter
+      };
+    }
     if (!response.ok) {
       return {
         status: 'UNAVAILABLE', enabled: true, ready: false, fallbackAllowed: true,
@@ -78,8 +118,6 @@ export async function webPreflight({
         manifestFile: routing.file, healthUrl, httpStatus: response.status
       };
     }
-    let body = null;
-    try { body = await response.json(); } catch {}
     const healthy = body?.status === 'ok';
     const acceptingTurns = body?.accepting_turns !== false;
     if (!healthy || !acceptingTurns) {

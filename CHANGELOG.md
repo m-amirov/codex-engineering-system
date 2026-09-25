@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — 2026-09-25
+
+- Added a shared Web transport/rate-limit policy for CEOS Web High routes, with explicit separation of semantic REWORK/FAIL from transport failures.
+- Added conservative anti-burst pacing for attachment-heavy review, bounded 120s → 300s → 600s rate-limit cooldown, and bounded attachment-only retry handling that does not consume generation/repair cycles.
+- Added runtime-UI vs baked-UI guidance for visual review so production dialogue/navigation chrome is not misclassified as image content.
+- Extended `ceos web-preflight` to report explicit `RATE_LIMITED` state for HTTP 429 / bridge cooldown signals and preserve Retry-After when available.
+- Added regression coverage ensuring visual workflows resolve the new policy and preflight classifies rate limits deterministically.
+
+
 ## 0.5.1 — 2026-09-18
 
 - Changed Windows/global installation to build a temporary `npm pack` archive and install the archive instead of running `npm install -g` directly against the CEOS Git worktree.

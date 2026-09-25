@@ -45,3 +45,25 @@ test('visual acceptance requires actual pixels and mechanical runtime measuremen
   assert.match(evidence, /actual pixels were supplied/i);
   assert.match(stop, /screenshot pixels or reference-image pixels/i);
 });
+
+
+test('visual workflows carry bounded Web rate-limit and attachment transport policy', async () => {
+  const transport = read('policies/web-transport.md');
+  const visual = read('skills/visual-qa/SKILL.md');
+  const production = read('skills/production-art/SKILL.md');
+  assert.match(transport, /120 seconds/);
+  assert.match(transport, /300 seconds/);
+  assert.match(transport, /600 seconds/);
+  assert.match(transport, /ATTACHMENT_TRANSPORT/);
+  assert.match(transport, /actualPixelsReceived=true/);
+  assert.match(visual, /Production reader\/dialogue\/navigation overlays/i);
+  assert.match(production, /do not consume the bounded generation\/regeneration cycle count/i);
+
+  const { renderContext } = await import('../src/ceos.mjs');
+  const os = await import('node:os');
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ceos-web-transport-context-'));
+  fs.mkdirSync(path.join(temp, '.codex-os'), { recursive: true });
+  fs.writeFileSync(path.join(temp, '.codex-os', 'project.yml'), 'version: 1\nprofile: generic\ncommands: {}\ngates: {}\nproduction:\n  access: read-only\n');
+  const context = renderContext(temp, 'visual-qa');
+  assert.match(context, /Web Transport, Rate Limit & Attachment Policy/);
+});

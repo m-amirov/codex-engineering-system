@@ -61,3 +61,12 @@ Record at least:
 - `native_fallback_used` and reason, if any.
 
 Production-art does not grant permission for deployment, publication, store submission, paid generation services, or other external writes beyond the user's existing authorization.
+
+
+## Web High rate-limit and attachment handling
+
+Independent art review follows `policies/web-transport.md`. Pace attachment-heavy turns sequentially, reuse accepted reference context when possible, and send runtime screenshots one per turn when multi-attachment delivery is unstable.
+
+Rate-limit or attachment-transport retries do not consume the bounded generation/regeneration cycle count. Do not regenerate an accepted/current asset because the reviewer failed to receive attachments. Only a semantic REWORK/FAIL after the reviewer actually received the required pixels can justify a repair/regeneration cycle.
+
+If Web review is required and the bounded cooldown/retry policy is exhausted, keep the current integrated assets/evidence intact and return `BLOCKED`.
