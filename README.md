@@ -80,7 +80,13 @@ SCOPE_LOCKED
 
 `GENERATING` is mechanically rejected unless the current capability snapshot says `imageGeneration.status=available`.
 
-The standalone Node CLI cannot inspect the host model's private tool catalog. Image Gen therefore uses explicit runtime attestation:
+The standalone Node CLI cannot inspect the host model's private tool catalog. A host integration may persist a callable inventory at `$CODEX_HOME/ceos/native-capabilities.json`:
+
+```json
+{"capabilities":{"image-generation":{"provider":"native-host","callable":true}}}
+```
+
+Callable presence is reported separately from service availability and does not claim quota availability. The host may also attest `serviceAvailability` as `available`, `rate_limited`, or `usage_limit_reached` when it has evidence. Without that field, service availability remains `unknown` and production-art stays fail-closed. The legacy explicit runtime attestation remains supported:
 
 ```powershell
 ceos capabilities --image-generation available

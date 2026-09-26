@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { VERSION, loadManifest, loadPackageJson, resolveCodexHome } from './ceos.mjs';
 
 const IMAGE_STATES = new Set(['available', 'unavailable', 'unknown']);
+const SERVICE_STATES = new Set(['available', 'rate_limited', 'usage_limit_reached', 'unknown']);
 
 function commandProbe(command, args = ['--version']) {
   const result = spawnSync(command, args, {
@@ -30,16 +31,34 @@ function access(pathname, mode) {
   }
 }
 
-function normalizeImageGeneration(value) {
+function readHostCapabilityInventory(codexHome) {
+  const file = path.join(codexHome, 'ceos', 'native-capabilities.json');
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return { file, capability: data?.capabilities?.['image-generation'] ?? null };
+  } catch {
+    return { file, capability: null };
+  }
+}
+
+function normalizeImageGeneration(value, codexHome) {
   const fromOption = value == null ? null : String(value).trim().toLowerCase();
   const fromEnv = process.env.CEOS_IMAGE_GENERATION_CAPABILITY?.trim().toLowerCase() || null;
-  const selected = fromOption || fromEnv || 'unknown';
-  if (!IMAGE_STATES.has(selected)) {
-    throw new Error(`image-generation capability must be one of: ${[...IMAGE_STATES].join(', ')}`);
+  if (fromOption || fromEnv) {
+    const selected = fromOption || fromEnv;
+    if (!IMAGE_STATES.has(selected)) throw new Error(`image-generation capability must be one of: ${[...IMAGE_STATES].join(', ')}`);
+    return { status: selected, capabilityPresence: selected === 'available' ? 'PRESENT' : selected === 'unavailable' ? 'ABSENT' : 'UNKNOWN', serviceAvailability: selected, provider: 'native-host', callable: selected === 'available', source: fromOption ? 'cli-attestation' : 'environment-attestation' };
   }
+  const inventory = readHostCapabilityInventory(codexHome);
+  const capability = inventory.capability;
+  const callable = capability?.callable === true;
+  const serviceAvailability = capability?.serviceAvailability ?? 'unknown';
+  if (!SERVICE_STATES.has(serviceAvailability)) throw new Error(`host image-generation serviceAvailability must be one of: ${[...SERVICE_STATES].join(', ')}`);
   return {
-    status: selected,
-    source: fromOption ? 'cli-attestation' : fromEnv ? 'environment-attestation' : 'unobserved'
+    status: serviceAvailability === 'available' ? 'available' : serviceAvailability === 'usage_limit_reached' ? 'unavailable' : 'unknown',
+    capabilityPresence: capability ? (callable ? 'PRESENT' : 'ABSENT') : 'UNKNOWN',
+    serviceAvailability, provider: capability?.provider ?? 'native-host', callable,
+    source: capability ? 'host-attestation' : 'unobserved', attestationFile: inventory.file
   };
 }
 
@@ -101,7 +120,7 @@ export function collectCapabilities(projectDir, {
   const nodeProbe = { available: true, exitCode: 0, version: process.version, error: null };
   const npmProbe = commandProbe(process.platform === 'win32' ? 'npm.cmd' : 'npm');
   const gitProbe = commandProbe('git');
-  const image = normalizeImageGeneration(imageGeneration);
+  const image = normalizeImageGeneration(imageGeneration, resolvedCodexHome);
   const nativeAgents = installedNativeAgents(resolvedCodexHome);
 
   const web = webPreflightResult ? {
@@ -155,7 +174,7 @@ export function collectCapabilities(projectDir, {
     imageGeneration: image,
     nativeAgents,
     limitations: [
-      ...(image.status === 'unknown' ? ['Native image generation cannot be introspected by the standalone Node CLI; the host must attest availability with --image-generation or CEOS_IMAGE_GENERATION_CAPABILITY.'] : []),
+      ...(image.source === 'unobserved' ? ['Native image-generation capability has no host attestation; write $CODEX_HOME/ceos/native-capabilities.json or use the explicit CLI/environment override.'] : []),
       ...(!manifest ? ['No CEOS project manifest was resolved; project-native gate discovery is limited.'] : [])
     ]
   };
