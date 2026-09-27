@@ -528,14 +528,22 @@ function quoteCommandArg(value) {
   return `"${String(value).replace(/"/g, '\\"')}"`;
 }
 
+function windowsCommand(command) {
+  return command.replace(/"([^"]*)"/g, (_match, value) => value.includes(' ') ? `"${value}"` : value);
+}
+
 function ceosHookHandler(command) {
   return {
     type: 'command',
     command,
-    commandWindows: command,
-    timeout: 5,
+    commandWindows: windowsCommand(command),
+    timeout: 3,
     statusMessage: CEOS_HOOK_STATUS
   };
+}
+
+export function removeCeosHooksFromToml(existing = '') {
+  return String(existing).replace(/\r?\n?# CEOS runtime freshness hooks begin[\s\S]*?# CEOS runtime freshness hooks end\r?\n?/g, '\n');
 }
 
 function isCeosHookHandler(handler) {
@@ -577,7 +585,7 @@ function hasCeosHooks(file, command) {
     return CEOS_HOOK_EVENTS.every(event =>
       Array.isArray(data?.hooks?.[event]) &&
       data.hooks[event].some(group => Array.isArray(group?.hooks) && group.hooks.some(handler =>
-        isCeosHookHandler(handler) && handler.command === command && handler.commandWindows === command
+        isCeosHookHandler(handler) && handler.command === command && handler.commandWindows === windowsCommand(command)
       ))
     );
   } catch { return false; }

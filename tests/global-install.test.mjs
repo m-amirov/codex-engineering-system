@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import {
   GLOBAL_AGENT_FILES,
   GLOBAL_INSTRUCTIONS_BEGIN,
@@ -13,6 +14,7 @@ import {
   installGlobal,
   mergeGlobalInstructions,
   mergeHooksConfig,
+  removeCeosHooksFromToml,
   routingTable
 } from '../src/ceos.mjs';
 
@@ -170,4 +172,29 @@ test('global install preserves pre-existing user hooks', () => {
   installGlobal({ homeDir: p.home, codexHome: p.codexHome });
   const hooks = JSON.parse(fs.readFileSync(path.join(p.codexHome, 'hooks.json'), 'utf8'));
   assert.ok(hooks.hooks.SessionStart.some(group => group.hooks.some(h => h.command === 'echo keep-me')));
+});
+
+test('CEOS hook representation is single-source and uses the Windows-safe timeout', () => {
+  const merged = JSON.parse(mergeHooksConfig('', '"C:\\Program Files\\nodejs\\node.exe" "C:\\ceos-runtime-context.mjs"'));
+  for (const event of ['SessionStart', 'UserPromptSubmit', 'SessionEnd']) {
+    const handlers = merged.hooks[event].flatMap(group => group.hooks ?? []).filter(h => h.statusMessage === 'CEOS runtime freshness');
+    assert.equal(handlers.length, 1);
+    assert.equal(handlers[0].timeout, 3);
+    assert.notEqual(handlers[0].commandWindows, handlers[0].command);
+  }
+  const toml = '# user hook\n# CEOS runtime freshness hooks begin\n[[hooks.SessionStart]]\n# CEOS runtime freshness hooks end\n';
+  assert.equal(removeCeosHooksFromToml(toml), '# user hook\n');
+});
+
+test('installed Windows hook command executes through cmd without quoted executable failure', () => {
+  const p = paths(fakeHome());
+  installGlobal({ homeDir: p.home, codexHome: p.codexHome, mode: 'copy' });
+  const hooks = JSON.parse(fs.readFileSync(path.join(p.codexHome, 'hooks.json'), 'utf8'));
+  const handler = hooks.hooks.UserPromptSubmit[0].hooks[0];
+  const result = spawnSync('cmd.exe', ['/d', '/s', '/c', handler.commandWindows], {
+    input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: 's', turn_id: 't' }),
+    encoding: 'utf8'
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(fs.existsSync(path.join(p.codexHome, 'ceos', 'runtime', 'current-turn.json')));
 });
