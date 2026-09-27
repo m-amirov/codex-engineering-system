@@ -26,14 +26,7 @@ The standalone CLI does not secretly execute Codex/Web agents. The parent agent 
 
 ### Native capability attestation
 
-User-level CEOS hooks record the current Codex `session_id` and `turn_id`. These freshness markers do **not** claim that a native tool exists. When a production-art run reaches `GENERATING` without fresh trusted Image Gen evidence:
-
-1. Run `ceos capability-challenge latest`.
-2. Inspect only the callable tools actually exposed to the **current Codex turn**. Do not infer from config, plan, old files, Web tools, CLI/env overrides, or documentation.
-3. If `image_gen.imagegen` is callable, answer the challenge with `PRESENT` and `serviceAvailability=UNKNOWN`. If it is not exposed, answer `ABSENT`.
-4. Do not call Image Gen merely to probe quota/availability. Update service availability only from the result of a real user-required generation call.
-
-A run-scoped `PRESENT + UNKNOWN` observation permits the first real generation attempt. Manual CLI/environment capability overrides remain diagnostic-only and cannot unlock the production generation gate. Missing/untrusted hooks, stale session/turn evidence, challenge replay, or ambiguous tool exposure must remain fail-closed.
+For production-art, use a fresh run-scoped `ceos capability-challenge` before `GENERATING`. Attest `image_gen.imagegen` only from the current Codex turn; do not probe by generation. Manual/env state is diagnostic-only. `PRESENT + UNKNOWN` permits the first real invocation; stale/replayed evidence fails closed.
 
 ## Native delegation budget (especially literary tasks)
 
