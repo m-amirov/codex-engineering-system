@@ -125,3 +125,10 @@ ceos verify --project E:\Work\YandexGames\MyGame
 ```
 
 For Yandex Games, bootstrap a new project through the official Starter Kit first. CEOS attaches after bootstrap and does not replace Starter Kit infrastructure.
+
+
+## Native capability freshness hooks
+
+CEOS 0.5.4 installs a small user-level Codex hook into `$CODEX_HOME/hooks.json` for `SessionStart`, `UserPromptSubmit`, and `SessionEnd`. The hook records only session/turn freshness under `$CODEX_HOME/ceos/runtime`; it does not infer native tool presence.
+
+Codex requires non-managed hooks to be reviewed/trusted before they execute. If the CEOS hook is not trusted or is disabled by managed policy, native image generation remains fail-closed for production-art. Use `ceos capability-challenge latest` only from the active Codex turn immediately before `GENERATING`.
