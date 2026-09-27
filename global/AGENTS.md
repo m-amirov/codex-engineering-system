@@ -26,7 +26,7 @@ The standalone CLI does not secretly execute Codex/Web agents. The parent agent 
 
 ### Native capability attestation
 
-For production-art, use a fresh run-scoped `ceos capability-challenge` before `GENERATING`. Attest `image_gen.imagegen` only from the current Codex turn; do not probe by generation. Manual/env state is diagnostic-only. `PRESENT + UNKNOWN` permits the first real invocation; stale/replayed evidence fails closed.
+For production-art, use a fresh run-scoped `ceos capability-challenge`; manual/env evidence cannot unlock `GENERATING`.
 
 ## Native delegation budget (especially literary tasks)
 
