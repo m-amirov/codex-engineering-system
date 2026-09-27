@@ -12,6 +12,7 @@ import {
   globalStatus,
   installGlobal,
   mergeGlobalInstructions,
+  mergeHooksConfig,
   routingTable
 } from '../src/ceos.mjs';
 
@@ -26,7 +27,7 @@ test('global install creates instructions, custom agents, user skills and manife
   const p = paths(fakeHome());
   const r = installGlobal({ homeDir: p.home, codexHome: p.codexHome, mode: 'copy' });
   assert.equal(r.status.ok, true);
-  assert.equal(r.changes.length, 1 + GLOBAL_AGENT_FILES.length + SKILL_NAMES.length + 1);
+  assert.equal(r.changes.length, 1 + GLOBAL_AGENT_FILES.length + SKILL_NAMES.length + 3);
   const agentsText = fs.readFileSync(path.join(p.codexHome, 'AGENTS.md'), 'utf8');
   assert.match(agentsText, new RegExp(GLOBAL_INSTRUCTIONS_BEGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.match(agentsText, new RegExp(GLOBAL_INSTRUCTIONS_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
@@ -37,6 +38,11 @@ test('global install creates instructions, custom agents, user skills and manife
   assert.equal(manifest.version, VERSION);
   assert.equal(Object.keys(manifest.agents).length, GLOBAL_AGENT_FILES.length);
   assert.equal(Object.keys(manifest.skills).length, SKILL_NAMES.length);
+  assert.ok(fs.existsSync(manifest.hookScript));
+  const hooks = JSON.parse(fs.readFileSync(manifest.hooksFile, 'utf8'));
+  assert.ok(hooks.hooks.SessionStart.some(group => group.hooks.some(h => h.statusMessage === 'CEOS runtime freshness')));
+  assert.ok(hooks.hooks.UserPromptSubmit.some(group => group.hooks.some(h => h.statusMessage === 'CEOS runtime freshness')));
+  assert.ok(hooks.hooks.SessionEnd.some(group => group.hooks.some(h => h.statusMessage === 'CEOS runtime freshness')));
 });
 
 test('global install preserves user instructions and is idempotent', () => {
@@ -131,4 +137,37 @@ test('routing table exposes the intended model tiers', () => {
     ['ceos_reviewer', 'gpt-5.6', 'high'],
     ['ceos_verifier', 'gpt-5.6', 'high']
   ]);
+});
+
+
+test('hook merge preserves unrelated user hooks and replaces only CEOS handlers', () => {
+  const existing = JSON.stringify({
+    description: 'user hooks',
+    hooks: {
+      SessionStart: [{
+        matcher: 'startup',
+        hooks: [
+          { type: 'command', command: 'echo user', statusMessage: 'User hook' },
+          { type: 'command', command: 'old ceos-runtime-context.mjs', statusMessage: 'CEOS runtime freshness' }
+        ]
+      }]
+    }
+  });
+  const merged = JSON.parse(mergeHooksConfig(existing, 'node /new/ceos-runtime-context.mjs'));
+  const handlers = merged.hooks.SessionStart.flatMap(group => group.hooks ?? []);
+  assert.ok(handlers.some(h => h.command === 'echo user'));
+  assert.equal(handlers.filter(h => h.statusMessage === 'CEOS runtime freshness').length, 1);
+  assert.ok(merged.hooks.UserPromptSubmit.some(group => group.hooks.some(h => h.statusMessage === 'CEOS runtime freshness')));
+  assert.ok(merged.hooks.SessionEnd.some(group => group.hooks.some(h => h.statusMessage === 'CEOS runtime freshness')));
+});
+
+test('global install preserves pre-existing user hooks', () => {
+  const p = paths(fakeHome());
+  fs.mkdirSync(p.codexHome, { recursive: true });
+  fs.writeFileSync(path.join(p.codexHome, 'hooks.json'), JSON.stringify({
+    hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo keep-me', statusMessage: 'Personal hook' }] }] }
+  }));
+  installGlobal({ homeDir: p.home, codexHome: p.codexHome });
+  const hooks = JSON.parse(fs.readFileSync(path.join(p.codexHome, 'hooks.json'), 'utf8'));
+  assert.ok(hooks.hooks.SessionStart.some(group => group.hooks.some(h => h.command === 'echo keep-me')));
 });
