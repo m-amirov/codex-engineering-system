@@ -24,6 +24,17 @@ For engine-backed multi-stage workflows (`audit-repair-loop` and `production-art
 
 The standalone CLI does not secretly execute Codex/Web agents. The parent agent performs semantic work; CEOS deterministically controls ordering, cycle limits, capability gates, evidence provenance, resumability, and verdict acceptance.
 
+### Native capability attestation
+
+User-level CEOS hooks record the current Codex `session_id` and `turn_id`. These freshness markers do **not** claim that a native tool exists. When a production-art run reaches `GENERATING` without fresh trusted Image Gen evidence:
+
+1. Run `ceos capability-challenge latest`.
+2. Inspect only the callable tools actually exposed to the **current Codex turn**. Do not infer from config, plan, old files, Web tools, CLI/env overrides, or documentation.
+3. If `image_gen.imagegen` is callable, answer the challenge with `PRESENT` and `serviceAvailability=UNKNOWN`. If it is not exposed, answer `ABSENT`.
+4. Do not call Image Gen merely to probe quota/availability. Update service availability only from the result of a real user-required generation call.
+
+A run-scoped `PRESENT + UNKNOWN` observation permits the first real generation attempt. Manual CLI/environment capability overrides remain diagnostic-only and cannot unlock the production generation gate. Missing/untrusted hooks, stale session/turn evidence, challenge replay, or ambiguous tool exposure must remain fail-closed.
+
 ## Native delegation budget (especially literary tasks)
 
 Follow `policies/native-delegation.md` for the full contract. **For literary drafting and editorial repair, use the parent Codex session as the sole native writer/editor by default. Do not spawn multiple native workers for different episodes, routes or repairs, or duplicate manuscript/canon reads in parallel native contexts.** Process large writing requests episode by episode with persisted progress; never call a partial checkpoint completion of the full task.
