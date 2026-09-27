@@ -186,7 +186,7 @@ test('CEOS hook representation is single-source and uses the Windows-safe timeou
   assert.equal(removeCeosHooksFromToml(toml), '# user hook\n');
 });
 
-test('installed Windows hook command executes through cmd without quoted executable failure', () => {
+test('installed Windows hook command executes through cmd without quoted executable failure', { skip: process.platform !== 'win32' }, () => {
   const p = paths(fakeHome());
   installGlobal({ homeDir: p.home, codexHome: p.codexHome, mode: 'copy' });
   const hooks = JSON.parse(fs.readFileSync(path.join(p.codexHome, 'hooks.json'), 'utf8'));
