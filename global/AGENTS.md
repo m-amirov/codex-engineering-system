@@ -24,6 +24,10 @@ For engine-backed multi-stage workflows (`audit-repair-loop` and `production-art
 
 The standalone CLI does not secretly execute Codex/Web agents. The parent agent performs semantic work; CEOS deterministically controls ordering, cycle limits, capability gates, evidence provenance, resumability, and verdict acceptance.
 
+### Native capability attestation
+
+For production-art, use a fresh run-scoped `ceos capability-challenge`; manual/env evidence cannot unlock `GENERATING`.
+
 ## Native delegation budget (especially literary tasks)
 
 Follow `policies/native-delegation.md` for the full contract. **For literary drafting and editorial repair, use the parent Codex session as the sole native writer/editor by default. Do not spawn multiple native workers for different episodes, routes or repairs, or duplicate manuscript/canon reads in parallel native contexts.** Process large writing requests episode by episode with persisted progress; never call a partial checkpoint completion of the full task.

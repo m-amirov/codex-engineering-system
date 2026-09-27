@@ -80,13 +80,13 @@ SCOPE_LOCKED
 
 `GENERATING` is mechanically rejected unless the current capability snapshot says `imageGeneration.status=available`.
 
-The standalone Node CLI cannot inspect the host model's private tool catalog. A host integration may persist a callable inventory at `$CODEX_HOME/ceos/native-capabilities.json`:
+The standalone Node CLI cannot inspect the host model's private tool catalog. CEOS therefore installs Codex lifecycle hooks that record only current session/turn freshness and uses a run-scoped in-session capability challenge before production generation. A future host integration may also persist a **session-bound** callable inventory at `$CODEX_HOME/ceos/native-capabilities.json`:
 
 ```json
-{"capabilities":{"image-generation":{"provider":"native-host","callable":true}}}
+{"schemaVersion":1,"sessionId":"<current Codex session>","generatedAt":"...","capabilities":{"image-generation":{"provider":"native-host","presence":"PRESENT","serviceAvailability":"UNKNOWN"}}}
 ```
 
-Callable presence is reported separately from service availability and does not claim quota availability. The host may also attest `serviceAvailability` as `available`, `rate_limited`, or `usage_limit_reached` when it has evidence. Without that field, service availability remains `unknown` and production-art stays fail-closed. The legacy explicit runtime attestation remains supported:
+Callable presence is reported separately from service availability and does not claim quota availability. `PRESENT + UNKNOWN` permits the first real user-required generation attempt; explicit rate/usage-limit evidence blocks further attempts until refreshed. Legacy explicit runtime attestation remains supported for diagnostics, but it is not trusted to unlock production-art:
 
 ```powershell
 ceos capabilities --image-generation available

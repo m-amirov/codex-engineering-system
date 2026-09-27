@@ -28,8 +28,14 @@ function scope() {
 
 function caps(project, {
   web = 'NOT_CONFIGURED',
-  image = 'unknown'
+  image = 'unknown',
+  imagePresence,
+  serviceAvailability,
+  trustedForGeneration
 } = {}) {
+  const presence = imagePresence ?? (image === 'available' ? 'PRESENT' : image === 'unavailable' ? 'ABSENT' : 'UNKNOWN');
+  const service = serviceAvailability ?? (image === 'available' ? 'available' : image === 'unavailable' ? 'unavailable' : 'unknown');
+  const trusted = trustedForGeneration ?? (image === 'available');
   return {
     schemaVersion: 1,
     ceosVersion: 'test',
@@ -39,7 +45,14 @@ function caps(project, {
     executables: {},
     project: { manifest: { available: false }, browser: { configured: false } },
     web: { status: web, ready: web === 'READY', source: 'test' },
-    imageGeneration: { status: image, source: 'test' },
+    imageGeneration: {
+      status: image,
+      source: 'test',
+      capabilityPresence: presence,
+      serviceAvailability: service,
+      trustedForGeneration: trusted,
+      generationAllowed: trusted && presence === 'PRESENT' && !['unavailable', 'rate_limited', 'usage_limit_reached'].includes(service)
+    },
     nativeAgents: { present: [], missing: [] },
     limitations: []
   };
@@ -67,16 +80,19 @@ test('capability snapshot records live Web result and explicit image-generation 
   assert.equal(result.imageGeneration.source, 'cli-attestation');
 });
 
-test('host callable inventory records presence without claiming service availability', () => {
+test('session-bound host callable inventory records trusted presence without claiming service availability', () => {
   const project = tempProject();
   const home = path.join(project, '.codex');
-  fs.mkdirSync(path.join(home, 'ceos'), { recursive: true });
-  fs.writeFileSync(path.join(home, 'ceos', 'native-capabilities.json'), JSON.stringify({ capabilities: { 'image-generation': { provider: 'native-host', callable: true } } }));
+  fs.mkdirSync(path.join(home, 'ceos', 'runtime'), { recursive: true });
+  fs.writeFileSync(path.join(home, 'ceos', 'runtime', 'current-session.json'), JSON.stringify({ sessionId: 's1' }));
+  fs.writeFileSync(path.join(home, 'ceos', 'native-capabilities.json'), JSON.stringify({ sessionId: 's1', capabilities: { 'image-generation': { provider: 'native-host', callable: true } } }));
   const result = collectCapabilities(project, { codexHome: home });
   assert.equal(result.imageGeneration.capabilityPresence, 'PRESENT');
   assert.equal(result.imageGeneration.callable, true);
   assert.equal(result.imageGeneration.serviceAvailability, 'unknown');
   assert.equal(result.imageGeneration.status, 'unknown');
+  assert.equal(result.imageGeneration.trustedForGeneration, true);
+  assert.equal(result.imageGeneration.generationAllowed, true);
 });
 
 test('host capability absent remains fail-closed', () => {
@@ -86,17 +102,19 @@ test('host capability absent remains fail-closed', () => {
   assert.equal(result.imageGeneration.status, 'unknown');
 });
 
-test('host explicit service availability can be available only when attested', () => {
+test('host explicit service availability can be available only when session-bound and attested', () => {
   const project = tempProject();
   const home = path.join(project, '.codex');
-  fs.mkdirSync(path.join(home, 'ceos'), { recursive: true });
-  fs.writeFileSync(path.join(home, 'ceos', 'native-capabilities.json'), JSON.stringify({ capabilities: { 'image-generation': { callable: true, serviceAvailability: 'available' } } }));
+  fs.mkdirSync(path.join(home, 'ceos', 'runtime'), { recursive: true });
+  fs.writeFileSync(path.join(home, 'ceos', 'runtime', 'current-session.json'), JSON.stringify({ sessionId: 's1' }));
+  fs.writeFileSync(path.join(home, 'ceos', 'native-capabilities.json'), JSON.stringify({ sessionId: 's1', capabilities: { 'image-generation': { callable: true, serviceAvailability: 'available' } } }));
   const result = collectCapabilities(project, { codexHome: home });
   assert.equal(result.imageGeneration.status, 'available');
   assert.equal(result.imageGeneration.serviceAvailability, 'available');
+  assert.equal(result.imageGeneration.trustedForGeneration, true);
 });
 
-test('legacy environment attestation remains compatible', () => {
+test('legacy environment attestation remains diagnostic-only', () => {
   const project = tempProject();
   const previous = process.env.CEOS_IMAGE_GENERATION_CAPABILITY;
   process.env.CEOS_IMAGE_GENERATION_CAPABILITY = 'available';
@@ -104,23 +122,27 @@ test('legacy environment attestation remains compatible', () => {
     const result = collectCapabilities(project, { codexHome: path.join(project, '.codex') });
     assert.equal(result.imageGeneration.status, 'available');
     assert.equal(result.imageGeneration.source, 'environment-attestation');
+    assert.equal(result.imageGeneration.trustedForGeneration, false);
+    assert.equal(result.imageGeneration.generationAllowed, false);
   } finally {
     if (previous === undefined) delete process.env.CEOS_IMAGE_GENERATION_CAPABILITY;
     else process.env.CEOS_IMAGE_GENERATION_CAPABILITY = previous;
   }
 });
 
-test('CLI attestation overrides host inventory and environment attestation', () => {
+test('fresh session-bound host evidence takes precedence over manual overrides', () => {
   const project = tempProject();
   const home = path.join(project, '.codex');
-  fs.mkdirSync(path.join(home, 'ceos'), { recursive: true });
-  fs.writeFileSync(path.join(home, 'ceos', 'native-capabilities.json'), JSON.stringify({ capabilities: { 'image-generation': { callable: true, serviceAvailability: 'available' } } }));
+  fs.mkdirSync(path.join(home, 'ceos', 'runtime'), { recursive: true });
+  fs.writeFileSync(path.join(home, 'ceos', 'runtime', 'current-session.json'), JSON.stringify({ sessionId: 's1' }));
+  fs.writeFileSync(path.join(home, 'ceos', 'native-capabilities.json'), JSON.stringify({ sessionId: 's1', capabilities: { 'image-generation': { callable: true, serviceAvailability: 'available' } } }));
   const previous = process.env.CEOS_IMAGE_GENERATION_CAPABILITY;
   process.env.CEOS_IMAGE_GENERATION_CAPABILITY = 'unavailable';
   try {
     const result = collectCapabilities(project, { codexHome: home, imageGeneration: 'unknown' });
-    assert.equal(result.imageGeneration.status, 'unknown');
-    assert.equal(result.imageGeneration.source, 'cli-attestation');
+    assert.equal(result.imageGeneration.status, 'available');
+    assert.equal(result.imageGeneration.source, 'host-attestation');
+    assert.equal(result.imageGeneration.trustedForGeneration, true);
   } finally {
     if (previous === undefined) delete process.env.CEOS_IMAGE_GENERATION_CAPABILITY;
     else process.env.CEOS_IMAGE_GENERATION_CAPABILITY = previous;
@@ -140,16 +162,17 @@ test('malformed host inventory and project-local lookalike do not attest capabil
   assert.equal(result.imageGeneration.source, 'unobserved');
 });
 
-test('host service availability distinguishes usage limit and rate limit', () => {
+test('host service availability blocks generation on usage/rate limits', () => {
   for (const serviceAvailability of ['usage_limit_reached', 'rate_limited']) {
     const project = tempProject();
     const home = path.join(project, '.codex');
-    fs.mkdirSync(path.join(home, 'ceos'), { recursive: true });
-    fs.writeFileSync(path.join(home, 'ceos', 'native-capabilities.json'), JSON.stringify({ capabilities: { 'image-generation': { callable: true, serviceAvailability } } }));
+    fs.mkdirSync(path.join(home, 'ceos', 'runtime'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'ceos', 'runtime', 'current-session.json'), JSON.stringify({ sessionId: 's1' }));
+    fs.writeFileSync(path.join(home, 'ceos', 'native-capabilities.json'), JSON.stringify({ sessionId: 's1', capabilities: { 'image-generation': { callable: true, serviceAvailability } } }));
     const result = collectCapabilities(project, { codexHome: home });
     assert.equal(result.imageGeneration.capabilityPresence, 'PRESENT');
     assert.equal(result.imageGeneration.serviceAvailability, serviceAvailability);
-    assert.equal(result.imageGeneration.status, serviceAvailability === 'usage_limit_reached' ? 'unavailable' : 'unknown');
+    assert.equal(result.imageGeneration.generationAllowed, false);
   }
 });
 
@@ -266,7 +289,7 @@ test('Web-required blocked run can resume after refreshed READY capability', () 
   assert.equal(reopened.integrity.ok, true);
 });
 
-test('production-art refuses generation until native image capability is explicitly available', () => {
+test('production-art requires fresh trusted presence and accepts PRESENT with UNKNOWN service', () => {
   const project = tempProject();
   const result = createRun(project, 'production-art', {
     scope: scope(),
@@ -281,10 +304,15 @@ test('production-art refuses generation until native image capability is explici
   recordCheckpoint(project, id, { stage: 'CANON_READY', artifacts: [canon] });
   assert.throws(
     () => recordCheckpoint(project, id, { stage: 'GENERATING', artifacts: [generated] }),
-    /requires image-generation capability = available/
+    /requires fresh trusted native image-generation presence/
   );
 
-  const refreshed = refreshRunCapabilities(project, id, caps(project, { image: 'available' }));
+  const refreshed = refreshRunCapabilities(project, id, caps(project, {
+    image: 'unknown',
+    imagePresence: 'PRESENT',
+    serviceAvailability: 'unknown',
+    trustedForGeneration: true
+  }));
   assert.equal(refreshed.integrity.ok, true);
   const after = recordCheckpoint(project, id, { stage: 'GENERATING', artifacts: [generated] });
   assert.equal(after.run.nextStage, 'INTEGRATED');

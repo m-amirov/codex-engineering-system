@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { VERSION, loadManifest, loadPackageJson, resolveCodexHome } from './ceos.mjs';
 
 const IMAGE_STATES = new Set(['available', 'unavailable', 'unknown']);
-const SERVICE_STATES = new Set(['available', 'rate_limited', 'usage_limit_reached', 'unknown']);
+const SERVICE_STATES = new Set(['available', 'unavailable', 'rate_limited', 'usage_limit_reached', 'unknown']);
 
 function commandProbe(command, args = ['--version']) {
   const result = spawnSync(command, args, {
@@ -31,35 +31,116 @@ function access(pathname, mode) {
   }
 }
 
-function readHostCapabilityInventory(codexHome) {
-  const file = path.join(codexHome, 'ceos', 'native-capabilities.json');
-  try {
-    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return { file, capability: data?.capabilities?.['image-generation'] ?? null };
-  } catch {
-    return { file, capability: null };
-  }
+function readJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch { return null; }
 }
 
-function normalizeImageGeneration(value, codexHome) {
+function readRuntimeSession(codexHome) {
+  return readJson(path.join(codexHome, 'ceos', 'runtime', 'current-session.json'));
+}
+
+function readHostCapabilityInventory(codexHome) {
+  const file = path.join(codexHome, 'ceos', 'native-capabilities.json');
+  const data = readJson(file);
+  const currentSession = readRuntimeSession(codexHome);
+  const capability = data?.capabilities?.['image-generation'] ?? null;
+  const sessionMatch = Boolean(data?.sessionId && currentSession?.sessionId && data.sessionId === currentSession.sessionId);
+  return { file, data, capability: sessionMatch ? capability : null, sessionMatch };
+}
+
+function normalizeServiceAvailability(value) {
+  const selected = String(value ?? 'unknown').trim().toLowerCase();
+  if (!SERVICE_STATES.has(selected)) throw new Error(`image-generation serviceAvailability must be one of: ${[...SERVICE_STATES].join(', ')}`);
+  return selected;
+}
+
+function normalizedEvidence({
+  presence = 'UNKNOWN',
+  serviceAvailability = 'unknown',
+  provider = 'native-host',
+  source = 'unobserved',
+  trustedForGeneration = false,
+  attestationFile = null,
+  observedTool = null,
+  trustScope = null
+} = {}) {
+  const normalizedPresence = String(presence || 'UNKNOWN').trim().toUpperCase();
+  if (!['PRESENT', 'ABSENT', 'UNKNOWN'].includes(normalizedPresence)) throw new Error('invalid image-generation presence');
+  const service = normalizeServiceAvailability(serviceAvailability);
+  const callable = normalizedPresence === 'PRESENT';
+  const serviceBlocksAttempt = ['unavailable', 'rate_limited', 'usage_limit_reached'].includes(service);
+  const generationAllowed = trustedForGeneration && callable && !serviceBlocksAttempt;
+  const status = service === 'available'
+    ? 'available'
+    : (normalizedPresence === 'ABSENT' || serviceBlocksAttempt ? 'unavailable' : 'unknown');
+  return {
+    status,
+    capabilityPresence: normalizedPresence,
+    serviceAvailability: service,
+    provider,
+    callable,
+    generationAllowed,
+    trustedForGeneration,
+    source,
+    attestationFile,
+    observedTool,
+    trustScope
+  };
+}
+
+function normalizeImageGeneration(value, codexHome, runAttestation = null) {
+  if (runAttestation?.valid && runAttestation.attestation) {
+    const a = runAttestation.attestation;
+    return normalizedEvidence({
+      presence: a.presence,
+      serviceAvailability: a.serviceAvailability,
+      provider: 'native-host',
+      source: 'in-session-observation',
+      trustedForGeneration: true,
+      attestationFile: runAttestation.file,
+      observedTool: a.observedTool ?? null,
+      trustScope: a.trustScope ?? 'run-session-turn'
+    });
+  }
+
+  const inventory = readHostCapabilityInventory(codexHome);
+  if (inventory.capability) {
+    const capability = inventory.capability;
+    const presence = capability.presence
+      ? String(capability.presence).toUpperCase()
+      : capability.callable === true ? 'PRESENT' : capability.callable === false ? 'ABSENT' : 'UNKNOWN';
+    return normalizedEvidence({
+      presence,
+      serviceAvailability: capability.serviceAvailability ?? 'unknown',
+      provider: capability.provider ?? 'native-host',
+      source: 'host-attestation',
+      trustedForGeneration: true,
+      attestationFile: inventory.file,
+      observedTool: capability.observedTool ?? null,
+      trustScope: 'host-session'
+    });
+  }
+
   const fromOption = value == null ? null : String(value).trim().toLowerCase();
   const fromEnv = process.env.CEOS_IMAGE_GENERATION_CAPABILITY?.trim().toLowerCase() || null;
   if (fromOption || fromEnv) {
     const selected = fromOption || fromEnv;
     if (!IMAGE_STATES.has(selected)) throw new Error(`image-generation capability must be one of: ${[...IMAGE_STATES].join(', ')}`);
-    return { status: selected, capabilityPresence: selected === 'available' ? 'PRESENT' : selected === 'unavailable' ? 'ABSENT' : 'UNKNOWN', serviceAvailability: selected, provider: 'native-host', callable: selected === 'available', source: fromOption ? 'cli-attestation' : 'environment-attestation' };
+    return normalizedEvidence({
+      presence: selected === 'available' ? 'PRESENT' : selected === 'unavailable' ? 'ABSENT' : 'UNKNOWN',
+      serviceAvailability: selected,
+      provider: 'native-host',
+      source: fromOption ? 'cli-attestation' : 'environment-attestation',
+      trustedForGeneration: false,
+      trustScope: 'manual-diagnostic-only'
+    });
   }
-  const inventory = readHostCapabilityInventory(codexHome);
-  const capability = inventory.capability;
-  const callable = capability?.callable === true;
-  const serviceAvailability = capability?.serviceAvailability ?? 'unknown';
-  if (!SERVICE_STATES.has(serviceAvailability)) throw new Error(`host image-generation serviceAvailability must be one of: ${[...SERVICE_STATES].join(', ')}`);
-  return {
-    status: serviceAvailability === 'available' ? 'available' : serviceAvailability === 'usage_limit_reached' ? 'unavailable' : 'unknown',
-    capabilityPresence: capability ? (callable ? 'PRESENT' : 'ABSENT') : 'UNKNOWN',
-    serviceAvailability, provider: capability?.provider ?? 'native-host', callable,
-    source: capability ? 'host-attestation' : 'unobserved', attestationFile: inventory.file
-  };
+
+  return normalizedEvidence({
+    source: inventory.data && !inventory.sessionMatch ? 'stale-host-attestation-rejected' : 'unobserved',
+    attestationFile: inventory.file
+  });
 }
 
 function projectBrowserCapability(projectDir, manifest, pkg) {
@@ -100,7 +181,8 @@ function installedNativeAgents(codexHome) {
 export function collectCapabilities(projectDir, {
   codexHome,
   webPreflightResult = null,
-  imageGeneration
+  imageGeneration,
+  imageGenerationAttestation = null
 } = {}) {
   const resolvedProject = path.resolve(projectDir);
   const resolvedCodexHome = resolveCodexHome({ homeDir: os.homedir(), codexHome });
@@ -120,7 +202,7 @@ export function collectCapabilities(projectDir, {
   const nodeProbe = { available: true, exitCode: 0, version: process.version, error: null };
   const npmProbe = commandProbe(process.platform === 'win32' ? 'npm.cmd' : 'npm');
   const gitProbe = commandProbe('git');
-  const image = normalizeImageGeneration(imageGeneration, resolvedCodexHome);
+  const image = normalizeImageGeneration(imageGeneration, resolvedCodexHome, imageGenerationAttestation);
   const nativeAgents = installedNativeAgents(resolvedCodexHome);
 
   const web = webPreflightResult ? {
@@ -174,7 +256,8 @@ export function collectCapabilities(projectDir, {
     imageGeneration: image,
     nativeAgents,
     limitations: [
-      ...(image.source === 'unobserved' ? ['Native image-generation capability has no host attestation; write $CODEX_HOME/ceos/native-capabilities.json or use the explicit CLI/environment override.'] : []),
+      ...(['unobserved', 'stale-host-attestation-rejected'].includes(image.source) ? ['Native image-generation capability has no fresh trusted session/run attestation. Manual CLI/environment overrides are diagnostic only and cannot unlock production generation.'] : []),
+      ...(['cli-attestation', 'environment-attestation'].includes(image.source) ? ['Manual image-generation override recorded for diagnostics only; production generation requires a fresh run-scoped in-session observation or session-bound host attestation.'] : []),
       ...(!manifest ? ['No CEOS project manifest was resolved; project-native gate discovery is limited.'] : [])
     ]
   };

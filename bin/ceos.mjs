@@ -5,6 +5,7 @@ import { CEOS_ROOT, VERSION, SUPPORTED_PROFILES, SKILL_NAMES, resolveProject, lo
 import { webPreflight } from '../src/web-preflight.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { createRun, recordCheckpoint, refreshRunCapabilities, resumeRun, executionStatus, recordRoutingTrace, EXECUTION_PIPELINES } from '../src/execution-engine.mjs';
+import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 
 function parseArgs(argv) {
@@ -49,16 +50,20 @@ function timeoutArg(args) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10000) throw new Error('--timeout-ms must be an integer from 100 to 10000');
   return timeoutMs;
 }
-async function capabilitySnapshot(args, project) {
+async function capabilitySnapshot(args, project, runRef = null) {
   const web = await webPreflight({
     codexHome: args['codex-home'] || undefined,
     healthUrl: args.url || undefined,
     timeoutMs: timeoutArg(args)
   });
+  const runAttestation = runRef
+    ? readRunCapabilityAttestation(project, runRef, { codexHome: args['codex-home'] || undefined })
+    : null;
   return collectCapabilities(project, {
     codexHome: args['codex-home'] || undefined,
     webPreflightResult: web,
-    imageGeneration: args['image-generation'] === true ? undefined : args['image-generation']
+    imageGeneration: args['image-generation'] === true ? undefined : args['image-generation'],
+    imageGenerationAttestation: runAttestation
   });
 }
 function executionExitCode(run, integrity = { ok: true }) {
@@ -100,7 +105,9 @@ Usage:
   ceos profile [--project dir]
   ceos context --skill <name> [--project dir]
   ceos web-preflight [--codex-home dir] [--url http://127.0.0.1:17841/healthz] [--timeout-ms 1200] [--json]
-  ceos capabilities [--project dir] [--image-generation available|unavailable|unknown] [--json]
+  ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
+  ceos capability-challenge [run-id|latest] [--codex-home dir] [--json]
+  ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
   ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--web-required] [--max-cycles N] [--image-generation state] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
   ceos resume [run-id|latest] [--refresh-capabilities] [--image-generation state] [--json]
@@ -235,15 +242,55 @@ try {
       break;
     }
     case 'capabilities': {
-      const result = await capabilitySnapshot(args, project);
+      const runRef = args.run === true ? 'latest' : (args.run || null);
+      const result = await capabilitySnapshot(args, project, runRef);
       if (args.json) print(result, true); else {
         console.log(`CEOS ${VERSION} capabilities`);
         console.log(`Filesystem: read=${result.filesystem.readable} write=${result.filesystem.writable}`);
         console.log(`Git: ${result.executables.git.available ? 'available' : 'unavailable'}`);
         console.log(`Web: ${result.web.status}`);
-        console.log(`Image generation: ${result.imageGeneration.status} (${result.imageGeneration.source})`);
+        console.log(`Image generation: presence=${result.imageGeneration.capabilityPresence} service=${result.imageGeneration.serviceAvailability} trusted=${result.imageGeneration.trustedForGeneration} attempt=${result.imageGeneration.generationAllowed} (${result.imageGeneration.source})`);
         console.log(`Project manifest: ${result.project.manifest.available ? result.project.manifest.profile : 'not resolved'}`);
         for (const limitation of result.limitations) console.log(`LIMITATION: ${limitation}`);
+      }
+      break;
+    }
+    case 'capability-challenge': {
+      const runRef = args._[1] || 'latest';
+      const result = beginCapabilityChallenge(project, runRef, {
+        codexHome: args['codex-home'] || undefined
+      });
+      if (args.json) print(result, true); else {
+        console.log(`Run: ${result.runId}`);
+        console.log(`Challenge: ${result.challengeId}`);
+        console.log(`Session: ${result.sessionId}`);
+        console.log(`Turn: ${result.turnId}`);
+        console.log(`Expires: ${result.expiresAt}`);
+        console.log(`Nonce: ${result.nonce}`);
+        console.log(result.instruction);
+      }
+      break;
+    }
+    case 'capability-attest': {
+      const runRef = args._[1] || 'latest';
+      if (!args['challenge-id'] || !args.nonce || !args.presence) throw new Error('--challenge-id, --nonce and --presence are required');
+      const observed = respondCapabilityChallenge(project, runRef, {
+        codexHome: args['codex-home'] || undefined,
+        challengeId: args['challenge-id'],
+        nonce: args.nonce,
+        presence: args.presence,
+        serviceAvailability: args['service-availability'] === true ? 'UNKNOWN' : (args['service-availability'] || 'UNKNOWN'),
+        serviceEvidence: args['service-evidence'] === true ? null : args['service-evidence'],
+        observedTool: args['observed-tool'] === true ? undefined : args['observed-tool']
+      });
+      const capabilities = await capabilitySnapshot(args, project, runRef);
+      const refreshed = refreshRunCapabilities(project, runRef, capabilities);
+      const result = { ...observed, capabilities: capabilities.imageGeneration, run: refreshed.run, nextAction: refreshed.nextAction };
+      if (args.json) print(result, true); else {
+        console.log(`Run: ${refreshed.run.runId}`);
+        console.log(`Image generation: presence=${capabilities.imageGeneration.capabilityPresence} service=${capabilities.imageGeneration.serviceAvailability} trusted=${capabilities.imageGeneration.trustedForGeneration} attempt=${capabilities.imageGeneration.generationAllowed}`);
+        console.log(`Attestation: ${observed.file}`);
+        if (refreshed.nextAction?.stage) console.log(`Next: ${refreshed.nextAction.stage}`);
       }
       break;
     }
@@ -286,7 +333,7 @@ try {
       const runRef = args._[1] || 'latest';
       let result;
       if (args['refresh-capabilities']) {
-        const capabilities = await capabilitySnapshot(args, project);
+        const capabilities = await capabilitySnapshot(args, project, runRef);
         result = refreshRunCapabilities(project, runRef, capabilities);
       } else result = resumeRun(project, runRef);
       if (args.json) print(result, true); else printExecution(result);

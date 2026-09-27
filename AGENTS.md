@@ -29,3 +29,8 @@ Always load `policies/safety.md`, `policies/evidence.md`, and the resolved proje
 7. If required evidence cannot be obtained, return `BLOCKED`, not a guessed PASS.
 
 Use `ceos status`, `ceos doctor`, `ceos gates`, and `ceos verify` for local contracts. For engine-backed workflows use `ceos capabilities`, `ceos run`, `ceos checkpoint`, and `ceos resume`; do not bypass their persisted stage order.
+
+
+## Native capability attestation
+
+Before a production-art run enters `GENERATING`, use `ceos capability-challenge latest`. Inspect only the callable tools actually exposed to the current Codex turn; never invoke Image Gen as a probe. Attest `PRESENT + UNKNOWN` only when `image_gen.imagegen` is actually callable. The challenge is bound to the current run/session/turn and a one-time nonce. Manual CLI/environment overrides are diagnostic-only and cannot unlock production generation.
