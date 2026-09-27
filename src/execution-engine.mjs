@@ -262,7 +262,7 @@ function nextAction(run) {
   const requirements = [];
   if (def.minArtifacts) requirements.push(`at least ${def.minArtifacts} persisted evidence artifact(s)`);
   if (def.requiresDefectCount) requirements.push('metadata.defectCount as a non-negative integer');
-  if (def.requiresImageGeneration) requirements.push('capabilities.imageGeneration.status = available');
+  if (def.requiresImageGeneration) requirements.push('fresh trusted image-generation presence with generationAllowed = true (PRESENT + UNKNOWN service is sufficient for the first real invocation)');
   if (def.finalReview) requirements.push('explicit outcome PASS, FAIL, BLOCKED, or ESCALATE');
   return {
     terminal: false,
@@ -504,8 +504,11 @@ export function recordCheckpoint(projectDir, runRef, {
 
     const currentCapabilities = readJson(path.join(resolved.runDir, 'capabilities.json'));
     if (stage === 'REAUDITED' && normalizedOutcome === 'PASS') assertFinalRouting(run, currentCapabilities);
-    if (definition.requiresImageGeneration && currentCapabilities.imageGeneration?.status !== 'available') {
-      throw new Error('GENERATING requires image-generation capability = available; refresh capabilities before continuing');
+    if (definition.requiresImageGeneration) {
+      const image = currentCapabilities.imageGeneration;
+      if (!(image?.trustedForGeneration === true && image?.capabilityPresence === 'PRESENT' && image?.generationAllowed === true)) {
+        throw new Error('GENERATING requires fresh trusted native image-generation presence; create and answer a run-scoped capability challenge from the current Codex turn');
+      }
     }
 
     if (definition.requiresDefectCount) {
