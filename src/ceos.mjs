@@ -13,6 +13,8 @@ export const SKILL_NAMES = ['audit', 'audit-repair-loop', 'fix', 'verification',
 
 export const GLOBAL_INSTRUCTIONS_BEGIN = '<!-- CEOS:GLOBAL:BEGIN -->';
 export const GLOBAL_INSTRUCTIONS_END = '<!-- CEOS:GLOBAL:END -->';
+export const CEOS_HOOK_STATUS = 'CEOS runtime freshness';
+export const CEOS_HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'SessionEnd'];
 export const GLOBAL_AGENT_FILES = [
   { file: 'ceos-bulk-checker.toml', name: 'ceos_bulk_checker', model: 'gpt-5.6-luna', effort: 'low', workload: 'high-volume deterministic checks' },
   { file: 'ceos-explorer.toml', name: 'ceos_explorer', model: 'gpt-5.6-terra', effort: 'medium', workload: 'read-heavy exploration and evidence mapping' },
@@ -522,6 +524,70 @@ export function mergeGlobalInstructions(existing = '') {
   return `${existing.slice(0, start)}${block}${existing.slice(end)}`;
 }
 
+function quoteCommandArg(value) {
+  return `"${String(value).replace(/"/g, '\\"')}"`;
+}
+
+function ceosHookHandler(command) {
+  return {
+    type: 'command',
+    command,
+    commandWindows: command,
+    timeout: 5,
+    statusMessage: CEOS_HOOK_STATUS
+  };
+}
+
+function isCeosHookHandler(handler) {
+  return handler?.type === 'command' &&
+    (handler.statusMessage === CEOS_HOOK_STATUS || String(handler.command || '').includes('ceos-runtime-context.mjs'));
+}
+
+export function mergeHooksConfig(existing = '', command) {
+  let data = { hooks: {} };
+  if (existing.trim()) {
+    try { data = JSON.parse(existing); }
+    catch (error) { throw new Error(`Refusing to modify invalid Codex hooks.json: ${error.message}`); }
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Codex hooks.json root must be an object');
+  if (data.hooks !== undefined && (!data.hooks || typeof data.hooks !== 'object' || Array.isArray(data.hooks))) throw new Error('Codex hooks.json hooks must be an object');
+  data.hooks ??= {};
+
+  for (const event of CEOS_HOOK_EVENTS) {
+    const groups = Array.isArray(data.hooks[event]) ? data.hooks[event] : [];
+    const cleaned = [];
+    for (const group of groups) {
+      if (!group || typeof group !== 'object' || Array.isArray(group)) {
+        cleaned.push(group);
+        continue;
+      }
+      const hooks = Array.isArray(group.hooks) ? group.hooks.filter(h => !isCeosHookHandler(h)) : group.hooks;
+      if (Array.isArray(hooks) && hooks.length === 0) continue;
+      cleaned.push({ ...group, hooks });
+    }
+    cleaned.push({ hooks: [ceosHookHandler(command)] });
+    data.hooks[event] = cleaned;
+  }
+  return `${JSON.stringify(data, null, 2)}\n`;
+}
+
+function hasCeosHooks(file, command) {
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return CEOS_HOOK_EVENTS.every(event =>
+      Array.isArray(data?.hooks?.[event]) &&
+      data.hooks[event].some(group => Array.isArray(group?.hooks) && group.hooks.some(handler =>
+        isCeosHookHandler(handler) && handler.command === command && handler.commandWindows === command
+      ))
+    );
+  } catch { return false; }
+}
+
+function isCeosHookScript(target) {
+  try { return fs.readFileSync(target, 'utf8').includes('// CEOS-managed hook;'); }
+  catch { return false; }
+}
+
 function sameTree(a, b) {
   const ah = sha256Tree(a); const bh = sha256Tree(b);
   return ah !== null && ah === bh;
@@ -584,6 +650,10 @@ export function globalStatus({ homeDir = os.homedir(), codexHome } = {}) {
   const skillsRoot = path.join(resolvedHome, '.agents', 'skills');
   const agentsRoot = path.join(resolvedCodexHome, 'agents');
   const manifestFile = path.join(resolvedCodexHome, 'ceos', 'installation.json');
+  const hooksFile = path.join(resolvedCodexHome, 'hooks.json');
+  const hookScriptSource = path.join(CEOS_ROOT, 'hooks', 'ceos-runtime-context.mjs');
+  const hookScript = path.join(resolvedCodexHome, 'ceos', 'hooks', 'ceos-runtime-context.mjs');
+  const hookCommand = `${quoteCommandArg(process.execPath)} ${quoteCommandArg(hookScript)} --codex-home ${quoteCommandArg(resolvedCodexHome)}`;
   const checks = [];
 
   let manifest = null;
@@ -604,6 +674,8 @@ export function globalStatus({ homeDir = os.homedir(), codexHome } = {}) {
     const modeOk = manifest?.mode && ['copy', 'link'].includes(manifest.mode) ? installModeMatches(target, manifest.mode) : true;
     checks.push({ id: `skill:${name}`, ok: sameTree(source, target) && modeOk, path: target, mode: manifest?.mode ?? null });
   }
+  checks.push({ id: 'capability-hook-script', ok: sameTree(hookScriptSource, hookScript), path: hookScript });
+  checks.push({ id: 'capability-hooks-config', ok: hasCeosHooks(hooksFile, hookCommand), path: hooksFile });
 
   const manifestOk = Boolean(
     manifest?.schemaVersion === 1 &&
@@ -613,6 +685,10 @@ export function globalStatus({ homeDir = os.homedir(), codexHome } = {}) {
     manifest?.instructionsFile === instructionsFile &&
     manifest?.agentsRoot === agentsRoot &&
     manifest?.skillsRoot === skillsRoot &&
+    manifest?.hooksFile === hooksFile &&
+    manifest?.hookScript === hookScript &&
+    manifest?.hookCommand === hookCommand &&
+    manifest?.hookScriptSha256 === sha256Tree(hookScriptSource) &&
     manifest?.instructionsBlockSha256 === sha256Buffer(expectedBlock) &&
     GLOBAL_AGENT_FILES.every(agent => {
       const entry = manifest?.agents?.[agent.name];
@@ -621,7 +697,7 @@ export function globalStatus({ homeDir = os.homedir(), codexHome } = {}) {
     SKILL_NAMES.every(name => manifest?.skills?.[name]?.sha256 === sha256Tree(path.join(CEOS_ROOT, 'skills', name)))
   );
   checks.push({ id: 'installation-manifest', ok: manifestOk, path: manifestFile, foundVersion: manifest?.version ?? null });
-  return { ok: checks.every(x => x.ok), version: VERSION, codexHome: resolvedCodexHome, instructionsFile, agentsRoot, skillsRoot, manifestFile, manifest, checks };
+  return { ok: checks.every(x => x.ok), version: VERSION, codexHome: resolvedCodexHome, instructionsFile, agentsRoot, skillsRoot, hooksFile, hookScript, hookCommand, manifestFile, manifest, checks };
 }
 
 export function installGlobal({ homeDir = os.homedir(), codexHome, mode = 'copy', force = false, dryRun = false } = {}) {
@@ -633,13 +709,26 @@ export function installGlobal({ homeDir = os.homedir(), codexHome, mode = 'copy'
   const agentsRoot = path.join(resolvedCodexHome, 'agents');
   const stateRoot = path.join(resolvedCodexHome, 'ceos');
   const manifestFile = path.join(stateRoot, 'installation.json');
+  const hooksFile = path.join(resolvedCodexHome, 'hooks.json');
+  const hookScriptSource = path.join(CEOS_ROOT, 'hooks', 'ceos-runtime-context.mjs');
+  const hookScript = path.join(stateRoot, 'hooks', 'ceos-runtime-context.mjs');
+  const hookCommand = `${quoteCommandArg(process.execPath)} ${quoteCommandArg(hookScript)} --codex-home ${quoteCommandArg(resolvedCodexHome)}`;
   const existingInstructions = fs.existsSync(instructionsFile) ? fs.readFileSync(instructionsFile, 'utf8') : '';
   const mergedInstructions = mergeGlobalInstructions(existingInstructions);
+  const existingHooks = fs.existsSync(hooksFile) ? fs.readFileSync(hooksFile, 'utf8') : '';
+  const mergedHooks = mergeHooksConfig(existingHooks, hookCommand);
   const changes = [];
   const conflicts = [];
   const unmanagedConflicts = [];
 
   if (existingInstructions !== mergedInstructions) changes.push({ type: 'instructions', action: fs.existsSync(instructionsFile) ? 'update' : 'create', target: instructionsFile });
+  if (existingHooks !== mergedHooks) changes.push({ type: 'hooks-config', action: fs.existsSync(hooksFile) ? 'update' : 'create', target: hooksFile });
+  if (!fs.existsSync(hookScript)) changes.push({ type: 'hook-script', action: 'create', source: hookScriptSource, target: hookScript });
+  else if (!sameTree(hookScriptSource, hookScript)) {
+    const item = { type: 'hook-script', action: 'replace', source: hookScriptSource, target: hookScript };
+    changes.push(item);
+    if (isCeosHookScript(hookScript)) conflicts.push(item); else unmanagedConflicts.push(item);
+  }
 
   for (const agent of GLOBAL_AGENT_FILES) {
     const source = path.join(CEOS_ROOT, 'agents', agent.file);
@@ -665,7 +754,7 @@ export function installGlobal({ homeDir = os.homedir(), codexHome, mode = 'copy'
 
   let existingManifest = null;
   try { existingManifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8')); } catch {}
-  const manifestCurrent = existingManifest?.schemaVersion === 1 && existingManifest?.version === VERSION && existingManifest?.mode === mode && existingManifest?.instructionsFile === instructionsFile && existingManifest?.agentsRoot === agentsRoot && existingManifest?.skillsRoot === skillsRoot;
+  const manifestCurrent = existingManifest?.schemaVersion === 1 && existingManifest?.version === VERSION && existingManifest?.mode === mode && existingManifest?.instructionsFile === instructionsFile && existingManifest?.agentsRoot === agentsRoot && existingManifest?.skillsRoot === skillsRoot && existingManifest?.hooksFile === hooksFile && existingManifest?.hookScript === hookScript && existingManifest?.hookCommand === hookCommand && existingManifest?.hookScriptSha256 === sha256Tree(hookScriptSource);
   if (!manifestCurrent) changes.push({ type: 'manifest', action: fs.existsSync(manifestFile) ? 'update' : 'create', target: manifestFile });
 
   if (unmanagedConflicts.length) {
@@ -675,14 +764,14 @@ export function installGlobal({ homeDir = os.homedir(), codexHome, mode = 'copy'
     throw new Error(`Global CEOS targets differ from ${VERSION}:\n- ${conflicts.map(x => x.target).join('\n- ')}\nUse --force to back up and replace only these CEOS-owned targets.`);
   }
 
-  const plan = { version: VERSION, mode, dryRun, force, homeDir: resolvedHome, codexHome: resolvedCodexHome, instructionsFile, agentsRoot, skillsRoot, manifestFile, routes: routingTable(), changes, conflicts: conflicts.map(x => x.target), unmanagedConflicts: unmanagedConflicts.map(x => x.target) };
+  const plan = { version: VERSION, mode, dryRun, force, homeDir: resolvedHome, codexHome: resolvedCodexHome, instructionsFile, agentsRoot, skillsRoot, hooksFile, hookScript, hookCommand, manifestFile, routes: routingTable(), changes, conflicts: conflicts.map(x => x.target), unmanagedConflicts: unmanagedConflicts.map(x => x.target) };
   if (dryRun) return { ...plan, applied: false, backupRoot: null };
   if (!changes.length) {
     const status = globalStatus({ homeDir: resolvedHome, codexHome: resolvedCodexHome });
     return { ...plan, applied: false, alreadyCurrent: true, backupRoot: null, status };
   }
 
-  const needsBackup = changes.some(x => x.action === 'replace' || (x.type === 'instructions' && fs.existsSync(x.target)));
+  const needsBackup = changes.some(x => x.action === 'replace' || (['instructions', 'hooks-config'].includes(x.type) && fs.existsSync(x.target)));
   const backupRoot = needsBackup ? path.join(stateRoot, 'backups', safeStamp()) : null;
   if (backupRoot) fs.mkdirSync(backupRoot, { recursive: true });
 
@@ -691,6 +780,13 @@ export function installGlobal({ homeDir = os.homedir(), codexHome, mode = 'copy'
       if (backupRoot && fs.existsSync(change.target)) backupTarget(change.target, backupRoot, path.join('instructions', path.basename(change.target)));
       fs.mkdirSync(path.dirname(change.target), { recursive: true });
       fs.writeFileSync(change.target, mergedInstructions, 'utf8');
+    } else if (change.type === 'hooks-config') {
+      if (backupRoot && fs.existsSync(change.target)) backupTarget(change.target, backupRoot, path.join('hooks', path.basename(change.target)));
+      fs.mkdirSync(path.dirname(change.target), { recursive: true });
+      fs.writeFileSync(change.target, mergedHooks, 'utf8');
+    } else if (change.type === 'hook-script') {
+      if (backupRoot && fs.existsSync(change.target)) backupTarget(change.target, backupRoot, path.join('hooks', path.basename(change.target)));
+      replacePath(change.source, change.target, { mode: 'copy', kind: 'file' });
     } else if (change.type === 'agent') {
       if (backupRoot && fs.existsSync(change.target)) backupTarget(change.target, backupRoot, path.join('agents', path.basename(change.target)));
       replacePath(change.source, change.target, { mode: 'copy', kind: 'file' });
@@ -710,6 +806,10 @@ export function installGlobal({ homeDir = os.homedir(), codexHome, mode = 'copy'
     instructionsFile,
     agentsRoot,
     skillsRoot,
+    hooksFile,
+    hookScript,
+    hookCommand,
+    hookScriptSha256: sha256Tree(hookScriptSource),
     sourceRoot: CEOS_ROOT,
     instructionsBlockSha256: sha256Buffer(renderGlobalInstructionsBlock()),
     agents: Object.fromEntries(GLOBAL_AGENT_FILES.map(agent => [agent.name, { file: agent.file, model: agent.model, reasoningEffort: agent.effort, sha256: sha256Tree(path.join(CEOS_ROOT, 'agents', agent.file)) }])),
