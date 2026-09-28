@@ -1,4 +1,4 @@
-# Codex Engineering OS (CEOS) 0.5.3
+# Codex Engineering OS (CEOS) 0.5.5
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
 
@@ -45,6 +45,15 @@ ceos routing-trace latest --web-agents 'ceos_reasoner_web'
 ```
 
 `ceos run` returns the only valid next stage. `ceos checkpoint` refuses out-of-order transitions.
+
+A terminal `BLOCKED` run may be reopened only by an explicit action when its stop reason is a supported recoverable external condition and persisted scope, capabilities, and evidence still pass integrity checks. The old terminal checkpoint remains immutable; CEOS appends a `RUN_REOPENED` event and returns to the blocked stage. PASS, FAIL, ESCALATE, integrity failures, and unsupported/manual blockers cannot be reopened.
+
+```powershell
+ceos resume <run-id> `
+  --reopen-blocked `
+  --reason 'Web High recovered; continue the persisted review' `
+  --evidence 'artifacts/evidence/review.json'
+```
 
 ## Audit-repair-loop state machine
 
@@ -142,7 +151,7 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.3`. Restart Codex and verify that all three CEOS-managed Web agent TOML files and `$CODEX_HOME/ceos/hybrid-routing.json` specify `chatgpt-web/high`. This checks configured routing, not the success of a substantive delegation. Fully restart Codex after installation.
+Expected version: `0.5.5`. Restart Codex and verify that all three CEOS-managed Web agent TOML files and `$CODEX_HOME/ceos/hybrid-routing.json` specify `chatgpt-web/high`. This checks configured routing, not the success of a substantive delegation. Fully restart Codex after installation.
 
 For Yandex Games, new projects must still be created through the official Starter Kit before CEOS is attached.
 

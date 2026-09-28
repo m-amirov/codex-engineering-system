@@ -79,3 +79,41 @@ test('ceos run fails closed when deterministic scope lock is incomplete', () => 
   assert.equal(r.status, 1);
   assert.match(r.stderr, /mutationBoundary is required/);
 });
+
+test('ceos resume --reopen-blocked explicitly reopens an external Web blocker', () => {
+  const project = tempProject();
+  fs.writeFileSync(path.join(project, 'evidence.txt'), 'fresh evidence');
+  const created = run([
+    'run', 'audit-repair-loop',
+    '--project', project,
+    '--target', 'reader experience',
+    '--in-scope', 'continuity',
+    '--acceptance', 'fresh re-audit passes',
+    '--mutation-boundary', 'scenario files only',
+    '--json'
+  ], project);
+  assert.equal(created.status, 0, created.stderr);
+  const start = JSON.parse(created.stdout);
+  const blocked = run([
+    'checkpoint', start.run.runId,
+    '--project', project,
+    '--stage', 'EVIDENCE_COLLECTED',
+    '--artifact', 'evidence.txt',
+    '--outcome', 'BLOCKED',
+    '--note', 'mandatory Web High review unavailable after transport disconnect',
+    '--json'
+  ], project);
+  assert.equal(blocked.status, 2, blocked.stderr);
+
+  const reopened = run([
+    'resume', start.run.runId,
+    '--project', project,
+    '--reopen-blocked',
+    '--reason', 'Web High recovered; continue the persisted evidence review',
+    '--json'
+  ], project);
+  assert.equal(reopened.status, 0, reopened.stderr);
+  const state = JSON.parse(reopened.stdout);
+  assert.equal(state.run.verdict, null);
+  assert.equal(state.nextAction.stage, 'EVIDENCE_COLLECTED');
+});

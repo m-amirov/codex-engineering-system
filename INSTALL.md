@@ -1,4 +1,4 @@
-# Install Codex Engineering OS 0.5.1
+# Install Codex Engineering OS 0.5.5
 
 ## Upgrade on Windows
 
@@ -17,7 +17,7 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.1`. Fully restart Codex and start a new task/session after the global install.
+Expected version: `0.5.5`. Fully restart Codex and start a new task/session after the global install.
 
 ## Isolated global install
 
@@ -38,6 +38,12 @@ ceos capabilities --project .
 ceos run audit-repair-loop ...
 ceos run production-art ...
 ceos checkpoint latest --stage <STAGE> --artifact <path>
+
+To recover a terminal run stopped by a supported external blocker, use an explicit reopen. CEOS preserves the old terminal checkpoint and appends a `RUN_REOPENED` event; it never reopens PASS, FAIL, ESCALATE, integrity-failed, or unsupported/manual blockers:
+
+```powershell
+ceos resume <run-id> --reopen-blocked --reason 'Web High recovered' --evidence '<path;path>'
+```
 ceos resume latest
 ceos run-status latest
 ceos routing-trace latest --web-agents 'ceos_reasoner_web'
@@ -129,6 +135,6 @@ For Yandex Games, bootstrap a new project through the official Starter Kit first
 
 ## Native capability freshness hooks
 
-CEOS 0.5.4 installs a small user-level Codex hook into `$CODEX_HOME/hooks.json` for `SessionStart`, `UserPromptSubmit`, and `SessionEnd`. The hook records only session/turn freshness under `$CODEX_HOME/ceos/runtime`; it does not infer native tool presence.
+CEOS 0.5.5 installs a small user-level Codex hook into `$CODEX_HOME/hooks.json` for `SessionStart`, `UserPromptSubmit`, and `SessionEnd`. The hook records only session/turn freshness under `$CODEX_HOME/ceos/runtime`; it does not infer native tool presence.
 
 Codex requires non-managed hooks to be reviewed/trusted before they execute. If the CEOS hook is not trusted or is disabled by managed policy, native image generation remains fail-closed for production-art. Use `ceos capability-challenge latest` only from the active Codex turn immediately before `GENERATING`.

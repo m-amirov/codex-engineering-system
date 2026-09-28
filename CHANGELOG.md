@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.5 — 2026-09-28
+
+- Added explicit `ceos resume --reopen-blocked --reason` recovery for terminal runs stopped by supported recoverable external blockers.
+- Preserved immutable terminal checkpoints and appended persisted `RUN_REOPENED` lifecycle events with prior verdict, stop reason, reopen reason, cycle, and optional evidence.
+- Reopened runs return to the blocked stage, including production-art visual review, without restarting generation or rewriting scope history.
+- Rejected automatic capability reopen and fail-closed on PASS, FAIL, ESCALATE, integrity failures, and unsupported/manual blockers.
+- Added CLI and execution-engine regression coverage for lifecycle recovery, history, scope integrity, terminal verdicts, and production-art stage restoration.
+
 ## Unreleased — 2026-09-25
 
 - Added a shared Web transport/rate-limit policy for CEOS Web High routes, with explicit separation of semantic REWORK/FAIL from transport failures.
