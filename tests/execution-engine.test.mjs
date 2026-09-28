@@ -9,6 +9,7 @@ import {
   recordCheckpoint,
   recordRoutingTrace,
   refreshRunCapabilities,
+  reopenBlockedRun,
   resumeRun
 } from '../src/execution-engine.mjs';
 
@@ -63,6 +64,50 @@ function artifact(project, name, text = name) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, text);
   return name;
+}
+
+function readJson(file) {
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function blockedProductionRun(project, { maxCycles = 3, reason = 'mandatory independent Web High art-direction review unavailable after transport failure' } = {}) {
+  const result = createRun(project, 'production-art', {
+    scope: scope(),
+    capabilities: caps(project, { web: 'READY', image: 'available' }),
+    webRequired: true,
+    maxCycles
+  });
+  const id = result.run.runId;
+  const files = ['inventory', 'canon', 'generated', 'integrated', 'visual'].map(name => artifact(project, `${name}.json`));
+  recordCheckpoint(project, id, { stage: 'INVENTORIED', artifacts: [files[0]] });
+  recordCheckpoint(project, id, { stage: 'CANON_READY', artifacts: [files[1]] });
+  recordCheckpoint(project, id, { stage: 'GENERATING', artifacts: [files[2]] });
+  recordCheckpoint(project, id, { stage: 'INTEGRATED', artifacts: [files[3]] });
+  recordCheckpoint(project, id, {
+    stage: 'VISUAL_VERIFIED',
+    artifacts: [files[4]],
+    outcome: 'BLOCKED',
+    note: reason
+  });
+  return { id, files };
+}
+
+function completeProductionRun(project) {
+  const result = createRun(project, 'production-art', {
+    scope: scope(),
+    capabilities: caps(project, { web: 'READY', image: 'available' }),
+    webRequired: true
+  });
+  const id = result.run.runId;
+  const files = ['inventory', 'canon', 'generated', 'integrated', 'visual', 'reaudit'].map(name => artifact(project, `${name}.json`));
+  recordCheckpoint(project, id, { stage: 'INVENTORIED', artifacts: [files[0]] });
+  recordCheckpoint(project, id, { stage: 'CANON_READY', artifacts: [files[1]] });
+  recordCheckpoint(project, id, { stage: 'GENERATING', artifacts: [files[2]] });
+  recordCheckpoint(project, id, { stage: 'INTEGRATED', artifacts: [files[3]] });
+  recordCheckpoint(project, id, { stage: 'VISUAL_VERIFIED', artifacts: [files[4]] });
+  recordRoutingTrace(project, id, { webAgentsUsed: ['ceos_art_director_web'] });
+  recordCheckpoint(project, id, { stage: 'REAUDITED', artifacts: [files[5]], outcome: 'PASS' });
+  return id;
 }
 
 test('capability snapshot records live Web result and explicit image-generation attestation', () => {
@@ -272,7 +317,7 @@ test('resume detects changed checkpoint artifacts and blocks further progression
   assert.ok(resumed.integrity.issues.some(x => x.includes('artifact changed')));
 });
 
-test('Web-required blocked run can resume after refreshed READY capability', () => {
+test('Web-required blocked run stays terminal after refresh until explicitly reopened', () => {
   const project = tempProject();
   const result = createRun(project, 'audit-repair-loop', {
     scope: scope(),
@@ -283,10 +328,106 @@ test('Web-required blocked run can resume after refreshed READY capability', () 
   assert.equal(result.run.stopReason.code, 'WEB_REQUIRED_NOT_READY');
 
   const reopened = refreshRunCapabilities(project, result.run.runId, caps(project, { web: 'READY' }));
-  assert.equal(reopened.run.verdict, null);
-  assert.equal(reopened.run.state, 'CAPABILITIES_CHECKED');
-  assert.equal(reopened.run.nextStage, 'EVIDENCE_COLLECTED');
+  assert.equal(reopened.run.verdict, 'BLOCKED');
+  assert.equal(reopened.run.state, 'BLOCKED');
+  const explicitlyReopened = reopenBlockedRun(project, result.run.runId, { reason: 'Web capability recovered' });
+  assert.equal(explicitlyReopened.run.verdict, null);
+  assert.equal(explicitlyReopened.run.state, 'CAPABILITIES_CHECKED');
+  assert.equal(explicitlyReopened.run.nextStage, 'EVIDENCE_COLLECTED');
   assert.equal(reopened.integrity.ok, true);
+});
+
+test('recoverable Web BLOCKED production run reopens at visual review and can pass re-audit', () => {
+  const project = tempProject();
+  const { id } = blockedProductionRun(project);
+  const before = resumeRun(project, id);
+  const scopeHash = before.run.scopeSha256;
+  const checkpointDir = path.join(before.runDir, 'checkpoints');
+  const beforeFiles = fs.readdirSync(checkpointDir).sort();
+  assert.equal(before.run.verdict, 'BLOCKED');
+  assert.equal(before.run.stopReason.stage, 'VISUAL_VERIFIED');
+
+  const reopened = reopenBlockedRun(project, id, {
+    reason: 'Web High recovered; fresh S55 rework evidence is available for formal visual re-audit.'
+  });
+  assert.equal(reopened.run.verdict, null);
+  assert.equal(reopened.run.completedAt, null);
+  assert.equal(reopened.run.state, 'VISUAL_VERIFIED');
+  assert.equal(reopened.run.nextStage, 'VISUAL_VERIFIED');
+  assert.equal(reopened.run.scopeSha256, scopeHash);
+  assert.equal(reopened.integrity.ok, true);
+
+  const afterFiles = fs.readdirSync(checkpointDir).sort();
+  assert.equal(afterFiles.length, beforeFiles.length + 1);
+  assert.ok(afterFiles.some(file => file.endsWith('-run-reopened.json')));
+  const reopenedCheckpoint = readJson(path.join(checkpointDir, afterFiles.find(file => file.endsWith('-run-reopened.json'))));
+  assert.equal(reopenedCheckpoint.stage, 'RUN_REOPENED');
+  assert.equal(reopenedCheckpoint.previousVerdict, 'BLOCKED');
+  assert.equal(reopenedCheckpoint.previousStopReason.stage, 'VISUAL_VERIFIED');
+  assert.match(reopenedCheckpoint.reopenReason, /fresh S55/);
+  assert.ok(afterFiles.some(file => file.includes('visual-verified')));
+
+  recordCheckpoint(project, id, { stage: 'VISUAL_VERIFIED', artifacts: ['visual.json'], outcome: 'PASS' });
+  recordRoutingTrace(project, id, { webAgentsUsed: ['ceos_art_director_web'] });
+  artifact(project, 'reaudit.json');
+  const done = recordCheckpoint(project, id, { stage: 'REAUDITED', artifacts: ['reaudit.json'], outcome: 'PASS' });
+  assert.equal(done.run.verdict, 'PASS');
+  assert.equal(done.run.nextStage, null);
+});
+
+test('blocked run with integrity failure cannot be reopened', () => {
+  const project = tempProject();
+  const { id } = blockedProductionRun(project);
+  const run = resumeRun(project, id).run;
+  fs.writeFileSync(path.join(run.runDir, 'scope.json'), 'changed');
+  assert.throws(
+    () => reopenBlockedRun(project, id, { reason: 'Web High recovered' }),
+    /integrity check failed/i
+  );
+});
+
+test('reopen rejects PASS, FAIL, ESCALATE, and arbitrary manual blockers', () => {
+  const passProject = tempProject();
+  const passId = completeProductionRun(passProject);
+  assert.throws(
+    () => reopenBlockedRun(passProject, passId, { reason: 'retry' }),
+    /only BLOCKED runs/i
+  );
+
+  for (const outcome of ['FAIL', 'ESCALATE']) {
+    const project = tempProject();
+    const { id } = blockedProductionRun(project, { maxCycles: 1, reason: 'temporary Web High transport unavailable' });
+    // Replace the recoverable terminal with the requested terminal outcome in a fresh run.
+    const runFile = path.join(project, '.ceos-runs', id, 'run.json');
+    const run = JSON.parse(fs.readFileSync(runFile, 'utf8'));
+    run.state = outcome;
+    run.verdict = outcome;
+    run.stopReason = { code: `STAGE_${outcome}`, stage: 'VISUAL_VERIFIED', reason: `terminal ${outcome}` };
+    run.completedAt = new Date().toISOString();
+    fs.writeFileSync(runFile, `${JSON.stringify(run, null, 2)}\n`);
+    assert.throws(
+      () => reopenBlockedRun(project, id, { reason: 'retry' }),
+      /only BLOCKED runs/i
+    );
+  }
+
+  const manualProject = tempProject();
+  const { id: manualId } = blockedProductionRun(manualProject, { reason: 'manual blocker: reviewer uncertain' });
+  assert.throws(
+    () => reopenBlockedRun(manualProject, manualId, { reason: 'retry' }),
+    /not recoverable/i
+  );
+});
+
+test('reopen requires an explicit reason and cannot be repeated without a new BLOCKED state', () => {
+  const project = tempProject();
+  const { id } = blockedProductionRun(project);
+  assert.throws(() => reopenBlockedRun(project, id), /reason is required/i);
+  reopenBlockedRun(project, id, { reason: 'Web High recovered' });
+  assert.throws(
+    () => reopenBlockedRun(project, id, { reason: 'Web High recovered again' }),
+    /only BLOCKED runs/i
+  );
 });
 
 test('production-art requires fresh trusted presence and accepts PRESENT with UNKNOWN service', () => {

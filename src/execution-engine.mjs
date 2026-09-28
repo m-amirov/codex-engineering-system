@@ -6,6 +6,19 @@ import { capabilityBlockers } from './capabilities.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
+const RECOVERABLE_BLOCK_CODES = new Set([
+  'WEB_REQUIRED_NOT_READY',
+  'WEB_HIGH_REVIEW_UNAVAILABLE',
+  'WEB_UNAVAILABLE',
+  'WEB_TRANSPORT_UNAVAILABLE',
+  'ATTACHMENT_TRANSPORT',
+  'CAPABILITY_UNAVAILABLE',
+  'CAPABILITY_NOT_READY',
+  'RATE_LIMITED',
+  'USAGE_LIMIT_REACHED'
+]);
+const EXTERNAL_RECOVERY_WORDS = /\b(web|transport|capability|review|rate[_ -]?limit|usage limit)\b/i;
+const EXTERNAL_RECOVERY_FAILURES = /\b(unavailable|not ready|disconnect(?:ed)?|failed?|failure|blocked|recover(?:ed|able)?|rate[_ -]?limited|usage limit(?:ed)?)\b/i;
 
 export const EXECUTION_PIPELINES = {
   'audit-repair-loop': {
@@ -249,6 +262,26 @@ function terminalize(run, verdict, reason) {
   run.stopReason = reason ?? null;
 }
 
+function isRecoverableBlocked(run) {
+  if (run.verdict !== 'BLOCKED' || run.state !== 'BLOCKED') return false;
+  const stopReason = run.stopReason ?? {};
+  if (RECOVERABLE_BLOCK_CODES.has(stopReason.code)) return true;
+  return stopReason.code === 'STAGE_BLOCKED' &&
+    typeof stopReason.stage === 'string' &&
+    Boolean(stageDefinition(run.pipeline, stopReason.stage)) &&
+    EXTERNAL_RECOVERY_WORDS.test(String(stopReason.reason ?? '')) &&
+    EXTERNAL_RECOVERY_FAILURES.test(String(stopReason.reason ?? ''));
+}
+
+function reopenTarget(run, stopReason) {
+  const stage = typeof stopReason?.stage === 'string' && stageDefinition(run.pipeline, stopReason.stage)
+    ? stopReason.stage
+    : null;
+  return stage
+    ? { state: stage, nextStage: stage }
+    : { state: 'CAPABILITIES_CHECKED', nextStage: EXECUTION_PIPELINES[run.pipeline].stages[0].id };
+}
+
 function nextAction(run) {
   if (TERMINAL.has(run.state)) {
     return {
@@ -287,14 +320,22 @@ function assertRunIntegrity(runDir, run) {
 
   if (!fs.existsSync(scopeFile)) issues.push('scope.json missing');
   else {
-    const actual = scopeHash(readJson(scopeFile));
-    if (actual !== run.scopeSha256) issues.push('scope.json hash mismatch');
+    try {
+      const actual = scopeHash(readJson(scopeFile));
+      if (actual !== run.scopeSha256) issues.push('scope.json hash mismatch');
+    } catch (error) {
+      issues.push(`scope.json invalid: ${error.message}`);
+    }
   }
 
   if (!fs.existsSync(capFile)) issues.push('capabilities.json missing');
   else {
-    const actual = capabilitiesHash(readJson(capFile));
-    if (actual !== run.capabilitiesSha256) issues.push('capabilities.json hash mismatch');
+    try {
+      const actual = capabilitiesHash(readJson(capFile));
+      if (actual !== run.capabilitiesSha256) issues.push('capabilities.json hash mismatch');
+    } catch (error) {
+      issues.push(`capabilities.json invalid: ${error.message}`);
+    }
   }
 
   const checkpointsDir = path.join(runDir, 'checkpoints');
@@ -598,18 +639,6 @@ export function refreshRunCapabilities(projectDir, runRef, capabilities) {
     run.capabilitiesSha256 = capabilitiesHash(capabilities);
     run.routingTrace.webPreflightStatus = capabilities.web?.status ?? 'UNKNOWN';
 
-    if (
-      run.verdict === 'BLOCKED' &&
-      run.stopReason?.code === 'WEB_REQUIRED_NOT_READY' &&
-      capabilities.web?.status === 'READY'
-    ) {
-      run.state = 'CAPABILITIES_CHECKED';
-      run.verdict = null;
-      run.stopReason = null;
-      run.completedAt = null;
-      run.nextStage = EXECUTION_PIPELINES[run.pipeline].stages[0].id;
-    }
-
     writeCheckpoint(resolved.runDir, run, {
       stage: 'CAPABILITIES_REFRESHED',
       at: now(),
@@ -618,6 +647,59 @@ export function refreshRunCapabilities(projectDir, runRef, capabilities) {
     });
     run.updatedAt = now();
     atomicWriteJson(resolved.file, run);
+    return {
+      runDir: resolved.runDir,
+      run,
+      integrity: assertRunIntegrity(resolved.runDir, run),
+      nextAction: nextAction(run)
+    };
+  });
+}
+
+export function reopenBlockedRun(projectDir, runRef = 'latest', {
+  reason,
+  evidence = []
+} = {}) {
+  const resolvedProject = path.resolve(projectDir);
+  const resolved = resolveRun(resolvedProject, runRef);
+  const reopenReason = ensureText(reason, 'reopen reason');
+  return withRunLock(resolved.runDir, () => {
+    const run = readJson(resolved.file);
+    if (run.verdict !== 'BLOCKED' || run.state !== 'BLOCKED') {
+      throw new Error('Only BLOCKED runs can be reopened');
+    }
+    const integrity = assertRunIntegrity(resolved.runDir, run);
+    if (!integrity.ok) throw new Error(`Run integrity check failed:\n- ${integrity.issues.join('\n- ')}`);
+    if (!isRecoverableBlocked(run)) {
+      throw new Error(`Blocked run is not recoverable from an explicitly supported external condition: ${run.stopReason?.code ?? '(missing code)'}`);
+    }
+
+    const artifactRecords = normalizeList(evidence).map(item => resolveArtifact(resolvedProject, resolved.runDir, item));
+    const previousVerdict = run.verdict;
+    const previousStopReason = structuredClone(run.stopReason ?? null);
+    const target = reopenTarget(run, previousStopReason);
+    const reopenedAt = now();
+    writeCheckpoint(resolved.runDir, run, {
+      stage: 'RUN_REOPENED',
+      at: reopenedAt,
+      cycle: run.cycle,
+      outcome: 'CONTINUE',
+      previousVerdict,
+      previousStopReason,
+      reopenReason,
+      artifacts: artifactRecords
+    });
+
+    run.state = target.state;
+    run.nextStage = target.nextStage;
+    run.verdict = null;
+    run.completedAt = null;
+    run.stopReason = null;
+    run.reopenCount = (run.reopenCount ?? 0) + 1;
+    run.updatedAt = now();
+    atomicWriteJson(resolved.file, run);
+    atomicWriteJson(path.join(runRoot(resolvedProject), 'latest.json'), { runId: run.runId, runDir: resolved.runDir, updatedAt: run.updatedAt });
+
     return {
       runDir: resolved.runDir,
       run,
