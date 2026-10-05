@@ -11,6 +11,14 @@ These defaults apply across repositories. More specific repository instructions 
 - Production access is read-only by default. Do not turn inspection into deployment, restart, database mutation, provider submit, payment, or other external write without explicit authorization.
 - Reuse an applicable CEOS skill when its trigger matches: audit, audit-repair-loop, fix, verification, release, visual-qa, romance-narrative, production-art, prod-check, incident-analysis.
 
+## User-visible progress discipline
+
+- Silent reasoning is the default. Do not narrate internal reasoning, chain of thought, or step-by-step deliberation.
+- Progress updates are status reporting, not reasoning narration. State only what is being checked or changed, the current result, and any blocker requiring attention.
+- Keep each routine progress update to at most 1–2 short sentences. Do not repeatedly restate the plan or narrate command-by-command execution.
+- Keep detailed diagnostics, logs, and evidence in artifacts/files. Surface only the actionable summary in conversation.
+- This reporting rule does not weaken CEOS evidence, checkpoint, provenance, or fail-closed requirements.
+
 ## Deterministic execution engine
 
 For engine-backed multi-stage workflows (`audit-repair-loop` and `production-art`), use the CEOS control plane when 0.5.0+ is available:

@@ -27,6 +27,7 @@ Always load `policies/safety.md`, `policies/evidence.md`, and the resolved proje
 5. Prefer goal + constraints + acceptance criteria over prescriptive multi-thousand-line prompts.
 6. Repeated prose rules should migrate into mechanical gates.
 7. If required evidence cannot be obtained, return `BLOCKED`, not a guessed PASS.
+8. User-visible progress is concise status reporting, not reasoning narration; keep detailed reasoning, logs, and evidence out of routine progress updates.
 
 Use `ceos status`, `ceos doctor`, `ceos gates`, and `ceos verify` for local contracts. For engine-backed workflows use `ceos capabilities`, `ceos run`, `ceos checkpoint`, and `ceos resume`; do not bypass their persisted stage order.
 
