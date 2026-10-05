@@ -9,7 +9,7 @@ These defaults apply across repositories. More specific repository instructions 
 - Preserve unrelated work, existing project conventions, and project-native build/test/release infrastructure.
 - Evidence, not assertion, determines completion. Run validation proportional to the change and do not claim PASS without supporting evidence.
 - Production access is read-only by default. Do not turn inspection into deployment, restart, database mutation, provider submit, payment, or other external write without explicit authorization.
-- Reuse an applicable CEOS skill when its trigger matches: audit, audit-repair-loop, fix, verification, release, visual-qa, romance-narrative, production-art, prod-check, incident-analysis.
+- Reuse an applicable CEOS skill when its trigger matches: audit, audit-repair-loop, fix, verification, release, visual-qa, video-production, romance-narrative, production-art, prod-check, incident-analysis.
 
 ## User-visible progress discipline
 
