@@ -44,7 +44,7 @@ Use at most one bounded substantive Web High editorial review per completed epis
 
 For sustained work, route by workload, uncertainty, risk, and fresh-tool needs. The parent owns orchestration and the final answer.
 
-CEOS 0.5.x may use optional `chatgpt-web/*` rows from `codex-chatgpt-web`; Web routes are reasoning-only and must not assume MCP / Full Harness.
+CEOS 0.5.x may use optional `chatgpt-web/*` rows from `codex-chatgpt-web`; Web routes are reasoning-only. MCP / Full Harness is not required and must not be assumed.
 
 All CEOS-managed Web roles use `chatgpt-web/high` with high reasoning. Never silently downgrade; use explicit fallback/failure rules, or `BLOCKED` when Web is required. Preflight READY is not completed delegation.
 
