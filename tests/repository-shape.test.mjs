@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { CEOS_ROOT, GLOBAL_AGENT_FILES, SUPPORTED_PROFILES } from '../src/ceos.mjs';
+import { CEOS_ROOT, GLOBAL_AGENT_FILES, SKILL_NAMES, SUPPORTED_PROFILES } from '../src/ceos.mjs';
 
-const skills = ['audit','audit-repair-loop','fix','verification','release','visual-qa','production-art','prod-check','incident-analysis'];
+const skills = SKILL_NAMES;
 
 test('all CEOS skills exist', () => {
   for (const skill of skills) assert.ok(fs.existsSync(path.join(CEOS_ROOT, 'skills', skill, 'SKILL.md')), skill);
