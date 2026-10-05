@@ -9,15 +9,13 @@ These defaults apply across repositories. More specific repository instructions 
 - Preserve unrelated work, existing project conventions, and project-native build/test/release infrastructure.
 - Evidence, not assertion, determines completion. Run validation proportional to the change and do not claim PASS without supporting evidence.
 - Production access is read-only by default. Do not turn inspection into deployment, restart, database mutation, provider submit, payment, or other external write without explicit authorization.
-- Reuse an applicable CEOS skill when its trigger matches: audit, audit-repair-loop, fix, verification, release, visual-qa, video-production, romance-narrative, production-art, prod-check, incident-analysis.
+- Reuse an applicable CEOS skill when its trigger matches; use the root `AGENTS.md` routing map.
 
 ## User-visible progress discipline
 
-- Silent reasoning is the default. Do not narrate internal reasoning, chain of thought, or step-by-step deliberation.
-- Progress updates are status reporting, not reasoning narration. State only what is being checked or changed, the current result, and any blocker requiring attention.
-- Keep each routine progress update to at most 1–2 short sentences. Do not repeatedly restate the plan or narrate command-by-command execution.
-- Keep detailed diagnostics, logs, and evidence in artifacts/files. Surface only the actionable summary in conversation.
-- This reporting rule does not weaken CEOS evidence, checkpoint, provenance, or fail-closed requirements.
+- Silent reasoning is the default; do not narrate chain-of-thought or step-by-step deliberation.
+- Progress updates are status reporting, not reasoning narration: at most 1–2 short sentences with action, result, and blocker.
+- Keep detailed diagnostics, logs, and evidence in artifacts/files; surface only actionable summaries. Evidence, provenance, checkpoints, and fail-closed rules still apply.
 
 ## Deterministic execution engine
 
@@ -30,7 +28,7 @@ For engine-backed multi-stage workflows (`audit-repair-loop` and `production-art
 - after interruption, call `ceos resume` instead of inferring progress from conversation history;
 - do not claim PASS when run integrity is stale, the state machine has not reached terminal PASS, or required evidence is absent.
 
-The standalone CLI does not secretly execute Codex/Web agents. The parent agent performs semantic work; CEOS deterministically controls ordering, cycle limits, capability gates, evidence provenance, resumability, and verdict acceptance.
+CEOS controls stage order, cycle limits, capability gates, evidence provenance, resume, and verdict acceptance; the parent agent performs semantic/tool work.
 
 ### Native capability attestation
 
@@ -44,11 +42,11 @@ Use at most one bounded substantive Web High editorial review per completed epis
 
 ## Automatic model routing (hybrid)
 
-For sustained engineering work, classify the next unit by workload, complexity, uncertainty, risk, and whether fresh tool access is required. The parent agent owns orchestration and the final answer.
+For sustained work, route by workload, uncertainty, risk, and fresh-tool needs. The parent owns orchestration and the final answer.
 
-CEOS 0.5.x can use optional `chatgpt-web/*` model rows exposed by `codex-chatgpt-web`. Web routes are **reasoning-only** unless a future policy explicitly changes that contract; MCP / Full Harness is not required and must not be assumed.
+CEOS 0.5.x may use optional `chatgpt-web/*` rows from `codex-chatgpt-web`; Web routes are reasoning-only and must not assume MCP / Full Harness.
 
-When Web routing is enabled, **all CEOS-managed Web roles use `chatgpt-web/high` with high reasoning effort**. Never silently substitute a light/medium Web mode if High is unavailable; use the existing explicit failure/fallback rules, or `BLOCKED` when Web is required. Preflight READY alone does not prove a completed High-mode delegation.
+All CEOS-managed Web roles use `chatgpt-web/high` with high reasoning. Never silently downgrade; use explicit fallback/failure rules, or `BLOCKED` when Web is required. Preflight READY is not completed delegation.
 
 
 - `ceos_bulk_checker_web` (`chatgpt-web/high`): repetitive classification/comparison over a complete bounded evidence bundle supplied by the parent.
