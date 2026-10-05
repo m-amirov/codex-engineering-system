@@ -58,6 +58,19 @@ test('installed global instructions include quiet progress reporting contract', 
   assert.match(agentsText, /detailed diagnostics, logs, and evidence in artifacts\/files/);
 });
 
+
+test('global install includes the video-production skill contract', () => {
+  assert.ok(SKILL_NAMES.includes('video-production'));
+  const p = paths(fakeHome());
+  installGlobal({ homeDir: p.home, codexHome: p.codexHome, mode: 'copy' });
+  const skill = fs.readFileSync(path.join(p.skills, 'video-production', 'SKILL.md'), 'utf8');
+  assert.match(skill, /gameplay-evidence/);
+  assert.match(skill, /promo-trailer/);
+  assert.match(skill, /ffmpeg/i);
+  assert.match(skill, /Descript/);
+  assert.match(skill, /Do not treat promotional video as gameplay evidence/);
+});
+
 test('global install preserves user instructions and is idempotent', () => {
   const p = paths(fakeHome());
   fs.mkdirSync(p.codexHome, { recursive: true });
