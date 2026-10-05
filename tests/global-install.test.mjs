@@ -47,6 +47,17 @@ test('global install creates instructions, custom agents, user skills and manife
   assert.ok(hooks.hooks.SessionEnd.some(group => group.hooks.some(h => h.statusMessage === 'CEOS runtime freshness')));
 });
 
+
+test('installed global instructions include quiet progress reporting contract', () => {
+  const p = paths(fakeHome());
+  installGlobal({ homeDir: p.home, codexHome: p.codexHome, mode: 'copy' });
+  const agentsText = fs.readFileSync(path.join(p.codexHome, 'AGENTS.md'), 'utf8');
+  assert.match(agentsText, /Silent reasoning is the default/);
+  assert.match(agentsText, /Progress updates are status reporting, not reasoning narration/);
+  assert.match(agentsText, /at most 1–2 short sentences/);
+  assert.match(agentsText, /detailed diagnostics, logs, and evidence in artifacts\/files/);
+});
+
 test('global install preserves user instructions and is idempotent', () => {
   const p = paths(fakeHome());
   fs.mkdirSync(p.codexHome, { recursive: true });
