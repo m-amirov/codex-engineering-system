@@ -52,9 +52,49 @@
           },
           "failureType": {
             "enum": [
+              "PRODUCT_FAILURE",
               "TEST_FAILURE",
               "COMMAND_FAILURE",
-              "CONFIGURATION_ERROR"
+              "CONFIGURATION_ERROR",
+              "INFRA_FAILURE",
+              "EXTERNAL_BLOCKER",
+              "CAPABILITY_BLOCKER",
+              "EVIDENCE_FAILURE",
+              "PROVENANCE_FAILURE"
+            ]
+          },
+          "assertionsExecuted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "complete": {
+                "type": "boolean"
+              },
+              "checked": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "scope": {
+                "type": "string"
+              }
+            }
+          },
+          "sourceHead": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-fA-F0-9]{7,64}$"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }
