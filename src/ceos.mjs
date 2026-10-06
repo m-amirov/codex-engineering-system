@@ -116,6 +116,28 @@ export function gitState(projectDir) {
   return { isRepo: true, branch, head, dirty: Boolean(status.trim()), porcelain: status.trimEnd() };
 }
 
+export function gitAncestorStatus(projectDir, baselineRef) {
+  const state = gitState(projectDir);
+  if (!state.isRepo) {
+    return { ok: false, code: 'RELEASE_RECOVERY_BASE_MISMATCH', baselineRef, head: null, reason: 'project is not a git repository' };
+  }
+  if (typeof baselineRef !== 'string' || !baselineRef.trim()) {
+    return { ok: false, code: 'RELEASE_RECOVERY_BASE_MISMATCH', baselineRef: null, head: state.head, reason: 'release baseline ref is missing' };
+  }
+  const ref = baselineRef.trim();
+  const resolved = spawnSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], { cwd: projectDir, encoding: 'utf8' });
+  if (resolved.status !== 0) {
+    return { ok: false, code: 'RELEASE_RECOVERY_BASE_MISMATCH', baselineRef: ref, head: state.head, reason: `release baseline ref cannot be resolved: ${ref}` };
+  }
+  const baselineSha = resolved.stdout.trim();
+  const ancestor = spawnSync('git', ['merge-base', '--is-ancestor', baselineSha, state.head], { cwd: projectDir, encoding: 'utf8' });
+  if (ancestor.status === 0) return { ok: true, code: null, baselineRef: ref, baselineSha, head: state.head, reason: null };
+  if (ancestor.status === 1) {
+    return { ok: false, code: 'RELEASE_RECOVERY_BASE_MISMATCH', baselineRef: ref, baselineSha, head: state.head, reason: `current HEAD ${state.head} does not descend from release baseline ${baselineSha}` };
+  }
+  return { ok: false, code: 'RELEASE_RECOVERY_BASE_MISMATCH', baselineRef: ref, baselineSha, head: state.head, reason: `git merge-base failed with status ${ancestor.status}` };
+}
+
 export function classifyCommandRisk(command) {
   const c = ` ${command.toLowerCase()} `;
   const r3 = [
@@ -191,7 +213,7 @@ function safeStamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
 function truncate(s, n = 8000) { return s.length <= n ? s : `${s.slice(0, n)}\n...[truncated ${s.length - n} chars]`; }
 function failureTypeForGate(id) { return /(^|[_.-])(test|e2e|integration|browser|playwright|smoke)([_.-]|$)/i.test(id) ? 'TEST_FAILURE' : 'COMMAND_FAILURE'; }
 
-export function runVerification(projectDir, { mode = 'verification', evidenceDir, dryRun = false } = {}) {
+export function runVerification(projectDir, { mode = 'verification', evidenceDir, dryRun = false, baselineRef = null } = {}) {
   const { file: manifestFile, data: manifest } = loadManifest(projectDir);
   const gates = resolveGates(manifest, mode);
   if (!gates.length) throw new Error(`No gates configured for mode '${mode}'`);
@@ -204,6 +226,27 @@ export function runVerification(projectDir, { mode = 'verification', evidenceDir
   fs.writeFileSync(path.join(outputDir, 'git.start.json'), JSON.stringify(startGit, null, 2));
 
   const records = [];
+  const releaseBaselineRef = mode === 'release' ? (baselineRef || manifest.release?.baseline_ref || null) : null;
+  if (mode === 'release' && releaseBaselineRef) {
+    const startedAt = new Date().toISOString();
+    const ancestry = gitAncestorStatus(projectDir, releaseBaselineRef);
+    const record = {
+      id: 'ceos.release_ancestry',
+      command: `git merge-base --is-ancestor ${releaseBaselineRef} HEAD`,
+      required: true,
+      risk: 'R0',
+      status: ancestry.ok ? 'PASS' : 'BLOCKED',
+      failureType: ancestry.ok ? undefined : 'PROVENANCE_FAILURE',
+      failureCode: ancestry.ok ? undefined : ancestry.code,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      exitCode: ancestry.ok ? 0 : null,
+      reason: ancestry.reason ?? undefined,
+      provenance: ancestry
+    };
+    records.push(record);
+    fs.writeFileSync(path.join(outputDir, 'gates', 'ceos.release_ancestry.json'), JSON.stringify(record, null, 2));
+  }
   if (mode === 'release' && manifest.release?.clean_worktree === true) {
     const startedAt = new Date().toISOString();
     const status = startGit.isRepo && !startGit.dirty ? 'PASS' : 'BLOCKED';
@@ -266,6 +309,7 @@ export function runVerification(projectDir, { mode = 'verification', evidenceDir
     schemaVersion: 1,
     ceosVersion: VERSION,
     mode,
+    releaseBaselineRef,
     projectDir,
     manifestFile,
     startedAt: records[0]?.startedAt ?? new Date().toISOString(),
@@ -273,7 +317,7 @@ export function runVerification(projectDir, { mode = 'verification', evidenceDir
     host: { platform: process.platform, arch: process.arch, node: process.version, hostname: os.hostname() },
     verdict,
     counts: Object.fromEntries(statuses.map(s => [s, records.filter(r => r.status === s).length])),
-    gates: records.map(r => ({ id: r.id, status: r.status, required: r.required, risk: r.risk, exitCode: r.exitCode, failureType: r.failureType, reason: r.reason }))
+    gates: records.map(r => ({ id: r.id, status: r.status, required: r.required, risk: r.risk, exitCode: r.exitCode, failureType: r.failureType, failureCode: r.failureCode, reason: r.reason }))
   };
   fs.writeFileSync(path.join(outputDir, 'git.end.json'), JSON.stringify(endGit, null, 2));
   fs.writeFileSync(path.join(outputDir, 'summary.json'), JSON.stringify(summary, null, 2));
