@@ -13,4 +13,4 @@ At activation, run `ceos context --skill release --project .` when the CEOS CLI 
 
 Typical required chain: repo state → lint/typecheck → unit/integration → E2E/browser → production build → runtime smoke → profile-specific checks → artifact validation → release report.
 
-Use manifest/profile gates instead of assuming every project has identical commands. A missing mandatory gate is `BLOCKED`, not PASS.
+Use manifest/profile gates instead of assuming every project has identical commands. A missing mandatory gate is `BLOCKED`, not PASS. For release recovery or any flow with a recorded release baseline, run release verification with `--baseline-ref <ref-or-sha>` (or project `release.baseline_ref`); CEOS must prove that current HEAD descends from that baseline. `RELEASE_RECOVERY_BASE_MISMATCH` is a provenance blocker and must not be bypassed by switching the report or evidence path.
