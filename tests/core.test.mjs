@@ -120,6 +120,8 @@ test('renderContext resolves profile and only activated-skill policies', async (
   assert.match(text, /Profile: generic/);
   assert.match(text, /Production Policy/);
   assert.match(text, /Evidence Policy/);
+  assert.match(text, /Failure Prevention Policy/);
+  assert.match(text, /Evidence domains do not substitute/);
 });
 
 test('installSkills copies discoverable repo-local Agent Skills', async () => {
