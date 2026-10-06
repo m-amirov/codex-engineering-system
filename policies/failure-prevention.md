@@ -33,6 +33,8 @@ A dirty worktree is evidence. Release profiles may require it to be clean; ordin
 - Preserve project-owned runtime/content. Treat semantic merge, accept-current and take-incoming as different operations.
 - Cross-platform text bytes are part of managed integrity. Line-ending/EOF drift must be prevented by repository policy and regression coverage.
 - Update success requires idempotency and final status evidence; "files copied" is not enough.
+- Global/tool installation must not couple the installed runtime back to the live source worktree when that can mutate or lock source files. Prefer an isolated packaged install and verify the source worktree remains clean.
+- Cross-platform JSON/config writers must use an explicit encoding contract. Readers may tolerate already-shipped UTF-8 BOM where compatibility requires it, but writers should not introduce ambiguous encoding.
 
 ## 4. Evidence domains do not substitute for one another
 
@@ -87,6 +89,8 @@ Localization state and saves must follow the project contract; do not bake one l
 A capability required for production work must be fresh, callable and bound to the current run/session/turn according to the active CEOS contract.
 
 For native image generation, stale files, environment variables, manual claims, old session markers or an earlier run cannot unlock generation. Missing/untrusted capability evidence is BLOCKED. A generated asset is not real until the file exists in the workspace and integration/mapping is verified.
+
+When a deterministic run is reopened after a supported recoverable external blocker, resume the persisted blocked stage and preserve immutable history. Do not restart generation, rewrite the scope lock, or auto-reopen capability/integrity failures.
 
 ## 9. Platform/manual and external evidence
 
