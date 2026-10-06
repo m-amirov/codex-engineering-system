@@ -31,6 +31,32 @@ This is a semantic editorial contract, **not** a claim that automated tests can 
 7. **Consistency and endings:** verify chronology, presence, objects, knowledge, promises, consent/boundaries, behavior patterns, route reachability and ending causality against project-owned canon/state contracts.
 8. **Presentation:** after art exists, verify character identity and expression, staging, framing, mobile legibility and that key romantic beats have meaningful visual support. Do not classify missing assets as a script defect when concept-only work is in scope.
 
+## Executable continuity invariants
+
+For implemented interactive fiction, convert recurring continuity failures into project-owned assertions where the state model makes them mechanically decidable. At minimum, audit these invariant classes when applicable:
+
+- **branch-premise validity:** dialogue/narration may rely only on events that happened on the reachable branch;
+- **temporal consistency:** dates and event order are monotonic unless an explicit flashback/time jump is authored and resolved;
+- **knowledge provenance:** a character cannot know future or branch-private information without a demonstrated source;
+- **state ownership:** editorial, relationship, career, inventory, promise and route state used by a scene must match the state actually established on that path;
+- **consent/progression:** consent or commitment cannot be consumed before it is given, and one-shot interactions cannot accidentally repeat as if new;
+- **location/presence continuity:** characters and objects cannot return, depart or appear before the path establishes that transition;
+- **payoff/use:** state intentionally established as consequential is either consumed by a reachable payoff or explicitly classified as intentionally unused;
+- **ending reachability:** every claimed ending is reachable under its documented conditions and no route silently depends on impossible state.
+
+A zero defect counter is not evidence unless the relevant assertions actually executed. A `full season`, `all routes`, or `all endings` verdict requires explicit complete coverage of that declared scope. Preserve historical scene-specific failures as project regression fixtures, but keep the reusable CEOS rule semantic rather than hardcoding scene IDs.
+
+### Narrative size and duration evidence
+
+Keep these measurements distinct in reports:
+
+- total corpus word count;
+- reachable words for a specific route/path;
+- estimated reading duration;
+- measured playthrough duration.
+
+Never present an estimate as a measured run. A duration claim covering all routes needs route-specific evidence rather than multiplying total corpus words by a nominal reading speed.
+
 ## Token-conscious execution and agent boundaries
 
 Use `policies/native-delegation.md`. Long-form prose and editorial repair are owned by **one parent native Codex session** unless an explicitly justified exception applies. Do not spawn simultaneous native writers/reviewers for episodes or route variants; avoid rereading large approved manuscripts or copying shared text into every agent context. Preserve already completed work and process large requested scopes sequentially, one episode per checkpoint.
