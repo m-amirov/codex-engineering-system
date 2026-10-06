@@ -38,3 +38,13 @@ test('global Codex layer and custom model-routing agents exist', () => {
     assert.match(text, new RegExp(`model_reasoning_effort\\s*=\\s*"${agent.effort}"`));
   }
 });
+
+
+test('failure prevention policy is packaged and routed', () => {
+  const policy = fs.readFileSync(path.join(CEOS_ROOT, 'policies', 'failure-prevention.md'), 'utf8');
+  const agents = fs.readFileSync(path.join(CEOS_ROOT, 'AGENTS.md'), 'utf8');
+  assert.match(policy, /reproduce.*classify.*root cause.*regression coverage/s);
+  assert.match(policy, /Evidence domains do not substitute/);
+  assert.match(policy, /branch-complete semantic evidence/);
+  assert.match(agents, /failure-prevention\.md/);
+});
