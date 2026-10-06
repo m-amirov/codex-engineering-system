@@ -17,7 +17,7 @@ Keep this file short. Load only the skill/profile/policy required by the task.
 
 For narrative drafting/editorial repair, the parent is the sole native writer/editor by default; see `policies/native-delegation.md`. Do not spawn parallel native scene editors/reviewers by routine. Web High independent critique is allowed and retains all mandatory evidence gates.
 
-Always load `policies/safety.md`, `policies/evidence.md`, and the resolved project profile. Load other policies only when relevant.
+Always load `policies/safety.md`, `policies/evidence.md`, `policies/failure-prevention.md`, and the resolved project profile. Load other policies only when relevant.
 
 ## Invariants
 
@@ -26,7 +26,7 @@ Always load `policies/safety.md`, `policies/evidence.md`, and the resolved proje
 3. Unknown permission is not permission.
 4. Reuse project-native infrastructure; do not build parallel test/build systems unless the task explicitly requires it.
 5. Prefer goal + constraints + acceptance criteria over prescriptive multi-thousand-line prompts.
-6. Repeated prose rules should migrate into mechanical gates.
+6. Repeated prose rules should migrate into mechanical gates; every confirmed recurring defect must be promoted through the failure-prevention loop.
 7. If required evidence cannot be obtained, return `BLOCKED`, not a guessed PASS.
 8. User-visible progress is concise status reporting, not reasoning narration; keep detailed reasoning, logs, and evidence out of routine progress updates.
 
