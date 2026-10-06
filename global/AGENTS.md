@@ -26,7 +26,8 @@ For engine-backed multi-stage workflows (`audit-repair-loop` and `production-art
 - persist stage evidence and advance with `ceos checkpoint`;
 - record actual Web/fallback use with `ceos routing-trace`;
 - after interruption, call `ceos resume` instead of inferring progress from conversation history;
-- do not claim PASS when run integrity is stale, the state machine has not reached terminal PASS, or required evidence is absent.
+- do not claim PASS when run integrity is stale, the state machine has not reached terminal PASS, or required evidence is absent;
+- for terminal PASS, supply the fail-closed `metadata.evidenceContract` with executed assertions, complete coverage, no unresolved conditions, and current source provenance.
 
 CEOS controls stage order, cycle limits, capability gates, evidence provenance, resume, and verdict acceptance; the parent agent performs semantic/tool work.
 
