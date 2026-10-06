@@ -11,4 +11,6 @@ Return `BLOCKED` rather than guessing when any required condition is true:
 - a screenshot is inaccessible, stale, text-only, or cannot be tied to the current commit and viewport;
 - an approved required asset/input is unavailable;
 - external submit state is ambiguous and retry could duplicate an operation;
-- task scope would have to expand into explicitly forbidden behavior.
+- task scope would have to expand into explicitly forbidden behavior;
+- a frozen release/recovery base, branch, worktree or ancestry does not match the active source;
+- a required run/session-scoped native capability or trust marker is missing, stale or untrusted.

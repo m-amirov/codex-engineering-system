@@ -8,7 +8,12 @@
 - Rejected automatic capability reopen and fail-closed on PASS, FAIL, ESCALATE, integrity failures, and unsupported/manual blockers.
 - Added CLI and execution-engine regression coverage for lifecycle recovery, history, scope integrity, terminal verdicts, and production-art stage restoration.
 
-## Unreleased — 2026-09-25
+## Unreleased — 2026-10-06
+
+- Added a universal failure-prevention policy to every resolved CEOS context, promoting recurring defects from one-off fixes into root-cause rules plus regression coverage.
+- Hardened release/worktree lineage checks, test-vs-configuration-vs-harness adjudication, cross-domain evidence separation, capability-trust stop conditions, Yandex release evidence boundaries and branch-complete narrative verification.
+- Added regression coverage that the policy is packaged and mechanically loaded by `ceos context`.
+
 
 - Added a shared Web transport/rate-limit policy for CEOS Web High routes, with explicit separation of semantic REWORK/FAIL from transport failures.
 - Added conservative anti-burst pacing for attachment-heavy review, bounded 120s → 300s → 600s rate-limit cooldown, and bounded attachment-only retry handling that does not consume generation/repair cycles.

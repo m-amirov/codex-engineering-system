@@ -37,6 +37,12 @@ Use `policies/native-delegation.md`. Long-form prose and editorial repair are ow
 
 For each finished episode, request one **bounded Web High** independent editorial review when Web is enabled/required and actually callable. Web receives the complete relevant new text and necessary canon/choice excerpts, not the entire repository or repeated unchanged alternative paths. After fixes, inspect the changed passages and dependent transitions; respect any full-scope re-audit required by a locked acceptance contract. Use project commands for word counts, branch IDs and consistency checks. Native independent tool-backed review is an exception only when specifically required and cannot be evidenced by the parent plus Web; state the reason and keep it narrowly scoped.
 
+## Branch-complete semantic verification
+
+For implemented branching fiction, a default-path runner or a deterministic "always first option" playthrough is not semantic coverage. Build or reuse a reachability/route matrix and inspect every materially affected reachable branch. Verify chronology, physical presence/location, who knows what, object continuity, promises/payoffs, consent/boundaries, route/status predicates, preselected-choice assumptions and ending causality. Shared unchanged scenes may be referenced once, but alternate branches cannot be inferred from the default route.
+
+When a narrative defect is fixed, add a regression assertion at the semantic boundary when practical (route/state/scene transition, chronology predicate, choice availability, locale-independent save state). Do not encode editorial preference as a deterministic test.
+
 ## Evidence and gates
 
 For an existing draft, produce a bounded scene/route matrix: scene ID, route, goal, emotional start/end, romantic beat, player agency, promised payoff, delivered payoff, and evidence location. For a *new concept*, use a premise/route-beat outline instead; full-script coverage cannot be demanded before the script exists.

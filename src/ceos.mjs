@@ -25,6 +25,8 @@ export const GLOBAL_AGENT_FILES = [
   { file: 'ceos-verifier.toml', name: 'ceos_verifier', model: 'gpt-5.6', effort: 'high', workload: 'independent acceptance and release verification' }
 ];
 
+const ALWAYS_POLICY_FILES = ['failure-prevention'];
+
 const SKILL_POLICY_MAP = {
   audit: ['safety', 'evidence', 'git', 'testing', 'web-transport', 'stop-conditions'],
   'audit-repair-loop': ['safety', 'evidence', 'git', 'testing', 'production', 'native-delegation', 'web-transport', 'stop-conditions'],
@@ -427,7 +429,7 @@ export function renderContext(projectDir, skillName) {
   sections.push(`# CEOS resolved context\n\nSkill: ${skillName}\nProfile: ${manifest.profile}\nProduction access: ${manifest.production?.access ?? 'read-only'}\n`);
   const profileFile = path.join(CEOS_ROOT, 'profiles', manifest.profile, 'PROFILE.md');
   sections.push(fs.readFileSync(profileFile, 'utf8').trim());
-  for (const policy of SKILL_POLICY_MAP[skillName]) {
+  for (const policy of [...ALWAYS_POLICY_FILES, ...SKILL_POLICY_MAP[skillName]]) {
     const f = path.join(CEOS_ROOT, 'policies', `${policy}.md`);
     sections.push(fs.readFileSync(f, 'utf8').trim());
   }
