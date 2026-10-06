@@ -66,6 +66,21 @@ function artifact(project, name, text = name) {
   return name;
 }
 
+function passMetadata(overrides = {}) {
+  return {
+    evidenceContract: {
+      schemaVersion: 1,
+      assertionsExecuted: 1,
+      claims: [
+        { id: 'acceptance', assertionId: 'test:acceptance', status: 'PASS', executions: 1 }
+      ],
+      coverage: { scope: 'declared acceptance scope', checked: 1, total: 1, complete: true },
+      unresolved: [],
+      ...overrides
+    }
+  };
+}
+
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
@@ -263,6 +278,29 @@ test('zero confirmed defects deterministically skips repair but still requires v
   assert.equal(afterDefects.run.checkpointCount, 6);
 });
 
+test('terminal PASS rejects fake-zero evidence even when an artifact exists', () => {
+  const project = tempProject();
+  const result = createRun(project, 'audit-repair-loop', { scope: scope(), capabilities: caps(project) });
+  const id = result.run.runId;
+  const files = ['ev','audit','defects','verify','reaudit'].map(x => artifact(project, `${x}.json`));
+
+  recordCheckpoint(project, id, { stage: 'EVIDENCE_COLLECTED', artifacts: [files[0]] });
+  recordCheckpoint(project, id, { stage: 'AUDITED', artifacts: [files[1]] });
+  recordCheckpoint(project, id, { stage: 'DEFECTS_CONFIRMED', artifacts: [files[2]], metadata: { defectCount: 0 } });
+  recordCheckpoint(project, id, { stage: 'VERIFIED', artifacts: [files[3]], outcome: 'PASS' });
+
+  assert.throws(
+    () => recordCheckpoint(project, id, {
+      stage: 'REAUDITED',
+      artifacts: [files[4]],
+      outcome: 'PASS',
+      metadata: passMetadata({ assertionsExecuted: 0 })
+    }),
+    /SEMANTIC_ASSERTIONS_MISSING/
+  );
+  assert.equal(resumeRun(project, id).run.verdict, null);
+});
+
 test('fresh PASS cannot bypass observable Web routing when preflight was READY', () => {
   const project = tempProject();
   const result = createRun(project, 'audit-repair-loop', { scope: scope(), capabilities: caps(project, { web: 'READY' }) });
@@ -370,7 +408,7 @@ test('recoverable Web BLOCKED production run reopens at visual review and can pa
   recordCheckpoint(project, id, { stage: 'VISUAL_VERIFIED', artifacts: ['visual.json'], outcome: 'PASS' });
   recordRoutingTrace(project, id, { webAgentsUsed: ['ceos_art_director_web'] });
   artifact(project, 'reaudit.json');
-  const done = recordCheckpoint(project, id, { stage: 'REAUDITED', artifacts: ['reaudit.json'], outcome: 'PASS' });
+  const done = recordCheckpoint(project, id, { stage: 'REAUDITED', artifacts: ['reaudit.json'], outcome: 'PASS', metadata: passMetadata() });
   assert.equal(done.run.verdict, 'PASS');
   assert.equal(done.run.nextStage, null);
 });
