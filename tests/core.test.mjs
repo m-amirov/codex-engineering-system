@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { checkCommandConfiguration, classifyCommandRisk, createManifest, detectManifestForProject, doctor, loadManifest, npmScriptForCommand, readFailures, resolveGates, runVerification, validateEvidence, validateManifest } from '../src/ceos.mjs';
 
 function tempProject() { return fs.mkdtempSync(path.join(os.tmpdir(), 'ceos-test-')); }
@@ -110,6 +111,51 @@ test('release clean-worktree policy becomes a mechanical BLOCKED gate', () => {
   const r = runVerification(dir, { mode: 'release' });
   assert.equal(r.summary.verdict, 'BLOCKED');
   assert.ok(r.records.some(x => x.id === 'ceos.clean_worktree.start' && x.status === 'BLOCKED'));
+});
+
+test('release baseline ancestry passes only for a descendant HEAD', () => {
+  const dir = tempProject();
+  const git = (args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
+  writeManifest(dir, `version: 1\nprofile: generic\ncommands:\n  ok: node -e "process.exit(0)"\ngates:\n  verification: [ok]\n  release: [ok]\nproduction:\n  access: read-only\n`);
+  fs.writeFileSync(path.join(dir, 'tracked.txt'), 'base\n');
+  assert.equal(git(['init', '--initial-branch=main']).status, 0);
+  assert.equal(git(['add', '--all']).status, 0);
+  assert.equal(git(['-c', 'user.name=CEOS Test', '-c', 'user.email=ceos@example.invalid', 'commit', '-m', 'base']).status, 0);
+  const baseline = git(['rev-parse', 'HEAD']).stdout.trim();
+  fs.appendFileSync(path.join(dir, 'tracked.txt'), 'descendant\n');
+  assert.equal(git(['add', 'tracked.txt']).status, 0);
+  assert.equal(git(['-c', 'user.name=CEOS Test', '-c', 'user.email=ceos@example.invalid', 'commit', '-m', 'descendant']).status, 0);
+
+  const r = runVerification(dir, { mode: 'release', baselineRef: baseline });
+  assert.equal(r.records.find(x => x.id === 'ceos.release_ancestry').status, 'PASS');
+  assert.equal(r.summary.verdict, 'PASS');
+});
+
+test('release recovery from an unrelated HEAD is BLOCKED with provenance failure', () => {
+  const dir = tempProject();
+  const git = (args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
+  const manifest = `version: 1\nprofile: generic\ncommands:\n  ok: node -e "process.exit(0)"\ngates:\n  verification: [ok]\n  release: [ok]\nproduction:\n  access: read-only\n`;
+  writeManifest(dir, manifest);
+  fs.writeFileSync(path.join(dir, 'tracked.txt'), 'base\n');
+  assert.equal(git(['init', '--initial-branch=main']).status, 0);
+  assert.equal(git(['add', '--all']).status, 0);
+  assert.equal(git(['-c', 'user.name=CEOS Test', '-c', 'user.email=ceos@example.invalid', 'commit', '-m', 'release baseline']).status, 0);
+  const baseline = git(['rev-parse', 'HEAD']).stdout.trim();
+
+  assert.equal(git(['checkout', '--orphan', 'unrelated']).status, 0);
+  assert.equal(git(['rm', '-rf', '.']).status, 0);
+  writeManifest(dir, manifest);
+  fs.writeFileSync(path.join(dir, 'other.txt'), 'unrelated\n');
+  assert.equal(git(['add', '--all']).status, 0);
+  assert.equal(git(['-c', 'user.name=CEOS Test', '-c', 'user.email=ceos@example.invalid', 'commit', '-m', 'wrong recovery base']).status, 0);
+
+  const r = runVerification(dir, { mode: 'release', baselineRef: baseline });
+  const gate = r.records.find(x => x.id === 'ceos.release_ancestry');
+  assert.equal(gate.status, 'BLOCKED');
+  assert.equal(gate.failureType, 'PROVENANCE_FAILURE');
+  assert.equal(gate.failureCode, 'RELEASE_RECOVERY_BASE_MISMATCH');
+  assert.match(gate.reason, /does not descend from release baseline/);
+  assert.equal(r.summary.verdict, 'BLOCKED');
 });
 
 test('renderContext resolves profile and only activated-skill policies', async () => {
