@@ -14,3 +14,5 @@ At activation, run `ceos context --skill verification --project .` when the CEOS
 Treat implementation claims as hypotheses. Map each acceptance criterion to evidence, run the strongest safe project-native checks available, and produce exactly one overall verdict: `PASS`, `FAIL`, or `BLOCKED`.
 
 Do not promote a narrow green check to a broader PASS. Distinguish functional behavior, runtime presentation, authored content/cue correctness, release materials and infrastructure availability. Missing or stale evidence is `BLOCKED`; a failed check is `FAIL`. Visual claims require current-runtime pixels and proof that actual image content was supplied to an independent reviewer, not a text-only assertion.
+
+When a prior implementation report says PASS, verify the report's scope before reusing it. Confirm that evidence belongs to the current commit/build and to the same evidence domain. Preflight READY, file existence, route reachability or a provider PASS are narrow facts, not implicit completion of broader acceptance criteria.
