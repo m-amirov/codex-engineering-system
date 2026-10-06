@@ -121,7 +121,7 @@ function completeProductionRun(project) {
   recordCheckpoint(project, id, { stage: 'INTEGRATED', artifacts: [files[3]] });
   recordCheckpoint(project, id, { stage: 'VISUAL_VERIFIED', artifacts: [files[4]] });
   recordRoutingTrace(project, id, { webAgentsUsed: ['ceos_art_director_web'] });
-  recordCheckpoint(project, id, { stage: 'REAUDITED', artifacts: [files[5]], outcome: 'PASS' });
+  recordCheckpoint(project, id, { stage: 'REAUDITED', artifacts: [files[5]], outcome: 'PASS', metadata: passMetadata() });
   return id;
 }
 
@@ -318,7 +318,7 @@ test('fresh PASS cannot bypass observable Web routing when preflight was READY',
   );
 
   recordRoutingTrace(project, id, { webAgentsUsed: ['ceos_reasoner_web'] });
-  const done = recordCheckpoint(project, id, { stage: 'REAUDITED', artifacts: [files[4]], outcome: 'PASS' });
+  const done = recordCheckpoint(project, id, { stage: 'REAUDITED', artifacts: [files[4]], outcome: 'PASS', metadata: passMetadata() });
   assert.equal(done.run.verdict, 'PASS');
   assert.equal(done.run.nextStage, null);
 });
