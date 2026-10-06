@@ -23,3 +23,9 @@ Overall verdict rules:
 - `BLOCKED` if no required gate fails but at least one required gate cannot be executed/proven.
 - `PASS` only if every required gate passes.
 - Optional gate failures may be reported without changing the overall verdict unless the profile says otherwise.
+
+## Evidence-domain separation
+
+Keep functional/test, runtime, visual, authored-content, platform/manual, media, package/release and infrastructure evidence distinct. A PASS in one domain cannot satisfy another domain's required gate.
+
+Every acceptance/release claim must identify the exact commit/build/configuration it proves. Stale evidence or evidence attached to another HEAD/build is an evidence gap. External provider evidence is supporting unless the resolved profile explicitly makes it authoritative; it cannot override official/platform failures.
