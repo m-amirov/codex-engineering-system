@@ -21,7 +21,7 @@ Always load `policies/safety.md`, `policies/evidence.md`, and the resolved proje
 
 ## Invariants
 
-1. Evidence, not assertion, determines PASS.
+1. Evidence, not assertion, determines PASS. Engine-backed terminal PASS also requires the executable `metadata.evidenceContract`; zero counters, artifacts without assertions, partial coverage, stale HEAD evidence, and unresolved manual/external conditions are not PASS.
 2. Default production access is read-only.
 3. Unknown permission is not permission.
 4. Reuse project-native infrastructure; do not build parallel test/build systems unless the task explicitly requires it.

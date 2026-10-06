@@ -99,7 +99,7 @@ Usage:
   ceos status [--project dir] [--json]
   ceos doctor [--project dir] [--json]
   ceos gates [--mode verification|release] [--project dir] [--json]
-  ceos verify [--mode verification|release] [--project dir] [--evidence dir] [--dry-run] [--json]
+  ceos verify [--mode verification|release] [--project dir] [--evidence dir] [--baseline-ref ref] [--dry-run] [--json]
   ceos evidence [--path dir | --project dir] [--json]
   ceos failures [--path dir | --project dir] [--tail lines] [--json]
   ceos profile [--project dir]
@@ -187,7 +187,7 @@ try {
       break;
     }
     case 'verify': {
-      const result = runVerification(project, { mode: args.mode || 'verification', evidenceDir: args.evidence, dryRun: Boolean(args['dry-run']) });
+      const result = runVerification(project, { mode: args.mode || 'verification', evidenceDir: args.evidence, dryRun: Boolean(args['dry-run']), baselineRef: args['baseline-ref'] === true ? null : (args['baseline-ref'] || null) });
       if (args.json) print({ outputDir: result.outputDir, summary: result.summary }, true); else {
         result.records.forEach(r => console.log(`${r.status.padEnd(19)} ${r.id} [${r.risk}]${r.exitCode === null ? '' : ` exit=${r.exitCode}`}${r.failureType ? ` ${r.failureType}` : ''}${r.reason && r.status === 'CONFIGURATION_ERROR' ? ` — ${r.reason}` : ''}`));
         console.log(`\nEvidence: ${result.outputDir}\nVERDICT: ${result.summary.verdict}`);

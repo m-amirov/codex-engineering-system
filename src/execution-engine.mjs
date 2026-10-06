@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { VERSION } from './ceos.mjs';
+import { assertPositiveEvidenceContract } from './evidence-contract.mjs';
 import { capabilityBlockers } from './capabilities.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -111,6 +113,25 @@ function safeStamp() {
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function gitSourceSnapshot(projectDir) {
+  const run = (args) => spawnSync('git', ['-C', projectDir, ...args], {
+    encoding: 'utf8',
+    windowsHide: true
+  });
+  const headResult = run(['rev-parse', 'HEAD']);
+  if (headResult.status !== 0) {
+    return { available: false, head: null, clean: null, worktreeSha256: null };
+  }
+  const statusResult = run(['status', '--porcelain=v1', '--untracked-files=all']);
+  const statusText = statusResult.status === 0 ? String(statusResult.stdout ?? '') : '';
+  return {
+    available: true,
+    head: String(headResult.stdout ?? '').trim() || null,
+    clean: statusResult.status === 0 ? statusText.trim().length === 0 : null,
+    worktreeSha256: statusResult.status === 0 ? sha256(Buffer.from(statusText)) : null
+  };
 }
 
 function normalizeList(value) {
@@ -296,7 +317,7 @@ function nextAction(run) {
   if (def.minArtifacts) requirements.push(`at least ${def.minArtifacts} persisted evidence artifact(s)`);
   if (def.requiresDefectCount) requirements.push('metadata.defectCount as a non-negative integer');
   if (def.requiresImageGeneration) requirements.push('fresh trusted image-generation presence with generationAllowed = true (PRESENT + UNKNOWN service is sufficient for the first real invocation)');
-  if (def.finalReview) requirements.push('explicit outcome PASS, FAIL, BLOCKED, or ESCALATE');
+  if (def.finalReview) requirements.push('explicit outcome PASS, FAIL, BLOCKED, or ESCALATE plus metadata.evidenceContract for PASS');
   return {
     terminal: false,
     stage: def.id,
@@ -429,6 +450,7 @@ export function createRun(projectDir, pipeline, {
     checkpointCount: 0,
     scopeSha256: scopeHash(normalizedScope),
     capabilitiesSha256: capabilitiesHash(capabilities),
+    sourceAtStart: gitSourceSnapshot(resolvedProject),
     routingTrace: {
       webPreflightStatus: capabilities.web?.status ?? 'UNKNOWN',
       webAgentsUsed: [],
@@ -544,7 +566,11 @@ export function recordCheckpoint(projectDir, runRef, {
     }
 
     const currentCapabilities = readJson(path.join(resolved.runDir, 'capabilities.json'));
-    if (stage === 'REAUDITED' && normalizedOutcome === 'PASS') assertFinalRouting(run, currentCapabilities);
+    const currentSource = gitSourceSnapshot(resolvedProject);
+    if (stage === 'REAUDITED' && normalizedOutcome === 'PASS') {
+      assertFinalRouting(run, currentCapabilities);
+      assertPositiveEvidenceContract(metadata, { currentSourceHead: currentSource.available ? currentSource.head : null });
+    }
     if (definition.requiresImageGeneration) {
       const image = currentCapabilities.imageGeneration;
       if (!(image?.trustedForGeneration === true && image?.capabilityPresence === 'PRESENT' && image?.generationAllowed === true)) {
@@ -572,6 +598,7 @@ export function recordCheckpoint(projectDir, runRef, {
       skipped: Boolean(skipped),
       note: note || null,
       metadata: metadata && typeof metadata === 'object' ? metadata : {},
+      source: currentSource,
       artifacts: artifactRecords
     };
     writeCheckpoint(resolved.runDir, run, checkpoint);
