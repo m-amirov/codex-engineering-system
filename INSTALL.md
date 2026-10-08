@@ -1,11 +1,11 @@
-# Install Codex Engineering OS 0.5.6
+# Install Codex Engineering OS 0.5.7
 
 ## Upgrade on Windows
 
 ```powershell
 cd E:\Tools\codex-engineering-os
 git pull --ff-only
-.\scripts\install-global.ps1 -Web auto
+.\scripts\install-global.ps1 -Web on
 ```
 
 Then verify:
@@ -17,7 +17,16 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.6`. Fully restart Codex and start a new task/session after the global install.
+Expected version: `0.5.7`. Use Codex Web GPT 6.1.6+ and fully restart the launcher and Codex; start a fresh task after global installation.
+
+## GPT-6 route verification
+
+All three managed Web agents must have `model = "chatgpt-web/gpt-6-sol"`
+and `model_reasoning_effort = "high"`.
+Use `-Web on` to update the hybrid manifest and TOML definitions.
+`ceos web-preflight` rejects stale GPT-5.6 routes but does not prove
+the model sent an actual response. Confirm a real delegated Web turn in
+a new Codex user task before marking Web acceptance PASS.
 
 ## Isolated global install
 
@@ -140,6 +149,6 @@ For Yandex Games, bootstrap a new project through the official Starter Kit first
 
 ## Native capability freshness hooks
 
-CEOS 0.5.6 installs a small user-level Codex hook into `$CODEX_HOME/hooks.json` for `SessionStart`, `UserPromptSubmit`, and `SessionEnd`. The hook records only session/turn freshness under `$CODEX_HOME/ceos/runtime`; it does not infer native tool presence.
+CEOS 0.5.7 installs a small user-level Codex hook into `$CODEX_HOME/hooks.json` for `SessionStart`, `UserPromptSubmit`, and `SessionEnd`. The hook records only session/turn freshness under `$CODEX_HOME/ceos/runtime`; it does not infer native tool presence.
 
 Codex requires non-managed hooks to be reviewed/trusted before they execute. If the CEOS hook is not trusted or is disabled by managed policy, native image generation remains fail-closed for production-art. Use `ceos capability-challenge latest` only from the active Codex turn immediately before `GENERATING`.
