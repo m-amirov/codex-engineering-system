@@ -1,5 +1,7 @@
 # Hybrid model-routing policy
 
+**Current upgrade:** `policies/web-delegation.md` governs recurring evidence-backed Web High delegations. For medium/high complexity route substantive bounded work at analysis, midpoint and final acceptance; for large audits shard unique risk contexts, not raw pages. Engine-backed CLI runs use enhanced stage-level Web evidence gates by default. Neither a preflight READY nor a name in `webAgentsUsed` proves substantive review. Earlier 0.3.x tables below are historical explanation; the active managed Web roles remain `chatgpt-web/high`.
+
 CEOS separates **role selection** from **backend selection** and distinguishes **reasoning over supplied context** from **tool-backed evidence gathering or mutation**.
 
 ## Web High routing matrix (0.5.2+)
