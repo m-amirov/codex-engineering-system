@@ -2,7 +2,7 @@
 name: video-production
 description: Use when preparing gameplay recordings, platform-submission gameplay videos, trailers, cinematic showcases, promo edits, or release-video evidence from a real game/runtime.
 metadata:
-  ceos-version: "0.5.6"
+  ceos-version: "0.5.7"
 ---
 
 # Skill: video-production

@@ -16,9 +16,9 @@ $AgentsRoot = Join-Path $CodexHome 'agents'
 $StateRoot = Join-Path $CodexHome 'ceos'
 $ManifestFile = Join-Path $StateRoot 'hybrid-routing.json'
 $WebAgentFiles = @(
-  @{ File = 'ceos-bulk-checker-web.toml'; Name = 'ceos_bulk_checker_web'; Model = 'chatgpt-web/high'; Fallback = 'ceos_bulk_checker' },
-  @{ File = 'ceos-reasoner-web.toml'; Name = 'ceos_reasoner_web'; Model = 'chatgpt-web/high'; Fallback = 'parent-selected-native-role' },
-  @{ File = 'ceos-art-director-web.toml'; Name = 'ceos_art_director_web'; Model = 'chatgpt-web/high'; Fallback = 'ceos_reviewer' }
+  @{ File = 'ceos-bulk-checker-web.toml'; Name = 'ceos_bulk_checker_web'; Model = 'chatgpt-web/gpt-6-sol'; Fallback = 'ceos_bulk_checker' },
+  @{ File = 'ceos-reasoner-web.toml'; Name = 'ceos_reasoner_web'; Model = 'chatgpt-web/gpt-6-sol'; Fallback = 'parent-selected-native-role' },
+  @{ File = 'ceos-art-director-web.toml'; Name = 'ceos_art_director_web'; Model = 'chatgpt-web/gpt-6-sol'; Fallback = 'ceos_reviewer' }
 )
 $LegacyWebAgentFiles = @(
   @{ File = 'ceos-explorer-web.toml'; Name = 'ceos_explorer_web' }

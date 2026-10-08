@@ -1,5 +1,10 @@
 # Hybrid native / ChatGPT Web routing
 
+> This page describes the historical 0.3.0 design. CEOS 0.5.7 uses
+> `chatgpt-web/gpt-6-sol` at High effort for all managed Web agents;
+> see `policies/model-routing.md` for the current contract.
+
+
 CEOS 0.3.0 adds a second routing dimension without merging CEOS with `codex-chatgpt-web`.
 
 ```text

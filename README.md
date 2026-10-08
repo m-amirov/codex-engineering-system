@@ -1,4 +1,4 @@
-# Codex Engineering OS (CEOS) 0.5.6
+# Codex Engineering OS (CEOS) 0.5.7
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
 
@@ -10,7 +10,18 @@ Each run persists under `.ceos-runs/<run-id>/` with `run.json`, immutable `scope
 
 The engine owns legal stage order, scope/capability snapshots, cycle limits, checkpoint SHA-256 provenance, routing-trace acceptance, terminal verdicts, and restart recovery. The parent Codex agent still performs repository/tool work, model delegation, implementation, Image Gen, browser QA, and semantic review. A CLI transition never substitutes for real evidence.
 
-## Enhanced Web High delegation (0.5.6)
+## GPT-6 Sol High routing (0.5.7)
+
+The managed `ceos_bulk_checker_web`, `ceos_reasoner_web` and
+`ceos_art_director_web` all select `chatgpt-web/gpt-6-sol` with
+High reasoning effort. Codex Web GPT **6.1.6+** is required for that route.
+Legacy `chatgpt-web/high` aliases are rejected by the 0.5.7 Web preflight.
+
+A `READY` preflight means that the routes and local bridge are configured
+and healthy; it does **not** prove that GPT-6 actually responded to a
+host-side delegated task. Preserve the independent real-response gate.
+
+## Enhanced Web High delegation (0.5.6+)
 
 For new engine-backed runs, CEOS records separate host-orchestrated Web High review phases: `analysis`, `midpoint` after material repair, and fresh `acceptance`. Zero-defect `audit-repair-loop` runs skip only the midpoint; analysis and acceptance remain required when Web is `READY`.
 
@@ -125,15 +136,15 @@ Every semantic checkpoint records the path, type, size, and SHA-256 of its persi
 
 Long-form writing and editorial repair run in the parent native Codex session **without parallel native scene writers/reviewers by default**. A large requested scope proceeds sequentially, one episode per persisted checkpoint; completion of a checkpoint is not completion of the whole task. At the end of each completed episode use one bounded Web High editorial review when required/available; repair locally, then re-review the changed text and causally affected branch context. The full execution-engine audit-repair-loop retains its mandatory routing/stage/evidence contracts. Independent native tool-backed verification remains available when genuinely necessary; explicit user-requested parallel work remains permitted with disjoint file ownership. See `policies/native-delegation.md` and `skills/romance-narrative/SKILL.md`.
 
-**Scope of enforcement:** CEOS installs instructions and skill policies; it cannot hard-limit the host Codex subagent scheduler, guarantee quota savings, or cancel running subagents. Observe actual active sessions and provider usage separately. Existing Web routes remain `chatgpt-web/high` with no fallback to lower Web tiers.
+**Scope of enforcement:** CEOS installs instructions and skill policies; it cannot hard-limit the host Codex subagent scheduler, guarantee quota savings, or cancel running subagents. Observe actual active sessions and provider usage separately. CEOS 0.5.7 routes all three managed Web agents to GPT-6 Sol High (`chatgpt-web/gpt-6-sol`); it does not silently downgrade to GPT-5.6.
 
 ## Hybrid routing
 
 Web routes remain reasoning-only. As of 0.5.2, every CEOS-managed Web route selects **High**, including bulk checking and general reasoning. Native model routes are unchanged; when High is unavailable, do not silently use a lower Web model:
 
-- `ceos_bulk_checker_web` → `chatgpt-web/high`
-- `ceos_reasoner_web` → `chatgpt-web/high`
-- `ceos_art_director_web` → `chatgpt-web/high`
+- `ceos_bulk_checker_web` → `chatgpt-web/gpt-6-sol`
+- `ceos_reasoner_web` → `chatgpt-web/gpt-6-sol`
+- `ceos_art_director_web` → `chatgpt-web/gpt-6-sol`
 
 Native routes remain responsible for tool-backed evidence, writes, debugging, asset persistence, and final verification. MCP / Full Harness is not required by CEOS.
 
@@ -159,7 +170,7 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.6`. Restart Codex and verify that all three CEOS-managed Web agent TOML files and `$CODEX_HOME/ceos/hybrid-routing.json` specify `chatgpt-web/high`. This checks configured routing, not the success of a substantive delegation. Fully restart Codex after installation.
+Expected version: `0.5.7`. Restart Codex and verify that all three CEOS-managed Web agent TOML files and `$CODEX_HOME/ceos/hybrid-routing.json` specify `chatgpt-web/gpt-6-sol`. This checks configured routing, not the success of a substantive delegation. Fully restart Codex after installation.
 
 For Yandex Games, new projects must still be created through the official Starter Kit before CEOS is attached.
 

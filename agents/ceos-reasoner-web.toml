@@ -1,7 +1,7 @@
 # CEOS-managed agent; installed by Codex Engineering OS.
 name = "ceos_reasoner_web"
 description = "Supplemental reasoning-only Web agent for architecture reasoning, hypothesis comparison, planning, synthesis, and critique over context already supplied by the parent. It must not inspect the repository or invoke tools."
-model = "chatgpt-web/high"
+model = "chatgpt-web/gpt-6-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """

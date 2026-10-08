@@ -19,7 +19,7 @@ test('Web art director remains reasoning-only and hybrid-installed rather than a
   assert.equal(GLOBAL_AGENT_FILES.some(x => x.name === 'ceos_art_director_web'), false);
   const web = read('agents/ceos-art-director-web.toml');
   const installer = read('scripts/install-hybrid.ps1');
-  assert.match(web, /model = "chatgpt-web\/high"/);
+  assert.match(web, /model = "chatgpt-web\/gpt-6-sol"/);
   assert.match(web, /reasoning-only/i);
   assert.match(web, /Do not invoke tools, generate image files, or claim to persist assets/i);
   assert.match(installer, /ceos_art_director_web/);

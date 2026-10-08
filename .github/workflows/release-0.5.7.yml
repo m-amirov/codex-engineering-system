@@ -1,4 +1,4 @@
-name: CEOS 0.5.6 Release Gate
+name: CEOS 0.5.7 Release Gate
 
 on:
   pull_request:
@@ -20,7 +20,7 @@ jobs:
           node-version: '22'
       - name: Version read-back
         run: |
-          test "$(cat VERSION)" = "0.5.6"
+          test "$(cat VERSION)" = "0.5.7"
           node ./bin/ceos.mjs version
       - name: Unit and regression tests
         run: npm test
@@ -36,22 +36,22 @@ jobs:
       - name: Package source archive
         shell: bash
         run: |
-          mkdir -p release-stage/codex-engineering-system-0.5.6
+          mkdir -p release-stage/codex-engineering-system-0.5.7
           git ls-files -z | while IFS= read -r -d '' file; do
-            mkdir -p "release-stage/codex-engineering-system-0.5.6/$(dirname "$file")"
-            cp "$file" "release-stage/codex-engineering-system-0.5.6/$file"
+            mkdir -p "release-stage/codex-engineering-system-0.5.7/$(dirname "$file")"
+            cp "$file" "release-stage/codex-engineering-system-0.5.7/$file"
           done
-          cp INSTALL.md release-stage/codex-engineering-system-0.5.6/INSTALL-0.5.6.md
+          cp INSTALL.md release-stage/codex-engineering-system-0.5.7/INSTALL-0.5.7.md
           cd release-stage
-          zip -r ../codex-engineering-system-0.5.6.zip codex-engineering-system-0.5.6
+          zip -r ../codex-engineering-system-0.5.7.zip codex-engineering-system-0.5.7
           cd ..
-          sha256sum codex-engineering-system-0.5.6.zip > codex-engineering-system-0.5.6.zip.sha256
+          sha256sum codex-engineering-system-0.5.7.zip > codex-engineering-system-0.5.7.zip.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: codex-engineering-system-0.5.6
+          name: codex-engineering-system-0.5.7
           path: |
-            codex-engineering-system-0.5.6.zip
-            codex-engineering-system-0.5.6.zip.sha256
+            codex-engineering-system-0.5.7.zip
+            codex-engineering-system-0.5.7.zip.sha256
           if-no-files-found: error
           retention-days: 90
 
@@ -72,10 +72,35 @@ jobs:
         run: |
           .\scripts\install-global.ps1 -Web off
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify GPT-6 Web-on installation in an isolated Codex home
+        shell: powershell
+        run: |
+          $testHome = Join-Path $env:RUNNER_TEMP 'ceos-gpt6-web'
+          .\scripts\install-hybrid.ps1 -Web on -CodexHome $testHome
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $manifestPath = Join-Path $testHome 'ceos\hybrid-routing.json'
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          $names = @('ceos_bulk_checker_web', 'ceos_reasoner_web', 'ceos_art_director_web')
+          if (@($manifest.webAgents).Count -ne 3) { throw 'Expected 3 Web agents' }
+          foreach ($agent in $manifest.webAgents) {
+            if ($agent.name -notin $names -or $agent.model -ne 'chatgpt-web/gpt-6-sol') {
+              throw "Incorrect Web route: $($agent.name) -> $($agent.model)"
+            }
+            $file = Join-Path (Join-Path $testHome 'agents') $agent.file
+            if (-not (Test-Path -LiteralPath $file)) { throw "Missing agent: $file" }
+            if ((Get-Content $file -Raw) -notmatch 'model = "chatgpt-web/gpt-6-sol"') {
+              throw "Incorrect TOML model: $file"
+            }
+            if ((Get-Content $file -Raw) -notmatch 'model_reasoning_effort = "high"') {
+              throw "Incorrect effort: $file"
+            }
+          }
+          $distinct = @($manifest.webAgents | Select-Object -ExpandProperty name -Unique)
+          if ($distinct.Count -ne 3) { throw 'Duplicate Web agents' }
       - name: Verify installed package is isolated from worktree
         shell: powershell
         run: |
-          if ((ceos version).Trim() -ne '0.5.6') { throw "Unexpected CEOS version: $(ceos version)" }
+          if ((ceos version).Trim() -ne '0.5.7') { throw "Unexpected CEOS version: $(ceos version)" }
 
           $globalRoot = (& npm root -g).Trim()
           $packageDir = Join-Path $globalRoot 'codex-engineering-os'

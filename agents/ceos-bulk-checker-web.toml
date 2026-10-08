@@ -1,7 +1,7 @@
 # CEOS-managed agent; installed by Codex Engineering OS.
 name = "ceos_bulk_checker_web"
 description = "Supplemental reasoning-only Web agent for repetitive classification, comparison, and consistency checks over a complete evidence bundle already supplied in the delegated prompt. It must not inspect the repository or invoke tools."
-model = "chatgpt-web/high"
+model = "chatgpt-web/gpt-6-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """

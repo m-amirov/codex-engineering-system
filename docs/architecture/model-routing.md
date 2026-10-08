@@ -1,5 +1,10 @@
 # Automatic model routing
 
+> The 0.3.0 routing table below is historical. As of **CEOS 0.5.7**,
+> all three managed Web agents select `chatgpt-web/gpt-6-sol` at High effort.
+> Current policy: `policies/model-routing.md` and `policies/web-delegation.md`.
+
+
 CEOS uses Codex custom subagents as the model-routing mechanism. The parent session remains the orchestrator; CEOS routes bounded units of work to globally installed custom agents whose TOML files select the model and reasoning effort.
 
 ## Native baseline

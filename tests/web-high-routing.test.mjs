@@ -15,7 +15,7 @@ test('every CEOS-managed Web agent selects High model and high reasoning effort'
   for (const [file, name] of managed) {
     const toml = fs.readFileSync(path.join(root, 'agents', file), 'utf8');
     assert.match(toml, new RegExp('^name = "' + name + '"$', 'm'));
-    assert.match(toml, /^model = "chatgpt-web\/high"$/m, file);
+    assert.match(toml, /^model = "chatgpt-web\/gpt-6-sol"$/m, file);
     assert.match(toml, /^model_reasoning_effort = "high"$/m, file);
   }
 });
@@ -25,6 +25,6 @@ test('hybrid installer records High mode for all managed Web routes', () => {
   for (const [, name] of managed) {
     const entry = installer.split(/\r?\n/).find(line => line.includes("Name = '" + name + "';"));
     assert.ok(entry, 'missing installer entry for ' + name);
-    assert.match(entry, /Model = 'chatgpt-web\/high'/, name);
+    assert.match(entry, /Model = 'chatgpt-web\/gpt-6-sol'/, name);
   }
 });
