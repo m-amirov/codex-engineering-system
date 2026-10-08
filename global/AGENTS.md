@@ -46,12 +46,12 @@ For sustained work, route by workload, uncertainty, risk, and fresh-tool needs. 
 
 CEOS 0.5.x may use optional `chatgpt-web/*` rows from `codex-chatgpt-web`; Web routes are reasoning-only. MCP / Full Harness is not required and must not be assumed.
 
-All CEOS-managed Web roles use `chatgpt-web/high` with high reasoning. Never silently downgrade; use explicit fallback/failure rules, or `BLOCKED` when Web is required. Preflight READY is not completed delegation.
+All CEOS-managed Web roles use `chatgpt-web/gpt-6-sol` with high reasoning. Never silently downgrade; use explicit fallback/failure rules, or `BLOCKED` when Web is required. Preflight READY is not completed delegation.
 
 
-- `ceos_bulk_checker_web` (`chatgpt-web/high`): repetitive classification/comparison over a complete bounded evidence bundle supplied by the parent.
-- `ceos_reasoner_web` (`chatgpt-web/high`): architecture reasoning, hypothesis comparison, planning, synthesis, or critique over supplied context.
-- `ceos_art_director_web` (`chatgpt-web/high`): art direction, visual canon, asset briefs, and consistency review over supplied manifests/contact sheets/screenshots. It does not generate or persist files.
+- `ceos_bulk_checker_web` (`chatgpt-web/gpt-6-sol`): repetitive classification/comparison over a complete bounded evidence bundle supplied by the parent.
+- `ceos_reasoner_web` (`chatgpt-web/gpt-6-sol`): architecture reasoning, hypothesis comparison, planning, synthesis, or critique over supplied context.
+- `ceos_art_director_web` (`chatgpt-web/gpt-6-sol`): art direction, visual canon, asset briefs, and consistency review over supplied manifests/contact sheets/screenshots. It does not generate or persist files.
 - Do not ask a Web agent to discover files, inspect the workspace, run commands/tests, browse, call local tools, or perform writes.
 - If fresh repository/tool evidence is required, route natively: `ceos_bulk_checker` for batch checks, `ceos_explorer` for repository exploration, `ceos_asset_generator` for bounded asset generation/integration when native image generation is actually available, and the existing native implement/debug/review/verify agents for their roles.
 - Web analysis is advisory reasoning over supplied evidence; it is not independent proof of repository state.
