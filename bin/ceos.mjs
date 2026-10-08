@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import path from 'node:path';
+import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { CEOS_ROOT, VERSION, SUPPORTED_PROFILES, SKILL_NAMES, resolveProject, loadManifest, doctor, gitState, resolveGates, runVerification, validateEvidence, createManifest, detectManifestForProject, latestEvidenceDir, readFailures, renderContext, installSkills, installGlobal, globalStatus, routingTable } from '../src/ceos.mjs';
 import { webPreflight } from '../src/web-preflight.mjs';
@@ -112,7 +113,7 @@ Usage:
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
   ceos run-status [run-id|latest] [--json]
-  ceos routing-trace [run-id|latest] [--web-agents <a;b>] [--native-fallback] [--fallback-reason text] [--json]
+  ceos routing-trace [run-id|latest] [--web-review-file <record.json>] [--web-agents <a;b>] [--native-fallback] [--fallback-reason text] [--json]
   ceos install-skills --scope repo|user [--mode copy|link] [--project dir] [--force]
   ceos install-global [--mode copy|link] [--force] [--dry-run] [--codex-home dir] [--json]
   ceos global-status [--codex-home dir] [--json]
@@ -308,6 +309,7 @@ try {
         },
         capabilities,
         webRequired: Boolean(args['web-required']),
+        webReviewMode: 'enhanced',
         maxCycles: args['max-cycles']
       });
       if (args.json) print(result, true); else printExecution(result);
@@ -355,12 +357,16 @@ try {
     case 'routing-trace': {
       const result = recordRoutingTrace(project, args._[1] || 'latest', {
         webAgentsUsed: args['web-agents'] === undefined ? undefined : listArg(args['web-agents']),
+        webReview: args['web-review-file']
+          ? JSON.parse(fs.readFileSync(path.resolve(project, String(args['web-review-file'])), 'utf8'))
+          : undefined,
         nativeFallbackUsed: args['native-fallback'] === undefined ? undefined : Boolean(args['native-fallback']),
         fallbackReason: args['fallback-reason'] === true ? null : args['fallback-reason']
       });
       if (args.json) print(result, true); else {
         console.log(`Run: ${result.run.runId}`);
         console.log(`Web agents: ${result.run.routingTrace.webAgentsUsed.join(', ') || '(none)'}`);
+        console.log(`Web reviews: ${result.run.routingTrace.webReviews?.length ?? 0}`);
         console.log(`Native fallback: ${result.run.routingTrace.nativeFallbackUsed}`);
         if (result.run.routingTrace.fallbackReason) console.log(`Fallback reason: ${result.run.routingTrace.fallbackReason}`);
       }
