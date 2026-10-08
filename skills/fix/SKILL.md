@@ -7,6 +7,8 @@ metadata:
 
 # Skill: fix
 
+For medium/high-complexity cross-component fixes use `policies/web-delegation.md`: delegate independent Web High hypothesis review, post-repair targeted critique, and final acceptance over native-collected evidence. These are distinct bounded tasks; retain native tool-backed tests and do not fabricate Web receipt or replace native debugging.
+
 At activation, run `ceos context --skill fix --project .` when the CEOS CLI is available. Treat the returned profile/policies as the resolved project contract. If CEOS is unavailable, do not invent the missing project policy; use repository instructions and state the evidence gap.
 
 **Intent:** reproduce, identify root cause, repair and verify a defect.
