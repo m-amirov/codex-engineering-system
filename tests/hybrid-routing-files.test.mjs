@@ -13,13 +13,13 @@ test('0.5.x Web agents are reasoning-only and assume no local tools', () => {
   const reasoner = read('agents/ceos-reasoner-web.toml');
   const artDirector = read('agents/ceos-art-director-web.toml');
   assert.match(bulk, /name = "ceos_bulk_checker_web"/);
-  assert.match(bulk, /model = "chatgpt-web\/high"/);
+  assert.match(bulk, /model = "chatgpt-web\/gpt-6-sol"/);
   assert.match(bulk, /must not inspect the repository or invoke tools/i);
   assert.match(reasoner, /name = "ceos_reasoner_web"/);
-  assert.match(reasoner, /model = "chatgpt-web\/high"/);
+  assert.match(reasoner, /model = "chatgpt-web\/gpt-6-sol"/);
   assert.match(reasoner, /must not inspect the repository or invoke tools/i);
   assert.match(artDirector, /name = "ceos_art_director_web"/);
-  assert.match(artDirector, /model = "chatgpt-web\/high"/);
+  assert.match(artDirector, /model = "chatgpt-web\/gpt-6-sol"/);
   assert.match(artDirector, /must not inspect the repository/i);
   assert.match(artDirector, /must not.*generate.*files|do not invoke tools, generate image files/is);
   assert.equal(fs.existsSync(path.join(root, 'agents/ceos-explorer-web.toml')), false);
@@ -77,7 +77,7 @@ test('Windows hybrid installer detects packaged launcher and records no-MCP cont
   assert.match(installer, /localToolsAssumed = \$false/);
   assert.match(installer, /Refusing to replace non-CEOS agent target/);
   assert.match(installer, /ceos-art-director-web\.toml/);
-  assert.match(installer, /chatgpt-web\/high/);
+  assert.match(installer, /chatgpt-web\/gpt-6-sol/);
   assert.match(installer, /ceos-explorer-web\.toml/);
   assert.match(installer, /single-native-fallback-on-transport-backend-failure-only/);
 });
