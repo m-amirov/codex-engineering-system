@@ -6,6 +6,11 @@ import path from 'node:path';
 import { webPreflight } from '../src/web-preflight.mjs';
 
 function makeHome(manifest, { bom = false } = {}) {
+  if (manifest?.enabled === true && !Object.hasOwn(manifest, 'webAgents')) {
+    manifest = { ...manifest, webAgents:
+      ['ceos_bulk_checker_web', 'ceos_reasoner_web', 'ceos_art_director_web']
+        .map(name => ({ name, model: 'chatgpt-web/gpt-6-sol' })) };
+  }
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ceos-web-preflight-'));
   const dir = path.join(home, '.codex', 'ceos');
   fs.mkdirSync(dir, { recursive: true });
@@ -73,14 +78,14 @@ test('Web preflight converts bridge transport failure into explicit fallback sta
   assert.match(result.reason, /ECONNREFUSED/);
 });
 
-test('Web preflight refuses stale non-High CEOS Web model mapping', async () => {
+test('Web preflight refuses stale CEOS Web model mapping', async () => {
   const homeDir = makeHome({
     schemaVersion: 2,
     enabled: true,
     webAgents: [
       { name: 'ceos_bulk_checker_web', model: 'chatgpt-web/light' },
-      { name: 'ceos_reasoner_web', model: 'chatgpt-web/high' },
-      { name: 'ceos_art_director_web', model: 'chatgpt-web/high' }
+      { name: 'ceos_reasoner_web', model: 'chatgpt-web/gpt-6-sol' },
+      { name: 'ceos_art_director_web', model: 'chatgpt-web/gpt-6-sol' }
     ]
   });
   let probed = false;
@@ -91,17 +96,17 @@ test('Web preflight refuses stale non-High CEOS Web model mapping', async () => 
   assert.equal(result.status, 'NOT_CONFIGURED');
   assert.equal(result.ready, false);
   assert.equal(probed, false);
-  assert.match(result.reason, /non-High/);
+  assert.match(result.reason, /GPT-6/);
 });
 
-test('Web preflight accepts the all-High CEOS routing manifest', async () => {
+test('Web preflight accepts the GPT-6 Sol routing manifest', async () => {
   const homeDir = makeHome({
     schemaVersion: 2,
     enabled: true,
     webAgents: [
-      { name: 'ceos_bulk_checker_web', model: 'chatgpt-web/high' },
-      { name: 'ceos_reasoner_web', model: 'chatgpt-web/high' },
-      { name: 'ceos_art_director_web', model: 'chatgpt-web/high' }
+      { name: 'ceos_bulk_checker_web', model: 'chatgpt-web/gpt-6-sol' },
+      { name: 'ceos_reasoner_web', model: 'chatgpt-web/gpt-6-sol' },
+      { name: 'ceos_art_director_web', model: 'chatgpt-web/gpt-6-sol' }
     ]
   });
   const result = await webPreflight({
@@ -142,4 +147,32 @@ test('Web preflight classifies explicit bridge cooldown body as RATE_LIMITED', a
   });
   assert.equal(result.status, 'RATE_LIMITED');
   assert.equal(result.retryAfterSeconds, 125);
+});
+
+test('Web preflight rejects legacy GPT-5.6 High routes even when the bridge is healthy', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true, webAgents:
+    ['ceos_bulk_checker_web','ceos_reasoner_web','ceos_art_director_web']
+      .map(name => ({ name, model: 'chatgpt-web/high' })) });
+  let probed = false;
+  const result = await webPreflight({
+    homeDir, fetchImpl: async () => { probed = true; throw Error('must not probe'); }
+  });
+  assert.equal(result.status, 'NOT_CONFIGURED');
+  assert.equal(probed, false);
+  assert.match(result.reason, /GPT-6/);
+});
+
+test('Web preflight refuses missing and duplicate GPT-6 managed routes', async () => {
+  const names = ['ceos_bulk_checker_web','ceos_reasoner_web','ceos_art_director_web'];
+  for (const webAgents of [
+    names.slice(0,2).map(name => ({ name, model: 'chatgpt-web/gpt-6-sol' })),
+    [names[0],names[0],names[2]].map(name => ({ name, model: 'chatgpt-web/gpt-6-sol' })),
+    null
+  ]) {
+    const homeDir = makeHome({ schemaVersion: 2, enabled: true, webAgents });
+    const result = await webPreflight({
+      homeDir, fetchImpl: async () => { throw Error('must not probe stale config'); }
+    });
+    assert.equal(result.status, 'NOT_CONFIGURED');
+  }
 });
