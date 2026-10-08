@@ -1,6 +1,6 @@
 # Hybrid model-routing policy
 
-**Current upgrade:** `policies/web-delegation.md` governs recurring evidence-backed Web High delegations. For medium/high complexity route substantive bounded work at analysis, midpoint and final acceptance; for large audits shard unique risk contexts, not raw pages. Engine-backed CLI runs use enhanced stage-level Web evidence gates by default. Neither a preflight READY nor a name in `webAgentsUsed` proves substantive review. Earlier 0.3.x tables below are historical explanation; the active managed Web roles remain `chatgpt-web/high`.
+**Current upgrade:** `policies/web-delegation.md` governs recurring evidence-backed Web High delegations. For medium/high complexity route substantive bounded work at analysis, midpoint and final acceptance; for large audits shard unique risk contexts, not raw pages. Engine-backed CLI runs use enhanced stage-level Web evidence gates by default. Neither a preflight READY nor a name in `webAgentsUsed` proves substantive review. Earlier 0.3.x tables below are historical explanation; since 0.5.7 the active managed Web roles use GPT-6 Sol High (`chatgpt-web/gpt-6-sol`).
 
 CEOS separates **role selection** from **backend selection** and distinguishes **reasoning over supplied context** from **tool-backed evidence gathering or mutation**.
 
@@ -8,9 +8,9 @@ CEOS separates **role selection** from **backend selection** and distinguishes *
 
 | Work type | Preferred route when Web is enabled | Native route / evidence source | Tool assumption |
 |---|---|---|---|
-| bounded batch classification over supplied evidence | `ceos_bulk_checker_web` → `chatgpt-web/high` | `ceos_bulk_checker` → `gpt-5.6-luna` | Web: none |
-| architecture reasoning / synthesis over supplied context | `ceos_reasoner_web` → `chatgpt-web/high` | parent-selected native role | Web: none |
-| production-art direction / visual canon / consistency critique | `ceos_art_director_web` → `chatgpt-web/high` | `ceos_reviewer` → `gpt-5.6` high | Web: none; supplied visual evidence only |
+| bounded batch classification over supplied evidence | `ceos_bulk_checker_web` → `chatgpt-web/gpt-6-sol` | `ceos_bulk_checker` → `gpt-5.6-luna` | Web: none |
+| architecture reasoning / synthesis over supplied context | `ceos_reasoner_web` → `chatgpt-web/gpt-6-sol` | parent-selected native role | Web: none |
+| production-art direction / visual canon / consistency critique | `ceos_art_director_web` → `chatgpt-web/gpt-6-sol` | `ceos_reviewer` → `gpt-5.6` high | Web: none; supplied visual evidence only |
 | repository exploration / dependency tracing | — | `ceos_explorer` → `gpt-5.6-terra` | tools required |
 | tool-backed bulk checks / log-file batches | — | `ceos_bulk_checker` → `gpt-5.6-luna` | tools required |
 | implementation | — | `ceos_implementer` → `gpt-5.6` medium | workspace-write |
@@ -19,7 +19,7 @@ CEOS separates **role selection** from **backend selection** and distinguishes *
 | review | — | `ceos_reviewer` → `gpt-5.6` high | read-only/tool-backed |
 | verification | — | `ceos_verifier` → `gpt-5.6` high | read-only/tool-backed |
 
-Whenever CEOS selects a Web route, every CEOS-managed Web role MUST use `chatgpt-web/high` with high reasoning effort, including bulk classification and reasoning. Do not silently downgrade a Web role to light/medium when High is unavailable; record a backend/transport failure and follow the existing fallback or `--web-required` BLOCKED contract. Web High selection does not grant access to local tools, change the user's native model configuration, or imply that preflight READY proves an actual substantive Web response.
+Whenever CEOS selects a Web route, every CEOS-managed Web role MUST use `chatgpt-web/gpt-6-sol` with high reasoning effort, including bulk classification and reasoning. Do not silently downgrade a Web role to light/medium when High is unavailable; record a backend/transport failure and follow the existing fallback or `--web-required` BLOCKED contract. Web High selection does not grant access to local tools, change the user's native model configuration, or imply that preflight READY proves an actual substantive Web response.
 
 The critical evidence/write/debug/risk/final-verification path remains native. Browser-only `codex-chatgpt-web` is sufficient for supplemental Web reasoning routes; MCP / Full Harness is not a prerequisite and is not assumed by CEOS routing.
 
