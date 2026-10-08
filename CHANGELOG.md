@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.6 — 2026-10-08
+
+- Added enhanced Web High delegation gates for engine-backed runs: analysis, post-repair midpoint, and fresh acceptance, with deterministic midpoint skipping for zero-defect audits.
+- Added source-HEAD-bound review receipts with explicit evidence receipt, actual-pixel, findings, unresolved-item, and evidence-integrity checks.
+- Added standalone `ceos web-plan` and `ceos web-review-verify` commands for non-engine workflows.
+- Preserved native-only evidence collection, implementation, writes, debugging, and final verification; the CLI records host-provided review receipts and does not invoke Web agents itself.
+- Hardened native fallback acceptance so semantic reviewer outcomes cannot be relabeled as transport failures.
+
 ## 0.5.5 — 2026-09-28
 
 - Added explicit `ceos resume --reopen-blocked --reason` recovery for terminal runs stopped by supported recoverable external blockers.

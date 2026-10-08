@@ -323,6 +323,44 @@ test('fresh PASS cannot bypass observable Web routing when preflight was READY',
   assert.equal(done.run.nextStage, null);
 });
 
+test('native fallback rejects semantic reviewer outcomes when Web transport is unavailable', () => {
+  const project = tempProject();
+  const result = createRun(project, 'audit-repair-loop', {
+    scope: scope(),
+    capabilities: caps(project, { web: 'UNAVAILABLE' }),
+    webReviewMode: 'enhanced'
+  });
+  const id = result.run.runId;
+  recordCheckpoint(project, id, { stage: 'EVIDENCE_COLLECTED', artifacts: [artifact(project, 'evidence.json')] });
+  recordRoutingTrace(project, id, {
+    nativeFallbackUsed: true,
+    fallbackReason: 'reviewer found an unresolved semantic defect'
+  });
+
+  assert.throws(
+    () => recordCheckpoint(project, id, { stage: 'AUDITED', artifacts: [artifact(project, 'audit.json')] }),
+    /WEB_REVIEW_NOT_VERIFIED|transport|fallback/i
+  );
+});
+
+test('native fallback accepts explicit Web transport failure states', () => {
+  const project = tempProject();
+  const result = createRun(project, 'audit-repair-loop', {
+    scope: scope(),
+    capabilities: caps(project, { web: 'RATE_LIMITED' }),
+    webReviewMode: 'enhanced'
+  });
+  const id = result.run.runId;
+  recordCheckpoint(project, id, { stage: 'EVIDENCE_COLLECTED', artifacts: [artifact(project, 'evidence.json')] });
+  recordRoutingTrace(project, id, {
+    nativeFallbackUsed: true,
+    fallbackReason: 'health endpoint returned HTTP 429; Retry-After is 180 seconds'
+  });
+
+  const audited = recordCheckpoint(project, id, { stage: 'AUDITED', artifacts: [artifact(project, 'audit.json')] });
+  assert.equal(audited.run.nextStage, 'DEFECTS_CONFIRMED');
+});
+
 test('failed fresh re-audit increments cycle and resumes from fresh evidence', () => {
   const project = tempProject();
   const result = createRun(project, 'audit-repair-loop', { scope: scope(), capabilities: caps(project), maxCycles: 2 });
