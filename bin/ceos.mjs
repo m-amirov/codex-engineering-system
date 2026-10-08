@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { CEOS_ROOT, VERSION, SUPPORTED_PROFILES, SKILL_NAMES, resolveProject, loadManifest, doctor, gitState, resolveGates, runVerification, validateEvidence, createManifest, detectManifestForProject, latestEvidenceDir, readFailures, renderContext, installSkills, installGlobal, globalStatus, routingTable } from '../src/ceos.mjs';
 import { webPreflight } from '../src/web-preflight.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
+import { webReviewPlan, validateWebReview } from '../src/web-delegation.mjs';
 import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, EXECUTION_PIPELINES } from '../src/execution-engine.mjs';
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
@@ -106,6 +107,8 @@ Usage:
   ceos profile [--project dir]
   ceos context --skill <name> [--project dir]
   ceos web-preflight [--codex-home dir] [--url http://127.0.0.1:17841/healthz] [--timeout-ms 1200] [--json]
+  ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--json]
+  ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--json]
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
   ceos capability-challenge [run-id|latest] [--codex-home dir] [--json]
   ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
@@ -293,6 +296,30 @@ try {
         console.log(`Attestation: ${observed.file}`);
         if (refreshed.nextAction?.stage) console.log(`Next: ${refreshed.nextAction.stage}`);
       }
+      break;
+    }
+    case 'web-plan': {
+      const total = args.items === undefined ? null : Number(args.items);
+      const plan = webReviewPlan(args.kind || 'engineering', {
+        complexity: args.complexity || 'high',
+        visual: Boolean(args.visual),
+        totalItems: total
+      });
+      print(plan, true);
+      break;
+    }
+    case 'web-review-verify': {
+      if (!args['record-file'] || !args.phase) throw new Error('--record-file and --phase are required');
+      const record = JSON.parse(fs.readFileSync(path.resolve(project, String(args['record-file'])), 'utf8'));
+      const issues = validateWebReview(record, {
+        pipeline: args.kind || 'engineering',
+        phase: String(args.phase),
+        currentHead: args.head || null,
+        visual: Boolean(args.visual)
+      });
+      const result = { status: issues.length ? 'WEB_REVIEW_NOT_VERIFIED' : 'PASS', issues };
+      print(result, true);
+      process.exitCode = issues.length ? 2 : 0;
       break;
     }
     case 'run': {
