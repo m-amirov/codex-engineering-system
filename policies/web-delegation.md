@@ -12,7 +12,7 @@ Large audits: deduplicate equivalent cases by unique route/scene/cue/state, use 
 
 ## Model and trust boundary
 
-- CEOS-managed Web roles use `chatgpt-web/high`. Do not silently downgrade.
+- CEOS-managed Web roles use explicit GPT-6 Sol High (`chatgpt-web/gpt-6-sol`), requiring Codex Web GPT 6.1.6 or newer. Do not silently downgrade to GPT-5.6.
 - `ceos_reasoner_web`: architecture, semantics, causal alternatives, UX/narrative.
 - `ceos_bulk_checker_web`: bounded, individually grounded text/ledger classification.
 - `ceos_art_director_web`: supplied images, art canon, composition, framing.
