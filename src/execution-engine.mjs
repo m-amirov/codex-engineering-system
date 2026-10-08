@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { VERSION } from './ceos.mjs';
 import { assertPositiveEvidenceContract } from './evidence-contract.mjs';
 import { capabilityBlockers } from './capabilities.mjs';
+import { webReviewPlan, verifyWebDelegation } from './web-delegation.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -359,6 +360,15 @@ function assertRunIntegrity(runDir, run) {
     }
   }
 
+  for (const review of run.routingTrace?.webReviews ?? []) {
+    const artifact = review.evidenceArtifact;
+    if (!artifact?.path || !fs.existsSync(artifact.path)) {
+      issues.push('Web review evidence artifact missing');
+    } else if (hashPath(artifact.path).sha256 !== artifact.sha256) {
+      issues.push('Web review evidence artifact changed after routing-trace');
+    }
+  }
+
   const checkpointsDir = path.join(runDir, 'checkpoints');
   if (fs.existsSync(checkpointsDir)) {
     const files = fs.readdirSync(checkpointsDir).filter(x => x.endsWith('.json')).sort();
@@ -408,7 +418,8 @@ export function createRun(projectDir, pipeline, {
   scope,
   capabilities,
   webRequired = false,
-  maxCycles
+  maxCycles,
+  webReviewMode = 'legacy'
 } = {}) {
   const resolvedProject = path.resolve(projectDir);
   const definition = EXECUTION_PIPELINES[pipeline];
@@ -416,7 +427,11 @@ export function createRun(projectDir, pipeline, {
   if (!fs.existsSync(resolvedProject)) throw new Error(`Project directory does not exist: ${resolvedProject}`);
   if (!capabilities || typeof capabilities !== 'object') throw new Error('capabilities snapshot is required');
 
+  if (!['legacy', 'enhanced'].includes(webReviewMode)) throw new Error('Invalid webReviewMode');
   const normalizedScope = normalizeScope(scope);
+  const visualReview = pipeline === 'production-art' || /(?:visual|image|art|screenshot|render|\bui\b|худож|визуал|изображен)/i.test([normalizedScope.target, ...normalizedScope.inScope].join(' '));
+  const delegationPlan = webReviewMode === 'enhanced'
+    ? webReviewPlan(pipeline, { complexity: 'high', visual: visualReview }) : null;
   const cycles = ensureMaxCycles(maxCycles, definition.maxCyclesDefault);
   const runId = `${safeStamp()}-${pipeline}-${crypto.randomBytes(3).toString('hex')}`;
   const root = runRoot(resolvedProject);
@@ -443,6 +458,8 @@ export function createRun(projectDir, pipeline, {
     cycle: 1,
     maxCycles: cycles,
     webRequired: Boolean(webRequired),
+    webReviewMode,
+    webDelegationPlan: delegationPlan,
     state: 'CAPABILITIES_CHECKED',
     nextStage: definition.stages[0].id,
     verdict: null,
@@ -454,9 +471,10 @@ export function createRun(projectDir, pipeline, {
     routingTrace: {
       webPreflightStatus: capabilities.web?.status ?? 'UNKNOWN',
       webAgentsUsed: [],
+      webReviews: [],
       nativeFallbackUsed: false,
       fallbackReason: null,
-      byCycle: { '1': { webAgentsUsed: [], nativeFallbackUsed: false, fallbackReason: null } }
+      byCycle: { '1': { webAgentsUsed: [], webReviews: [], nativeFallbackUsed: false, fallbackReason: null } }
     }
   };
 
@@ -513,7 +531,30 @@ function retryOrFail(run, stage, nextStage, reason) {
   run.state = stage;
   run.nextStage = nextStage;
   run.routingTrace.byCycle ||= {};
-  run.routingTrace.byCycle[String(run.cycle)] ||= { webAgentsUsed: [], nativeFallbackUsed: false, fallbackReason: null };
+  run.routingTrace.byCycle[String(run.cycle)] ||= { webAgentsUsed: [], webReviews: [], nativeFallbackUsed: false, fallbackReason: null };
+}
+
+function assertWebReviewPhase(run, capabilities, stage, currentHead) {
+  if (run.webReviewMode !== 'enhanced') return;
+  const phases = run.pipeline === 'production-art'
+    ? { CANON_READY: 'analysis', VISUAL_VERIFIED: 'midpoint', REAUDITED: 'acceptance' }
+    : { AUDITED: 'analysis', VERIFIED: 'midpoint', REAUDITED: 'acceptance' };
+  const phase = phases[stage];
+  if (!phase || (phase === 'midpoint' && run.pipeline === 'audit-repair-loop' && run.lastDefectCount === 0)) return;
+  if (capabilities.web?.status !== 'READY') {
+    if (run.webRequired) throw new Error('WEB_REVIEW_NOT_VERIFIED: required Web backend is not READY');
+    const trace = run.routingTrace.byCycle?.[String(run.cycle)] ?? {};
+    if (!trace.nativeFallbackUsed || !trace.fallbackReason)
+      throw new Error('WEB_REVIEW_NOT_VERIFIED: record transport-only native fallback reason when Web is unavailable');
+    return;
+  }
+  const trace = run.routingTrace.byCycle?.[String(run.cycle)] ?? {};
+  const reviews = (trace.webReviews ?? []).filter(review => review.phase === phase);
+  const plan = { ...run.webDelegationPlan, phases: [phase] };
+  const verdict = verifyWebDelegation(plan, reviews, {
+    pipeline: run.pipeline, currentHead, defectCount: run.lastDefectCount ?? null
+  });
+  if (!verdict.ok) throw new Error(`${verdict.code}: ${verdict.errors.join('; ')}`);
 }
 
 function assertFinalRouting(run, capabilities) {
@@ -567,6 +608,9 @@ export function recordCheckpoint(projectDir, runRef, {
 
     const currentCapabilities = readJson(path.join(resolved.runDir, 'capabilities.json'));
     const currentSource = gitSourceSnapshot(resolvedProject);
+    if (normalizedOutcome === 'PASS' || normalizedOutcome === 'CONTINUE') {
+      assertWebReviewPhase(run, currentCapabilities, stage, currentSource.head);
+    }
     if (stage === 'REAUDITED' && normalizedOutcome === 'PASS') {
       assertFinalRouting(run, currentCapabilities);
       assertPositiveEvidenceContract(metadata, { currentSourceHead: currentSource.available ? currentSource.head : null });
@@ -755,6 +799,7 @@ export function resumeRun(projectDir, runRef = 'latest') {
 
 export function recordRoutingTrace(projectDir, runRef, {
   webAgentsUsed,
+  webReview,
   nativeFallbackUsed,
   fallbackReason
 } = {}) {
@@ -764,11 +809,33 @@ export function recordRoutingTrace(projectDir, runRef, {
     const run = readJson(resolved.file);
     run.routingTrace.byCycle ||= {};
     const cycleKey = String(run.cycle);
-    const cycleTrace = run.routingTrace.byCycle[cycleKey] ||= { webAgentsUsed: [], nativeFallbackUsed: false, fallbackReason: null };
+    const cycleTrace = run.routingTrace.byCycle[cycleKey] ||= { webAgentsUsed: [], webReviews: [], nativeFallbackUsed: false, fallbackReason: null };
     if (webAgentsUsed !== undefined) {
       const merged = [...new Set([...(cycleTrace.webAgentsUsed ?? []), ...normalizeList(webAgentsUsed)])];
       cycleTrace.webAgentsUsed = merged;
       run.routingTrace.webAgentsUsed = [...new Set([...(run.routingTrace.webAgentsUsed ?? []), ...merged])];
+    }
+    if (webReview !== undefined) {
+      if (!webReview || typeof webReview !== 'object' || Array.isArray(webReview))
+        throw new Error('webReview must be an object');
+      if (!webReview.evidenceArtifact) throw new Error('webReview.evidenceArtifact is required');
+      if (!webReview.reviewTraceId || !webReview.taskId || !webReview.phase || !webReview.agent)
+        throw new Error('webReview requires reviewTraceId, taskId, phase and agent');
+      const current = gitSourceSnapshot(resolvedProject);
+      if (current.available && webReview.sourceHead !== current.head)
+        throw new Error('WEB_REVIEW_NOT_VERIFIED: Web review sourceHead does not match current HEAD');
+      const artifact = resolveArtifact(resolvedProject, resolved.runDir, webReview.evidenceArtifact);
+      cycleTrace.webReviews ||= [];
+      if (cycleTrace.webReviews.some(item => item.reviewTraceId === webReview.reviewTraceId))
+        throw new Error('Duplicate Web reviewer trace id');
+      const stored = { ...webReview, evidenceArtifact: artifact, recordedAt: now() };
+      cycleTrace.webReviews.push(stored);
+      run.routingTrace.webReviews ||= [];
+      run.routingTrace.webReviews.push(stored);
+      if (webReview.status === 'PASS') {
+        cycleTrace.webAgentsUsed = [...new Set([...(cycleTrace.webAgentsUsed ?? []), webReview.agent])];
+        run.routingTrace.webAgentsUsed = [...new Set([...(run.routingTrace.webAgentsUsed ?? []), webReview.agent])];
+      }
     }
     if (nativeFallbackUsed !== undefined) {
       cycleTrace.nativeFallbackUsed = Boolean(nativeFallbackUsed);
