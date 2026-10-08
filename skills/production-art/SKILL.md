@@ -19,6 +19,8 @@ At activation, run `ceos context --skill production-art --project .` when the CE
 
 ## Intent
 
+Use `policies/web-delegation.md`: where Web High is READY, plan an art-direction analysis before generation, independent midpoint review of integrated asset batches, and fresh visual acceptance review. Attach real current source/reference/runtime pixels with verified receipt and exact source HEAD. Persist phase-specific review records through CEOS routing trace; a single Web agent name is not enough. Native image generation, tool-backed runtime verification and file writes stay native.
+
 Turn an approved product/art direction into real project-owned image assets without letting generation convenience redefine product behavior.
 
 ## Pipeline
