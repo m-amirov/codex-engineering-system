@@ -4,11 +4,19 @@
  */
 export const WEB_REVIEW_PHASES = Object.freeze({
   'audit-repair-loop': ['analysis', 'midpoint', 'acceptance'],
-  'production-art': ['analysis', 'midpoint', 'acceptance']
+  'production-art': ['analysis', 'midpoint', 'acceptance'],
+  'engineering': ['analysis', 'midpoint', 'acceptance'],
+  'visual-qa': ['analysis', 'midpoint', 'acceptance'],
+  'narrative': ['analysis', 'midpoint', 'acceptance'],
+  'release': ['analysis', 'midpoint', 'acceptance']
 });
 export const WEB_REVIEW_AGENTS = Object.freeze({
   'audit-repair-loop': ['ceos_bulk_checker_web', 'ceos_reasoner_web'],
-  'production-art': ['ceos_art_director_web', 'ceos_reasoner_web']
+  'production-art': ['ceos_art_director_web', 'ceos_reasoner_web'],
+  'engineering': ['ceos_reasoner_web', 'ceos_bulk_checker_web'],
+  'visual-qa': ['ceos_art_director_web', 'ceos_reasoner_web'],
+  'narrative': ['ceos_reasoner_web', 'ceos_bulk_checker_web'],
+  'release': ['ceos_reasoner_web', 'ceos_bulk_checker_web']
 });
 
 const nonempty = value => typeof value === 'string' && value.trim().length > 0;
