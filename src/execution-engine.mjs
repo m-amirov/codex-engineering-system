@@ -429,7 +429,7 @@ export function createRun(projectDir, pipeline, {
 
   if (!['legacy', 'enhanced'].includes(webReviewMode)) throw new Error('Invalid webReviewMode');
   const normalizedScope = normalizeScope(scope);
-  const visualReview = pipeline === 'production-art' || /(?:visual|image|art|screenshot|render|\bui\b|худож|визуал|изображен)/i.test([normalizedScope.target, ...normalizedScope.inScope].join(' '));
+  const visualReview = pipeline === 'production-art' || /(?:visual|image|\bart\b|screenshot|render|\bui\b|худож|визуал|изображен)/i.test([normalizedScope.target, ...normalizedScope.inScope].join(' '));
   const delegationPlan = webReviewMode === 'enhanced'
     ? webReviewPlan(pipeline, { complexity: 'high', visual: visualReview }) : null;
   const cycles = ensureMaxCycles(maxCycles, definition.maxCyclesDefault);
@@ -844,7 +844,7 @@ export function recordRoutingTrace(projectDir, runRef, {
       cycleTrace.webReviews.push(stored);
       run.routingTrace.webReviews ||= [];
       run.routingTrace.webReviews.push(stored);
-      if (webReview.status === 'PASS') {
+      if (['PASS', 'FINDINGS'].includes(webReview.status)) {
         cycleTrace.webAgentsUsed = [...new Set([...(cycleTrace.webAgentsUsed ?? []), webReview.agent])];
         run.routingTrace.webAgentsUsed = [...new Set([...(run.routingTrace.webAgentsUsed ?? []), webReview.agent])];
       }
