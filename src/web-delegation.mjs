@@ -43,14 +43,16 @@ export function validateWebReview(review, { pipeline, phase, currentHead, visual
   if (!nonempty(review.reviewTraceId)) errors.push('Missing Web reviewer trace id');
   if (!nonempty(review.taskId)) errors.push('Missing delegated task id');
   if (!nonempty(review.sourceHead) || (currentHead && review.sourceHead !== currentHead)) errors.push('Stale or missing source HEAD');
-  if (review.status !== 'PASS') errors.push('Review did not PASS');
+  if (!(phase === 'analysis' ? ['PASS', 'FINDINGS'].includes(review.status) : review.status === 'PASS')) errors.push('Review status is not acceptable for this phase');
   if (!uniqueStrings(review.reviewedItems)) errors.push('Missing reviewed item identities');
   if (!uniqueStrings(review.evidenceRefs)) errors.push('Missing supplied evidence references');
   if (!uniqueStrings(review.receivedEvidenceRefs)
       || !review.evidenceRefs.every(ref => review.receivedEvidenceRefs.includes(ref))) errors.push('Reviewer did not confirm receipt of the complete evidence bundle');
   if (!nonempty(review.decision)) errors.push('Missing substantive reviewer decision');
   if (!Array.isArray(review.findings)) errors.push('Missing reviewer findings list');
-  if (!Array.isArray(review.unresolved) || review.unresolved.length) errors.push('Review contains unresolved observations');
+  if (!Array.isArray(review.unresolved)) errors.push('Missing unresolved observations list');
+  else if (phase !== 'analysis' && review.unresolved.length) errors.push('Review contains unresolved observations');
+  if (review.status === 'FINDINGS' && !review.findings?.length) errors.push('FINDINGS requires substantive findings');
   if (visual && review.actualPixelsReceived !== true) errors.push('Visual review requires explicit actual-pixel receipt');
   return errors;
 }
@@ -70,8 +72,9 @@ export function verifyWebDelegation(plan, reviews, { pipeline, currentHead, defe
       pipeline, phase, currentHead, visual: plan.visual
     }).length === 0);
     if (!valid.length) errors.push(`WEB_REVIEW_NOT_VERIFIED: ${phase} evidence/receipt/provenance invalid`);
-    // An explicit reviewer request for more evidence cannot be erased by another PASS.
-    if (records.some(review => Array.isArray(review.unresolved) && review.unresolved.length))
+    // Analysis may discover defects; they must be explicitly resolved by the
+    // independent acceptance reviewer, not silently reclassified by the parent.
+    if (phase !== 'analysis' && records.some(review => Array.isArray(review.unresolved) && review.unresolved.length))
       errors.push(`WEB_REVIEW_NOT_VERIFIED: outstanding ${phase} reviewer findings require fresh independent re-review`);
   }
   const ids = (reviews ?? []).filter(review => required.includes(review.phase)).map(review => review.reviewTraceId);
