@@ -1,5 +1,7 @@
 # Codex Engineering OS — Agent Map
 
+For medium/high-complexity work, load `policies/web-delegation.md` and make bounded Web High handoffs at **analysis, post-repair checkpoint and independent acceptance** when the Web route is READY. Use `ceos web-plan` for planning; use actual source-bound review receipts rather than one token Web agent name. A reviewer asking for new evidence means NOT_VERIFIED until fresh independent review, not automatic closure. This policy never grants Web tools or product write access.
+
 Keep this file short. Load only the skill/profile/policy required by the task.
 
 ## Routing
