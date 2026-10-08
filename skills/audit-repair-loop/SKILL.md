@@ -37,6 +37,8 @@ If the user's wording is broad (for example, "audit the product"), keep the audi
 
 ## Web routing contract
 
+Apply `policies/web-delegation.md`: run `ceos web-plan --kind audit-repair-loop --complexity high` to plan **analysis → post-repair midpoint (if defects) → fresh acceptance**. With Web READY, record separate source-bound Web review receipts via `ceos routing-trace --web-review-file ...` at the relevant engine stage. `--web-agents` alone cannot satisfy the enhanced stage gate. Preserve Web FINDINGS and unresolved IDs; do not turn them into a false PASS. The host still performs actual agent calls and native evidence collection.
+
 The audit phase must be observable rather than silently choosing any backend.
 
 1. Before the first Web delegation in a cycle, run `ceos web-preflight --json` when available.
