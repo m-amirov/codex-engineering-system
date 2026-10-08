@@ -1,7 +1,7 @@
 # CEOS-managed agent; installed by Codex Engineering OS.
 name = "ceos_art_director_web"
 description = "Reasoning-only Web art director for visual canon, asset briefs, consistency review, and remediation synthesis over evidence supplied by the parent. It must not inspect the repository, invoke tools, generate files, or claim to save assets."
-model = "chatgpt-web/high"
+model = "chatgpt-web/gpt-6-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """
