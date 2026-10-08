@@ -15,6 +15,8 @@ Inspect declared viewport/locale/input matrix. Look for clipping, overflow, over
 
 ## Pixel and mechanical gate
 
+For a medium/high complexity visual investigation use `ceos web-plan --kind visual-qa --complexity high --visual`. Request Web High analysis on actual supplied pixels, checkpoint review of changed crops/overlays, and independent acceptance with fresh screenshots. Follow `policies/web-delegation.md`: do not certify an entire season from a small unrepresentative set of screenshots.
+
 Every visual verdict references current-runtime image evidence and records SHA-256, bytes, dimensions, current commit, viewport, state/cue and URL. A textual capture log, DOM assertion, OCR result, or `screenshot created` message is not visual evidence. Before independent multimodal review, validate that actual screenshot and character/reference pixels were supplied; otherwise return `BLOCKED`.
 
 For each affected viewport assert mechanically: content reaches all four viewport edges, no document or internal scroll chain, readable text, and no overlap of the primary action with text or controls. For authored cues, capture before/after pairs and match observed event id and asset hash to the current coverage ledger. Stale or missing ledgers are evidence gaps. Playwright timeout, unavailable browser, or inaccessible screenshot is `BLOCKED`/`EVIDENCE_GAP`, never `PASS`; functional, DOM, save/load, pagination and route checks cannot promote visual acceptance.
