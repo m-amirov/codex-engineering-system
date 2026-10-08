@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.7 — 2026-10-08
+
+- Migrated all three CEOS-managed Web subagents to explicit GPT-6 Sol High (`chatgpt-web/gpt-6-sol`) while preserving native model routing and reasoning-only boundaries.
+- Updated Windows hybrid installation, global instructions and live preflight route validation for Codex Web GPT 6.1.6+.
+- Added fail-closed validation for legacy GPT-5.6 aliases and missing or duplicate managed agents; bridge READY alone is not a substantive Web response.
+- Added regression tests and Windows CI Web-on installation verification, while retaining historical run compatibility.
+
+
 ## 0.5.6 — 2026-10-08
 
 - Added enhanced Web High delegation gates for engine-backed runs: analysis, post-repair midpoint, and fresh acceptance, with deterministic midpoint skipping for zero-defect audits.
