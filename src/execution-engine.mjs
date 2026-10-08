@@ -22,6 +22,8 @@ const RECOVERABLE_BLOCK_CODES = new Set([
 ]);
 const EXTERNAL_RECOVERY_WORDS = /\b(web|transport|capability|review|rate[_ -]?limit|usage limit)\b/i;
 const EXTERNAL_RECOVERY_FAILURES = /\b(unavailable|not ready|disconnect(?:ed)?|failed?|failure|blocked|recover(?:ed|able)?|rate[_ -]?limited|usage limit(?:ed)?)\b/i;
+const NATIVE_FALLBACK_STATUSES = new Set(['UNAVAILABLE', 'NOT_ACCEPTING_TURNS', 'RATE_LIMITED']);
+const NATIVE_FALLBACK_REASON = /\b(transport|backend|runtime|bridge|connect(?:ion)?|disconnect(?:ed)?|unavailable|not accepting|rate[_ -]?limit(?:ed)?|usage limit(?:ed)?|timeout|timed out|http\s+\d{3}|refused)\b/i;
 
 export const EXECUTION_PIPELINES = {
   'audit-repair-loop': {
@@ -545,8 +547,8 @@ function assertWebReviewPhase(run, capabilities, stage, currentHead) {
     if (run.webRequired) throw new Error('WEB_REVIEW_NOT_VERIFIED: required Web backend is not READY');
     if (['DISABLED', 'NOT_CONFIGURED'].includes(capabilities.web?.status)) return;
     const trace = run.routingTrace.byCycle?.[String(run.cycle)] ?? {};
-    if (!trace.nativeFallbackUsed || !trace.fallbackReason)
-      throw new Error('WEB_REVIEW_NOT_VERIFIED: record transport-only native fallback reason when Web is unavailable');
+    if (!trace.nativeFallbackUsed || !NATIVE_FALLBACK_STATUSES.has(capabilities.web?.status) || !NATIVE_FALLBACK_REASON.test(String(trace.fallbackReason ?? '')))
+      throw new Error('WEB_REVIEW_NOT_VERIFIED: record a transport-only native fallback reason when Web is unavailable');
     return;
   }
   const trace = run.routingTrace.byCycle?.[String(run.cycle)] ?? {};

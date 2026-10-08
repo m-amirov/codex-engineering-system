@@ -1,4 +1,4 @@
-# Codex Engineering OS (CEOS) 0.5.5
+# Codex Engineering OS (CEOS) 0.5.6
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
 
@@ -9,6 +9,14 @@ The first engine-backed pipelines are `audit-repair-loop` and `production-art`.
 Each run persists under `.ceos-runs/<run-id>/` with `run.json`, immutable `scope.json`, refreshable `capabilities.json`, `checkpoints/`, `artifacts/`, and `evidence/`.
 
 The engine owns legal stage order, scope/capability snapshots, cycle limits, checkpoint SHA-256 provenance, routing-trace acceptance, terminal verdicts, and restart recovery. The parent Codex agent still performs repository/tool work, model delegation, implementation, Image Gen, browser QA, and semantic review. A CLI transition never substitutes for real evidence.
+
+## Enhanced Web High delegation (0.5.6)
+
+For new engine-backed runs, CEOS records separate host-orchestrated Web High review phases: `analysis`, `midpoint` after material repair, and fresh `acceptance`. Zero-defect `audit-repair-loop` runs skip only the midpoint; analysis and acceptance remain required when Web is `READY`.
+
+Each receipt must identify the delegated task and trace, match the current source `HEAD`, list the evidence supplied and actually received, and preserve substantive `FINDINGS` during analysis. Acceptance cannot pass with unresolved findings or changed/missing evidence. Web agents remain reasoning-only: the Codex host performs the actual calls, while CEOS validates routing and evidence; the standalone CLI does not simulate a Web response.
+
+Native fallback is accepted only for an allowed non-ready transport state with a transport-specific reason. Semantic reviewer findings, uncertainty, or rejected conclusions are not fallback reasons. Historical `legacy` runs remain readable and are not silently migrated.
 
 ## Core commands
 
@@ -151,7 +159,7 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.5`. Restart Codex and verify that all three CEOS-managed Web agent TOML files and `$CODEX_HOME/ceos/hybrid-routing.json` specify `chatgpt-web/high`. This checks configured routing, not the success of a substantive delegation. Fully restart Codex after installation.
+Expected version: `0.5.6`. Restart Codex and verify that all three CEOS-managed Web agent TOML files and `$CODEX_HOME/ceos/hybrid-routing.json` specify `chatgpt-web/high`. This checks configured routing, not the success of a substantive delegation. Fully restart Codex after installation.
 
 For Yandex Games, new projects must still be created through the official Starter Kit before CEOS is attached.
 
