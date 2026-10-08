@@ -543,6 +543,7 @@ function assertWebReviewPhase(run, capabilities, stage, currentHead) {
   if (!phase || (phase === 'midpoint' && run.pipeline === 'audit-repair-loop' && run.lastDefectCount === 0)) return;
   if (capabilities.web?.status !== 'READY') {
     if (run.webRequired) throw new Error('WEB_REVIEW_NOT_VERIFIED: required Web backend is not READY');
+    if (['DISABLED', 'NOT_CONFIGURED'].includes(capabilities.web?.status)) return;
     const trace = run.routingTrace.byCycle?.[String(run.cycle)] ?? {};
     if (!trace.nativeFallbackUsed || !trace.fallbackReason)
       throw new Error('WEB_REVIEW_NOT_VERIFIED: record transport-only native fallback reason when Web is unavailable');
@@ -555,6 +556,17 @@ function assertWebReviewPhase(run, capabilities, stage, currentHead) {
     pipeline: run.pipeline, currentHead, defectCount: run.lastDefectCount ?? null
   });
   if (!verdict.ok) throw new Error(`${verdict.code}: ${verdict.errors.join('; ')}`);
+  if (phase === 'acceptance') {
+    const pending = (trace.webReviews ?? []).filter(review => review.phase !== 'acceptance')
+      .flatMap(review => review.unresolved ?? []);
+    if (pending.length) {
+      const accepted = reviews.find(review => review.status === 'PASS' && Array.isArray(review.resolvedFindings));
+      const resolved = accepted?.resolvedFindings ?? [];
+      const received = accepted?.receivedEvidenceRefs ?? [];
+      if (pending.some(id => !resolved.some(item => item?.id === id && received.includes(item.evidenceRef))))
+        throw new Error('WEB_REVIEW_NOT_VERIFIED: earlier Web findings lack independent acceptance resolution evidence');
+    }
+  }
 }
 
 function assertFinalRouting(run, capabilities) {
@@ -564,7 +576,7 @@ function assertFinalRouting(run, capabilities) {
     fallbackReason: run.routingTrace.fallbackReason ?? null
   };
   const allowed = run.pipeline === 'production-art'
-    ? ['ceos_art_director_web']
+    ? ['ceos_art_director_web', 'ceos_reasoner_web']
     : ['ceos_bulk_checker_web', 'ceos_reasoner_web'];
   const used = (trace.webAgentsUsed ?? []).some(name => allowed.includes(name));
   const fallbackValid = trace.nativeFallbackUsed === true && Boolean(trace.fallbackReason);
