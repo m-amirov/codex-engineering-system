@@ -435,6 +435,8 @@ export function createRun(projectDir, pipeline, {
   if (!capabilities || typeof capabilities !== 'object') throw new Error('capabilities snapshot is required');
 
   if (!['legacy', 'enhanced'].includes(webReviewMode)) throw new Error('Invalid webReviewMode');
+  if (webReviewMode === 'legacy' && webReviewAssurance !== 'strict')
+    throw new Error('visual-content assurance requires enhanced Web review mode');
   const normalizedScope = normalizeScope(scope);
   const visualReview = pipeline === 'production-art' || /(?:visual|image|\bart\b|screenshot|render|\bui\b|худож|визуал|изображен)/i.test([normalizedScope.target, ...normalizedScope.inScope].join(' '));
   const delegationPlan = webReviewMode === 'enhanced'
@@ -856,7 +858,7 @@ export function recordRoutingTrace(projectDir, runRef, {
       const artifact = resolveArtifact(resolvedProject, resolved.runDir, webReview.evidenceArtifact);
       cycleTrace.webReviews ||= [];
       if (contentMode
-          ? cycleTrace.webReviews.some(item => item.evidenceArtifact?.path === artifact.path)
+          ? (run.routingTrace.webReviews ?? []).some(item => item.evidenceArtifact?.path === artifact.path)
           : cycleTrace.webReviews.some(item => item.reviewTraceId === webReview.reviewTraceId))
         throw new Error('Duplicate Web reviewer identity/evidence artifact');
       const localScreenshotArtifacts = contentMode ? webReview.visualEvidence.map(frame => {

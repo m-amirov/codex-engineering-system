@@ -60,18 +60,18 @@ Web review `PASS` is not a native test result. Verify current-source assertions 
 
 ## Opt-in visual-content assurance (game art / visual QA)
 
-Default \`strict\` retains mandatory real taskId/reviewTraceId. For visual \`production-art\` or \`visual-qa\` only, \`visual-content\` accepts independent image-content review without unavailable per-call provider identifiers. **This is not cryptographic remote attachment attestation.** It never changes platform rules or a project's release validator.
+Default `strict` retains mandatory real taskId/reviewTraceId. For visual `production-art` or `visual-qa` only, `visual-content` accepts independent image-content review without unavailable per-call provider identifiers. **This is not cryptographic remote attachment attestation.** It never changes platform rules or a project's release validator.
 
-- \`ceos web-plan --kind production-art --visual --assurance visual-content\`
-- \`ceos run production-art ... --web-review-assurance visual-content\`
-- \`ceos web-review-verify --kind production-art --phase acceptance --record-file review.json --visual --assurance visual-content\`
+- `ceos web-plan --kind production-art --visual --assurance visual-content`
+- `ceos run production-art ... --web-review-assurance visual-content`
+- `ceos web-review-verify --kind production-art --phase acceptance --record-file review.json --visual --assurance visual-content`
 
-Every Web review must retain a real response with sourceHead, reviewedItems, evidenceRefs, receivedEvidenceRefs, actualPixelsReceived=true, substantive decision, findings and unresolved. Each screenshot additionally needs \`visualEvidence\` with a unique matching ref, physical project-relative image path, actual 64-character SHA-256 and image-specific observation of at least 20 characters; CEOS verifies local bytes on ingest and upon resume. A missing screenshot, nonmatching hash, missing actual pixels, missing reference, stale head, generic observation, REWORK or unresolved finding blocks.
+Every Web review must retain a real response with sourceHead, reviewedItems, evidenceRefs, receivedEvidenceRefs, actualPixelsReceived=true, substantive decision, findings and unresolved. Each screenshot additionally needs `visualEvidence` with a unique matching ref, physical project-relative image path, actual 64-character SHA-256 and image-specific observation of at least 20 characters; CEOS verifies local bytes on ingest and upon resume. A missing screenshot, nonmatching hash, missing actual pixels, missing reference, stale head, generic observation, REWORK or unresolved finding blocks.
 
-Example \`visualEvidence\` value:
+Example `visualEvidence` value:
 
-\`\`\`json
+```json
 [{"ref":"S38-mobile","path":"artifacts/evidence/S38-390x844.png","sha256":"<actual file SHA-256>","observation":"Alice and Nick are both visible holding museum tickets; no camera appears."}]
-\`\`\`
+```
 
-Real provider IDs should be preserved when available; never invent them or replace them with agent IDs. A semantic receipt is limited to **what the model described seeing**, not proof that the host delivered byte-identical files. When transport evidently loses/changes an image, mark that review NOT_VERIFIED. \`visual-content\` requires deliberate selection at creation time; it never retroactively upgrades existing runs or changes a separate game's art acceptance schema. Security-sensitive or auditable workflows keep \`strict\`.
+Real provider IDs should be preserved when available; never invent them or replace them with agent IDs. A semantic receipt is limited to **what the model described seeing**, not proof that the host delivered byte-identical files. When transport evidently loses/changes an image, mark that review NOT_VERIFIED. `visual-content` requires deliberate selection at creation time; it never retroactively upgrades existing runs or changes a separate game's art acceptance schema. Security-sensitive or auditable workflows keep `strict`.

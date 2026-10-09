@@ -136,7 +136,7 @@ Every semantic checkpoint records the path, type, size, and SHA-256 of its persi
 
 Long-form writing and editorial repair run in the parent native Codex session **without parallel native scene writers/reviewers by default**. A large requested scope proceeds sequentially, one episode per persisted checkpoint; completion of a checkpoint is not completion of the whole task. At the end of each completed episode use one bounded Web High editorial review when required/available; repair locally, then re-review the changed text and causally affected branch context. The full execution-engine audit-repair-loop retains its mandatory routing/stage/evidence contracts. Independent native tool-backed verification remains available when genuinely necessary; explicit user-requested parallel work remains permitted with disjoint file ownership. See `policies/native-delegation.md` and `skills/romance-narrative/SKILL.md`.
 
-**Scope of enforcement:** CEOS installs instructions and skill policies; it cannot hard-limit the host Codex subagent scheduler, guarantee quota savings, or cancel running subagents. Observe actual active sessions and provider usage separately. CEOS 0.5.7 routes all three managed Web agents to GPT-6 Sol High (`chatgpt-web/gpt-6-sol`); it does not silently downgrade to GPT-5.6.
+**Scope of enforcement:** CEOS installs instructions and skill policies; it cannot hard-limit the host Codex subagent scheduler, guarantee quota savings, or cancel running subagents. Observe actual active sessions and provider usage separately. CEOS 0.5.8 routes all three managed Web agents to GPT-6 Sol High (`chatgpt-web/gpt-6-sol`); it does not silently downgrade to GPT-5.6.
 
 ## Hybrid routing
 
@@ -170,7 +170,7 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.7`. Restart Codex and verify that all three CEOS-managed Web agent TOML files and `$CODEX_HOME/ceos/hybrid-routing.json` specify `chatgpt-web/gpt-6-sol`. This checks configured routing, not the success of a substantive delegation. Fully restart Codex after installation.
+Expected version: `0.5.8`. Restart Codex and verify that all three CEOS-managed Web agent TOML files and `$CODEX_HOME/ceos/hybrid-routing.json` specify `chatgpt-web/gpt-6-sol`. This checks configured routing, not the success of a substantive delegation. Fully restart Codex after installation.
 
 For Yandex Games, new projects must still be created through the official Starter Kit before CEOS is attached.
 

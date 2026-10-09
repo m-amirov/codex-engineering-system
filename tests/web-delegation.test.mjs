@@ -126,3 +126,10 @@ test('visual-content binds physical screenshot hash and detects post-record tamp
   fs.writeFileSync(path.join(project,'capture.png'),'tampered pixel bytes');
   assert.ok(resumeRun(project,run.run.runId).integrity.issues.some(issue=>issue.includes('screenshot changed')));
 });
+
+test('visual-content cannot be activated in legacy execution mode', () => {
+  const project=temp();
+  assert.throws(()=>createRun(project,'production-art',{
+    scope:scope(),capabilities:caps(project),webReviewMode:'legacy',webReviewAssurance:'visual-content'
+  }),/enhanced Web review mode/);
+});
