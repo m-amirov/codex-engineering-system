@@ -107,12 +107,12 @@ Usage:
   ceos profile [--project dir]
   ceos context --skill <name> [--project dir]
   ceos web-preflight [--codex-home dir] [--url http://127.0.0.1:17841/healthz] [--timeout-ms 1200] [--json]
-  ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--json]
-  ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--json]
+  ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--assurance strict|visual-content] [--json]
+  ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--assurance strict|visual-content] [--json]
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
   ceos capability-challenge [run-id|latest] [--codex-home dir] [--json]
   ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
-  ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--web-required] [--max-cycles N] [--image-generation state] [--json]
+  ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
   ceos run-status [run-id|latest] [--json]
@@ -303,7 +303,8 @@ try {
       const plan = webReviewPlan(args.kind || 'engineering', {
         complexity: args.complexity || 'high',
         visual: Boolean(args.visual),
-        totalItems: total
+        totalItems: total,
+        assurance: args.assurance || 'strict'
       });
       print(plan, true);
       break;
@@ -315,7 +316,8 @@ try {
         pipeline: args.kind || 'engineering',
         phase: String(args.phase),
         currentHead: args.head || null,
-        visual: Boolean(args.visual)
+        visual: Boolean(args.visual),
+        assurance: args.assurance || 'strict'
       });
       const result = { status: issues.length ? 'WEB_REVIEW_NOT_VERIFIED' : 'PASS', issues };
       print(result, true);
@@ -337,6 +339,7 @@ try {
         capabilities,
         webRequired: Boolean(args['web-required']),
         webReviewMode: 'enhanced',
+        webReviewAssurance: args['web-review-assurance'] || 'strict',
         maxCycles: args['max-cycles']
       });
       if (args.json) print(result, true); else printExecution(result);

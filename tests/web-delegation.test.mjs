@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { webReviewPlan, validateWebReview, verifyWebDelegation } from '../src/web-delegation.mjs';
 import { createRun, recordCheckpoint, recordRoutingTrace, resumeRun } from '../src/execution-engine.mjs';
@@ -87,4 +88,41 @@ test('zero-defect audit skips midpoint but still requires fresh acceptance revie
   const validation=verifyWebDelegation(plan,[review('analysis'),review('acceptance')],{pipeline:'audit-repair-loop',currentHead:HEAD,defectCount:0});
   assert.equal(validation.ok,true);
   assert.deepEqual(validation.required,['analysis','acceptance']);
+});
+
+test('visual-content is explicit, scoped to visual art, and strict remains the default', () => {
+  assert.throws(()=>webReviewPlan('engineering',{visual:true,assurance:'visual-content'}),/visual-content/);
+  assert.throws(()=>webReviewPlan('production-art',{visual:false,assurance:'visual-content'}),/visual-content/);
+  assert.equal(webReviewPlan('production-art',{visual:true,assurance:'visual-content'}).assurance,'visual-content');
+  assert.match(validateWebReview(review('acceptance',{taskId:null,reviewTraceId:null}),
+    {pipeline:'production-art',phase:'acceptance',visual:true})+'',/trace|task/i);
+});
+const contentReview=(phase, overrides={})=>review(phase,{
+  agent:'ceos_art_director_web',taskId:null,reviewTraceId:null,
+  visualEvidence:[{ref:'capture-1',path:'capture.png',sha256:'a'.repeat(64),
+    observation:'Two people are visibly standing beside the airport sign.'}],...overrides
+});
+test('visual-content independently checks receipt, per-frame observations, unresolved defects, current source',()=>{
+  const options={pipeline:'production-art',phase:'acceptance',currentHead:HEAD,visual:true,assurance:'visual-content'};
+  assert.deepEqual(validateWebReview(contentReview('acceptance'),options),[]);
+  assert.match(validateWebReview(contentReview('acceptance',{actualPixelsReceived:false}),options)+'',/pixel/i);
+  assert.match(validateWebReview(contentReview('acceptance',{receivedEvidenceRefs:[]}),options)+'',/receipt/i);
+  assert.match(validateWebReview(contentReview('acceptance',{visualEvidence:[]}),options)+'',/per-image/i);
+  assert.match(validateWebReview(contentReview('acceptance',{unresolved:['S38 cropped']}),options)+'',/unresolved/i);
+  assert.match(validateWebReview(contentReview('acceptance',{sourceHead:'b'.repeat(40)}),options)+'',/stale/i);
+});
+test('visual-content binds physical screenshot hash and detects post-record tampering',()=>{
+  const project=temp();
+  fs.writeFileSync(path.join(project,'capture.png'),'fixture pixel bytes');
+  const imageHash=crypto.createHash('sha256').update(fs.readFileSync(path.join(project,'capture.png'))).digest('hex');
+  add(project,'web-report.json');
+  const run=createRun(project,'production-art',{scope:scope(),capabilities:caps(project),
+    webReviewMode:'enhanced',webReviewAssurance:'visual-content'});
+  const r=contentReview('analysis',{visualEvidence:[{ref:'capture-1',path:'capture.png',sha256:imageHash,
+    observation:'Alice and Nick stand visibly beside a cardboard airport sign.'}]});
+  const recorded=recordRoutingTrace(project,run.run.runId,{webReview:r});
+  assert.equal(recorded.run.routingTrace.webReviews[0].localScreenshotArtifacts[0].sha256,imageHash);
+  assert.equal(resumeRun(project,run.run.runId).integrity.ok,true);
+  fs.writeFileSync(path.join(project,'capture.png'),'tampered pixel bytes');
+  assert.ok(resumeRun(project,run.run.runId).integrity.issues.some(issue=>issue.includes('screenshot changed')));
 });
