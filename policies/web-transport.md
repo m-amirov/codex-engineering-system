@@ -60,6 +60,8 @@ For each visual Web turn record, when available:
 
 Production runtime overlays (dialogue sheet, navigation controls, scene text, application chrome) are expected in runtime screenshots. They are not "baked UI/text". Baked UI/text means interface-like elements embedded inside the underlying generated image asset itself. When this distinction is material, review the raw asset and runtime screenshot separately.
 
+Content-level image confirmation is not trusted transport identity. In opt-in visual-content reviews, preserve frame-specific observations and native SHA-256; never claim delivered-byte equality or model-route attestation without a trusted host receipt.
+
 ## Stop rule
 
 Never claim visual or Web-backed PASS while required evidence was not received. If bounded cooldown/retry handling is exhausted, preserve current assets/evidence and return `BLOCKED`; do not regenerate or mutate unrelated product state to work around transport pressure.

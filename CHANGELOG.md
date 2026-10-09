@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.8 — 2026-10-09
+
+- Added explicit `visual-content` assurance for visual production-art and visual-qa reviews when Codex Web GPT does not expose per-call trusted task/trace IDs; `strict` remains the default for all workflows.
+- Required independent pixel-specific observations, received-image identities, source HEAD and local screenshot SHA-256, with physical image-hash checks on routing-trace ingest and resume.
+- Prevented recycling the same Web review artifact across independent stages and retained fail-closed handling of missing pixels, invalid or stale evidence and unresolved findings.
+- Added CLI flags (`--assurance`, `--web-review-assurance`), regression tests and policy guidance; no project release validator or Yandex compliance gate is altered.
+
+
 ## 0.5.7 — 2026-10-08
 
 - Migrated all three CEOS-managed Web subagents to explicit GPT-6 Sol High (`chatgpt-web/gpt-6-sol`) while preserving native model routing and reasoning-only boundaries.

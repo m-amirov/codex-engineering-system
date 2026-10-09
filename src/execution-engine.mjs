@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { VERSION } from './ceos.mjs';
 import { assertPositiveEvidenceContract } from './evidence-contract.mjs';
 import { capabilityBlockers } from './capabilities.mjs';
-import { webReviewPlan, verifyWebDelegation } from './web-delegation.mjs';
+import { webReviewPlan, validateWebReview, verifyWebDelegation } from './web-delegation.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -363,6 +363,10 @@ function assertRunIntegrity(runDir, run) {
   }
 
   for (const review of run.routingTrace?.webReviews ?? []) {
+    for (const frame of review.localScreenshotArtifacts ?? []) {
+      if (!frame?.path || !fs.existsSync(frame.path)) issues.push('Web visual evidence screenshot missing');
+      else if (hashPath(frame.path).sha256 !== frame.sha256) issues.push('Web visual evidence screenshot changed after routing-trace');
+    }
     const artifact = review.evidenceArtifact;
     if (!artifact?.path || !fs.existsSync(artifact.path)) {
       issues.push('Web review evidence artifact missing');
@@ -421,7 +425,8 @@ export function createRun(projectDir, pipeline, {
   capabilities,
   webRequired = false,
   maxCycles,
-  webReviewMode = 'legacy'
+  webReviewMode = 'legacy',
+  webReviewAssurance = 'strict'
 } = {}) {
   const resolvedProject = path.resolve(projectDir);
   const definition = EXECUTION_PIPELINES[pipeline];
@@ -430,10 +435,12 @@ export function createRun(projectDir, pipeline, {
   if (!capabilities || typeof capabilities !== 'object') throw new Error('capabilities snapshot is required');
 
   if (!['legacy', 'enhanced'].includes(webReviewMode)) throw new Error('Invalid webReviewMode');
+  if (webReviewMode === 'legacy' && webReviewAssurance !== 'strict')
+    throw new Error('visual-content assurance requires enhanced Web review mode');
   const normalizedScope = normalizeScope(scope);
   const visualReview = pipeline === 'production-art' || /(?:visual|image|\bart\b|screenshot|render|\bui\b|худож|визуал|изображен)/i.test([normalizedScope.target, ...normalizedScope.inScope].join(' '));
   const delegationPlan = webReviewMode === 'enhanced'
-    ? webReviewPlan(pipeline, { complexity: 'high', visual: visualReview }) : null;
+    ? webReviewPlan(pipeline, { complexity: 'high', visual: visualReview, assurance: webReviewAssurance }) : null;
   const cycles = ensureMaxCycles(maxCycles, definition.maxCyclesDefault);
   const runId = `${safeStamp()}-${pipeline}-${crypto.randomBytes(3).toString('hex')}`;
   const root = runRoot(resolvedProject);
@@ -461,6 +468,7 @@ export function createRun(projectDir, pipeline, {
     maxCycles: cycles,
     webRequired: Boolean(webRequired),
     webReviewMode,
+    webReviewAssurance,
     webDelegationPlan: delegationPlan,
     state: 'CAPABILITIES_CHECKED',
     nextStage: definition.stages[0].id,
@@ -833,16 +841,34 @@ export function recordRoutingTrace(projectDir, runRef, {
       if (!webReview || typeof webReview !== 'object' || Array.isArray(webReview))
         throw new Error('webReview must be an object');
       if (!webReview.evidenceArtifact) throw new Error('webReview.evidenceArtifact is required');
-      if (!webReview.reviewTraceId || !webReview.taskId || !webReview.phase || !webReview.agent)
-        throw new Error('webReview requires reviewTraceId, taskId, phase and agent');
+      const assurance = run.webDelegationPlan?.assurance ?? 'strict';
+      const contentMode = assurance === 'visual-content' && run.pipeline === 'production-art';
+      if ((!contentMode && (!webReview.reviewTraceId || !webReview.taskId)) || !webReview.phase || !webReview.agent)
+        throw new Error('webReview requires phase/agent and, in strict mode, reviewTraceId/taskId');
       const current = gitSourceSnapshot(resolvedProject);
+      if (contentMode) {
+        const issues = validateWebReview(webReview, {
+          pipeline:run.pipeline, phase:webReview.phase,
+          currentHead:current.available ? current.head : null, visual:true, assurance
+        });
+        if (issues.length) throw new Error('WEB_REVIEW_NOT_VERIFIED: '+issues.join('; '));
+      }
       if (current.available && webReview.sourceHead !== current.head)
         throw new Error('WEB_REVIEW_NOT_VERIFIED: Web review sourceHead does not match current HEAD');
       const artifact = resolveArtifact(resolvedProject, resolved.runDir, webReview.evidenceArtifact);
       cycleTrace.webReviews ||= [];
-      if (cycleTrace.webReviews.some(item => item.reviewTraceId === webReview.reviewTraceId))
-        throw new Error('Duplicate Web reviewer trace id');
-      const stored = { ...webReview, evidenceArtifact: artifact, recordedAt: now() };
+      if (contentMode
+          ? (run.routingTrace.webReviews ?? []).some(item => item.evidenceArtifact?.path === artifact.path)
+          : cycleTrace.webReviews.some(item => item.reviewTraceId === webReview.reviewTraceId))
+        throw new Error('Duplicate Web reviewer identity/evidence artifact');
+      const localScreenshotArtifacts = contentMode ? webReview.visualEvidence.map(frame => {
+        const captured = resolveArtifact(resolvedProject,resolved.runDir,frame.path);
+        if (captured.type !== 'file' || !/\.(?:png|jpe?g|webp)$/i.test(frame.path)
+            || captured.sha256.toLowerCase() !== frame.sha256.toLowerCase())
+          throw new Error('WEB_REVIEW_NOT_VERIFIED: screenshot hash/format mismatch: '+frame.path);
+        return captured;
+      }) : [];
+      const stored = { ...webReview, evidenceArtifact: artifact, localScreenshotArtifacts, recordedAt: now() };
       cycleTrace.webReviews.push(stored);
       run.routingTrace.webReviews ||= [];
       run.routingTrace.webReviews.push(stored);
