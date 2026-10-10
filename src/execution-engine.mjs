@@ -323,6 +323,8 @@ function nextAction(run) {
   if (def.minArtifacts) requirements.push(`at least ${def.minArtifacts} persisted evidence artifact(s)`);
   if (def.requiresDefectCount) requirements.push('metadata.defectCount as a non-negative integer');
   if (def.requiresImageGeneration) requirements.push('fresh trusted image-generation presence with generationAllowed = true (PRESENT + UNKNOWN service is sufficient for the first real invocation)');
+  if (def.id === 'GENERATING' && run.artOutputGateRequired)
+    requirements.push('metadata.artOutputs: real generated PNG paths, kind and expected dimensions; each output must pass ceos art-output-verify before the next Image Gen call');
   if (def.finalReview) requirements.push('explicit outcome PASS, FAIL, BLOCKED, or ESCALATE plus metadata.evidenceContract for PASS');
   return {
     terminal: false,
