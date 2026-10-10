@@ -176,3 +176,32 @@ test('Web preflight refuses missing and duplicate GPT-6 managed routes', async (
     assert.equal(result.status, 'NOT_CONFIGURED');
   }
 });
+
+test('Web preflight detects explicit attachment quota even when bridge returns HTTP 429', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({
+      ok: false,
+      status: 429,
+      headers: { get: () => null },
+      json: async () => ({ code: 'FILE_UPLOAD_LIMIT_REACHED', message: 'File attachment limit reached' })
+    })
+  });
+  assert.equal(result.status, 'ATTACHMENT_QUOTA_EXHAUSTED');
+  assert.equal(result.ready, false);
+  assert.equal(result.fallbackAllowed, false);
+  assert.equal(result.retryAllowed, false);
+});
+
+test('Web preflight does not classify generic attachment failures as quota', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({
+      ok: false, status: 503, headers: { get: () => null },
+      json: async () => ({ message: 'attachment transport failed' })
+    })
+  });
+  assert.equal(result.status, 'UNAVAILABLE');
+});
