@@ -8,6 +8,7 @@ import { capabilityBlockers } from './capabilities.mjs';
 import { webReviewPlan, validateWebReview, verifyWebDelegation } from './web-delegation.mjs';
 import { normalizeResolutionReceiptContract, validateResolutionReceipt } from './resolution-receipt.mjs';
 import { classifyWebTransportFailure } from './web-transport-failure.mjs';
+import { inspectArtBatch } from './art-output-gate.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -470,6 +471,7 @@ export function createRun(projectDir, pipeline, {
     ceosVersion: VERSION,
     runId,
     pipeline,
+    artOutputGateRequired: pipeline === 'production-art',
     projectDir: resolvedProject,
     runDir,
     createdAt,
@@ -655,12 +657,30 @@ export function recordCheckpoint(projectDir, runRef, {
       }
     }
 
+    let outputGate = null;
+    if (stage === 'GENERATING' && run.artOutputGateRequired === true &&
+        (normalizedOutcome === 'CONTINUE' || normalizedOutcome === 'PASS')) {
+      const entries = metadata?.artOutputs;
+      outputGate = inspectArtBatch({ assets: entries }, { projectDir: resolvedProject });
+      if (outputGate.status !== 'PASS_ART_BATCH_MECHANICAL')
+        throw new Error('GENERATING output gate refused non-production assets: ' +
+          outputGate.issues.join(', ') +
+          (outputGate.firstFailedIndex === undefined ? '' : ' at index ' + outputGate.firstFailedIndex));
+    }
+
     if (definition.requiresDefectCount) {
       const count = metadata?.defectCount;
       if (!Number.isInteger(count) || count < 0) throw new Error('DEFECTS_CONFIRMED requires metadata.defectCount as a non-negative integer');
     }
 
     const artifactInputs = normalizeList(artifacts);
+    if (outputGate) {
+      // Pin actual source image bytes to immutable checkpoint evidence, not just a mutable receipt.
+      for (const entry of outputGate.inspected) {
+        const rel = path.relative(resolvedProject, entry.path);
+        if (!artifactInputs.includes(rel)) artifactInputs.push(rel);
+      }
+    }
     const allowNoArtifacts = skipped === true && stage === 'REPAIRING' && run.lastDefectCount === 0;
     if ((definition.minArtifacts ?? 0) > artifactInputs.length && !allowNoArtifacts) {
       throw new Error(`${stage} requires at least ${definition.minArtifacts} artifact(s)`);
@@ -674,7 +694,9 @@ export function recordCheckpoint(projectDir, runRef, {
       outcome: normalizedOutcome,
       skipped: Boolean(skipped),
       note: note || null,
-      metadata: metadata && typeof metadata === 'object' ? metadata : {},
+      metadata: outputGate
+        ? { ...metadata, artOutputGate: { status: outputGate.status, checks: outputGate.inspected.map(x => ({ path: x.path, sha256: x.sha256, dimensions: x.dimensions, alpha: x.alpha, checkerboard: x.checkerboard })) } }
+        : (metadata && typeof metadata === 'object' ? metadata : {}),
       source: currentSource,
       artifacts: artifactRecords
     };
