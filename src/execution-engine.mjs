@@ -834,6 +834,11 @@ export function recordWebAttachmentQuotaBlock(projectDir, runRef = 'latest', {
     if (run.webReviewMode !== 'enhanced' ||
         !run.webDelegationPlan?.phases?.includes(phase))
       throw new Error('Attachment quota block requires a planned enhanced Web review phase');
+    const stageForPhase = run.pipeline === 'production-art'
+      ? { analysis: 'CANON_READY', midpoint: 'VISUAL_VERIFIED', acceptance: 'REAUDITED' }
+      : { analysis: 'AUDITED', midpoint: 'VERIFIED', acceptance: 'REAUDITED' };
+    if (run.nextStage !== stageForPhase[phase])
+      throw new Error('Attachment quota phase does not match the current required Web stage');
     const artifact = resolveArtifact(resolvedProject, resolved.runDir, evidenceInput);
     if (artifact.type !== 'file' || artifact.size > 1024 * 1024)
       throw new Error('Attachment quota evidence must be a file at most 1 MiB');
