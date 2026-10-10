@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.9 — 2026-10-10
+
+- Validated all routed Web High review receipts **before** the first persistent trace write; missing acknowledgement, stale source, invalid strict records, or unresolved earlier findings now stop at ingestion rather than at a later checkpoint.
+- Added read-only `ceos routing-trace --dry-run --web-review-file` using the same preflight as the final locked record operation.
+- Added an optional immutable run-scope historical cue contract (`ceos run --resolution-contract-file`): exact source lines and source SHA-256 are frozen at creation, and acceptance `historicalExactLines` must match those verified lines before recording.
+- Rejects routing metadata writes to terminal or integrity-invalid runs. Existing terminal provenance is never overwritten, reclassified or retroactively accepted.
+- Added regression cases for missing cue lines, missing finding-resolution links, changed historical source and zero-mutation dry runs. No product source or visual acceptance threshold is changed.
+
 ## 0.5.8 — 2026-10-09
 
 - Added explicit `visual-content` assurance for visual production-art and visual-qa reviews when Codex Web GPT does not expose per-call trusted task/trace IDs; `strict` remains the default for all workflows.

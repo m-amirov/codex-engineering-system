@@ -15,6 +15,8 @@ Minimum gate record:
 - for coverage claims: current ledger hash/version and exact authored event id before/after the cue
 - for Web review transport: review/trace id, whether required evidence was actually received, failure class (`RATE_LIMITED` / `ATTACHMENT_TRANSPORT` / `WEB_UNAVAILABLE`) when applicable, retry attempt, and applied cooldown/Retry-After
 
+Routed resolution receipts must undergo complete schema, reference, evidence, and optional run-locked historical-line preflight **before** append-only trace recording. A rejected first receipt must not be written and later overwritten with a corrected variant. Existing terminal run evidence remains immutable; new attestation requires a distinct authorized run.
+
 Visual PASS is forbidden when pixel transfer, character/reference pixels, current-runtime screenshots, edge-to-edge/no-scroll/readability measurements, or cue-to-event mapping are absent. Text-only capture claims and DOM-only checks are not visual evidence.
 
 Overall verdict rules:

@@ -1,6 +1,31 @@
-# Codex Engineering OS (CEOS) 0.5.7
+# Codex Engineering OS (CEOS) 0.5.9
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Historical resolution receipt preflight (0.5.9)
+
+CEOS now validates **all** routed Web receipts before adding them to the persisted trace (including `strict` mode). Acceptance receipts must resolve every prior unresolved finding with a supplied, acknowledged evidence reference. The optional run-locked `--resolution-contract-file` binds task-specific exact historical lines to an existing source-evidence file and its SHA-256 at run creation. CEOS does not invent the historical lines or allow an incomplete first receipt to be corrected by editing an immutable trace.
+
+Contract file example (substitute literal verified lines from existing source evidence):
+
+```json
+{
+  "schemaVersion": 1,
+  "sourceEvidence": "artifacts/evidence/original-historical-cues.txt",
+  "requiredExactLines": [
+    "Direct-prop cues: <first exact historical line>",
+    "Direct-prop cues: <second exact historical line>"
+  ]
+}
+```
+
+```powershell
+ceos run production-art --target "..." --in-scope "..." --acceptance "..." --mutation-boundary "..." --resolution-contract-file receipt-contract.json
+ceos routing-trace latest --web-review-file acceptance-receipt.json --dry-run
+ceos routing-trace latest --web-review-file acceptance-receipt.json
+```
+
+The acceptance receipt must contain `historicalExactLines` listing the identical lines, plus any `resolvedFindings` with evidence references received by the independent reviewer. The preflight is read-only; recording repeats checks while holding the run lock. A missing/changed historical source or incomplete acceptance fails before a write. Already terminal runs and their old provenance are **not** repaired or relabeled; create a legitimately new run if authorized.
 
 ## Deterministic Execution Engine
 

@@ -49,6 +49,20 @@ Use `PASS` at midpoint and acceptance only when the reviewer has actually examin
 
 The engine hashes each report file, stores per-cycle review telemetry, rejects stale HEAD/undelivered evidence, and prevents enhanced stage advancement without the appropriate phase review when Web is READY. A bare `--web-agents` name cannot satisfy the enhanced gate.
 
+## Routed resolution-receipt preflight (0.5.9)
+
+The first recorded receipt is immutable evidence. **Run preflight before `routing-trace`**, not after the checkpoint rejects a half-populated resolution. In enhanced mode, all Web review formats including `strict` are structurally checked at record time; acceptance `resolvedFindings` must reference every earlier unresolved ID and evidence actually acknowledged by the independent reviewer. Bad receipts never enter `routingTrace.webReviews`.
+
+When a task requires *exact historical lines* (such as two `Direct-prop cues`), use a task-specific JSON file with `schemaVersion:1`, `sourceEvidence` (an existing project-local plaintext source with those full lines) and `requiredExactLines` (an array of distinct, exact, unmodified lines). Pass `--resolution-contract-file` when creating the **new** CEOS run, before source or receipts are mutated. CEOS locks the requirements and source SHA-256 in `scope.json`. The incoming acceptance receipt must include `historicalExactLines` with those exact lines; the source file must still match its locked bytes. Reviewers still independently receive the evidence; a copied phrase alone is not Web attestation. Never manufacture required lines from the new receipt itself.
+
+Check without writing:
+
+```bash
+ceos routing-trace latest --web-review-file artifacts/evidence/acceptance-receipt.json --dry-run
+```
+
+After `READY_TO_RECORD`, record with the ordinary `routing-trace` command; its locked writer repeats preflight. A failed preflight does **not** write to run state. A terminal `BLOCKED` or `FAIL` run cannot be modified through `routing-trace`; preserve old receipts and evidence, and use authorized new-run recovery instead.
+
 ## Cost, transport, recovery
 
 Do not spawn an agent per scene/page. Deduplicate, prefer a compact source excerpt plus necessary screenshots, and batch repeatable checks. Do not fire concurrent attachment-heavy turns. Observe `policies/web-transport.md`, respect explicit rate limits and bounded cooldowns, and never retry based on semantic disagreement. Optional Web absent/disabled → native-only; unexpected ready→unavailable transition → record explicit transport reason and native fallback. Explicit `--web-required` → BLOCKED on inability to use Web.
