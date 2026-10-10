@@ -564,7 +564,7 @@ test('new production-art GENERATING checkpoint fails closed on opaque or missing
   const passed=passedArtOutputs(project);
   const result=recordCheckpoint(project,id,{stage:'GENERATING',artifacts:[art],metadata:passed});
   assert.equal(result.run.nextStage,'INTEGRATED');
-  const checkpoint=fs.readdirSync(path.join(start.runDir,'checkpoints')).filter(f=>f.includes('GENERATING')).map(f=>readJson(path.join(start.runDir,'checkpoints',f)))[0];
+  const checkpoint=fs.readdirSync(path.join(start.runDir,'checkpoints')).filter(f=>f.includes('generating')).map(f=>readJson(path.join(start.runDir,'checkpoints',f)))[0];
   assert.equal(checkpoint.metadata.artOutputGate.status,'PASS_ART_BATCH_MECHANICAL');
   assert.ok(checkpoint.artifacts.some(x=>x.path.endsWith('production-asset.png')));
 });
