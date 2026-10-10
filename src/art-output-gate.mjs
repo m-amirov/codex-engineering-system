@@ -118,29 +118,40 @@ function pixel(image, x, y) {
   const offset = (y * image.width + x) * 4;
   return image.pixels.subarray(offset, offset + 4);
 }
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
 /** Strong alternating neutral-color grid at any image corner. Conservative: opaque sprites also fail alpha check. */
 function bakedCheckerboard(image) {
   const { width, height } = image;
+  const phases = [.25, .5, .75];
   for (const tile of [4, 8, 12, 16, 24, 32, 48, 64]) {
     if (width < tile * 5 || height < tile * 5) continue;
     for (const [sx, sy] of [[0, 0], [width - tile * 4, 0], [0, height - tile * 4], [width - tile * 4, height - tile * 4]]) {
-      let parityColors = [null, null], parityCounts = [0, 0], ok = true, n = 0;
-      for (let iy = 0; iy < 4 && ok; iy++) for (let ix = 0; ix < 4; ix++) {
-        const x = Math.min(width - 1, sx + Math.floor((ix + .5) * tile));
-        const y = Math.min(height - 1, sy + Math.floor((iy + .5) * tile));
-        const rgb = pixel(image, x, y);
-        const p = (ix + iy) % 2;
-        if (rgb[3] !== 255 || Math.max(rgb[0], rgb[1], rgb[2]) - Math.min(rgb[0], rgb[1], rgb[2]) > 12) continue;
-        const val = (rgb[0] + rgb[1] + rgb[2]) / 3;
-        if (parityColors[p] === null) parityColors[p] = val;
-        else if (Math.abs(parityColors[p] - val) > 6) { ok = false; break; }
-        parityCounts[p]++;
-        n++;
+      for (const phaseX of phases) for (const phaseY of phases) {
+        const parityValues = [[], []];
+        for (let iy = 0; iy < 4; iy++) for (let ix = 0; ix < 4; ix++) {
+          const x = Math.min(width - 1, sx + Math.floor((ix + phaseX) * tile));
+          const y = Math.min(height - 1, sy + Math.floor((iy + phaseY) * tile));
+          const rgb = pixel(image, x, y);
+          if (rgb[3] !== 255 || Math.max(rgb[0], rgb[1], rgb[2]) - Math.min(rgb[0], rgb[1], rgb[2]) > 12) continue;
+          parityValues[(ix + iy) % 2].push((rgb[0] + rgb[1] + rgb[2]) / 3);
+        }
+        const parityColors = parityValues.map(values => median(values));
+        if (!parityColors.every(Number.isFinite)) continue;
+        const inlierCounts = parityValues.map((values, index) =>
+          values.filter(value => Math.abs(value - parityColors[index]) <= 6).length);
+        // Use a median plus a majority of inliers: antialiased/foreground transition samples
+        // must not erase a real board, while both parities and 75% coverage remain mandatory.
+        const n = inlierCounts[0] + inlierCounts[1];
+        const diff = Math.abs(parityColors[0] - parityColors[1]);
+        if (n >= 12 && inlierCounts.every(count => count >= 5) && diff >= 8 && diff <= 110)
+          return { detected: true, tileSize: tile };
       }
-      // Foreground can obscure up to four samples; require both checker parities.
-      if (ok && n >= 12 && parityCounts.every(count => count >= 5) && parityColors.every(Number.isFinite) &&
-          Math.abs(parityColors[0] - parityColors[1]) >= 8 &&
-          Math.abs(parityColors[0] - parityColors[1]) <= 110) return { detected: true, tileSize: tile };
     }
   }
   return { detected: false };
