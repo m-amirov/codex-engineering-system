@@ -1,4 +1,4 @@
-# CEOS 0.4.0 — Production Art Architecture
+# CEOS Production Art Architecture (updated for 0.5.11)
 
 ## Goal
 
