@@ -1,6 +1,18 @@
-# Codex Engineering OS (CEOS) 0.5.9
+# Codex Engineering OS (CEOS) 0.5.10
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Explicit attachment-quota blocker (0.5.10)
+
+If the Web host or bridge explicitly reports `ATTACHMENT_QUOTA_EXHAUSTED` (for example, `Достигнут лимит прикрепления файлов` / `File attachment limit reached`), stop all attachment retries immediately. Generic upload failures and HTTP 429 are **not** proof of this quota. The limit's scope and reset time are unknown unless the provider supplies evidence. CEOS cannot see ChatGPT's account-level quota when the bridge does not expose it.
+
+For an *active* enhanced Web-review run, preserve the exact failed-turn message in a project-local log and record the terminal blocker:
+
+```powershell
+ceos web-attachment-block latest --project . --phase midpoint --evidence artifacts/evidence/web-upload-error.txt --json
+```
+
+This records immutable evidence SHA-256 and the current cycle, stops the run with `BLOCKED / ATTACHMENT_QUOTA_EXHAUSTED`, does not increment repair/generation cycles, and cannot create a Web pixel receipt or be counted as visual acceptance. The `phase` must match the active checkpoint. Missing/ambiguous log messages fail closed **without changing the run**. Prior terminal runs are not rewritten; after quota recovery use a separately authorized fresh run.
 
 ## Historical resolution receipt preflight (0.5.9)
 

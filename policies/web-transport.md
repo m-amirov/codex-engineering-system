@@ -7,6 +7,7 @@ CEOS treats Web semantic review results separately from Web transport failures. 
 Classify the failed turn before retrying:
 
 - `SEMANTIC_REVIEW` — the reviewer received the required evidence (for visual review, `actualPixelsReceived=true`) and returned PASS / REWORK / FAIL / uncertainty. This is not a transport failure and must not trigger transport fallback, cooldown retries, or result shopping.
+- `ATTACHMENT_QUOTA_EXHAUSTED` — the Web host/bridge explicitly reports an attachment/file-upload quota limit (e.g. "Достигнут лимит прикрепления файлов" or "File attachment limit reached"), or supplies an explicit provider quota error code. This is a **hard stop**, not ordinary HTTP 429 cooldown and not a generic attachment transport retry. Never infer its account/session reset schedule or assert that ChatGPT and Codex share a quota from healthy bridge status alone. In the absence of a real quota message, use the existing classifications.
 - `RATE_LIMITED` — the UI/bridge/backend explicitly reports "too many requests", HTTP 429, a usage/rate limit, a cooldown, or an explicit Retry-After. An attachment error accompanied by an explicit rate-limit signal is `RATE_LIMITED`.
 - `ATTACHMENT_TRANSPORT` — required attachments were not accepted or the attachment stream disconnected and there is no explicit rate-limit signal. For visual review, `actualPixelsReceived` is not true.
 - `WEB_UNAVAILABLE` — bridge/backend/runtime is unreachable, unhealthy, or not accepting turns for a non-rate-limit reason.
@@ -34,6 +35,12 @@ If the backend/UI supplies a longer Retry-After or cooldown deadline, the explic
 A successful Web turn resets the consecutive rate-limit counter.
 
 Do not switch Web modes/models, parallelize sessions, or use native fallback merely to evade a usage limit. If Web review is optional, the existing single native fallback contract may be used after the Web unit is classified unavailable. If the user or acceptance contract explicitly requires Web review, native fallback does not satisfy the gate.
+
+## Attachment quota hard-stop
+
+On an explicit `ATTACHMENT_QUOTA_EXHAUSTED` error, **do not resend the failed image, switch models/conversations to evade a limit, invoke native fallback to pretend Web pixel acceptance, or consume repair/regeneration cycles**. Persist the actual error message and affected review phase. For an active enhanced CEOS run, use `ceos web-attachment-block <run> --phase <phase> --evidence <project-local-log>` to record an immutable `BLOCKED / ATTACHMENT_QUOTA_EXHAUSTED` event and the evidence SHA-256. CEOS does not control the host-side upload service; the parent must invoke this command based on a real observed failure. A generic timeout, failed upload or bare HTTP 429 is insufficient. The provider's quota scope, availability and reset time remain unknown without explicit evidence.
+
+A terminal quota-blocked run is not silently reclassified or reopened after quota recovery; resume acceptance through an explicitly authorized new run. Do not use a stale Web receipt or invent `actualPixelsReceived=true`.
 
 ## Attachment transport retry
 

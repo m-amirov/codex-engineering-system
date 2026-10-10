@@ -7,6 +7,7 @@ import { assertPositiveEvidenceContract } from './evidence-contract.mjs';
 import { capabilityBlockers } from './capabilities.mjs';
 import { webReviewPlan, validateWebReview, verifyWebDelegation } from './web-delegation.mjs';
 import { normalizeResolutionReceiptContract, validateResolutionReceipt } from './resolution-receipt.mjs';
+import { classifyWebTransportFailure } from './web-transport-failure.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -809,6 +810,70 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
       integrity: assertRunIntegrity(resolved.runDir, run),
       nextAction: nextAction(run)
     };
+  });
+}
+
+/**
+ * Report an observed ChatGPT attachment-quota failure without retrying,
+ * advancing a product stage, consuming an art cycle, or manufacturing a Web
+ * pixel receipt. The actual failed-turn log must be present on disk.
+ */
+export function recordWebAttachmentQuotaBlock(projectDir, runRef = 'latest', {
+  phase, evidence
+} = {}) {
+  const resolvedProject = path.resolve(projectDir);
+  const resolved = resolveRun(resolvedProject, runRef);
+  if (!['analysis', 'midpoint', 'acceptance'].includes(phase))
+    throw new Error('Web attachment failure phase must be analysis, midpoint or acceptance');
+  const evidenceInput = ensureText(evidence, 'attachment quota evidence');
+  return withRunLock(resolved.runDir, () => {
+    const run = readJson(resolved.file);
+    if (TERMINAL.has(run.state)) throw new Error('Run is terminal: ' + run.state);
+    const integrity = assertRunIntegrity(resolved.runDir, run);
+    if (!integrity.ok) throw new Error('Run integrity check failed: ' + integrity.issues.join('; '));
+    if (run.webReviewMode !== 'enhanced' ||
+        !run.webDelegationPlan?.phases?.includes(phase))
+      throw new Error('Attachment quota block requires a planned enhanced Web review phase');
+    const stageForPhase = run.pipeline === 'production-art'
+      ? { analysis: 'CANON_READY', midpoint: 'VISUAL_VERIFIED', acceptance: 'REAUDITED' }
+      : { analysis: 'AUDITED', midpoint: 'VERIFIED', acceptance: 'REAUDITED' };
+    if (run.nextStage !== stageForPhase[phase])
+      throw new Error('Attachment quota phase does not match the current required Web stage');
+    const artifact = resolveArtifact(resolvedProject, resolved.runDir, evidenceInput);
+    if (artifact.type !== 'file' || artifact.size > 1024 * 1024)
+      throw new Error('Attachment quota evidence must be a file at most 1 MiB');
+    const recordedMessage = fs.readFileSync(artifact.path, 'utf8');
+    // Never trust a CLI assertion in place of an actual error excerpt.
+    const observed = classifyWebTransportFailure({ message: recordedMessage });
+    if (observed.classification !== 'ATTACHMENT_QUOTA_EXHAUSTED')
+      throw new Error('ATTACHMENT_QUOTA_NOT_CONFIRMED: evidence lacks an explicit attachment-quota error');
+    const blockedAt = now();
+    const priorStage = run.nextStage;
+    writeCheckpoint(resolved.runDir, run, {
+      stage: 'WEB_ATTACHMENT_QUOTA_BLOCKED',
+      at: blockedAt, cycle: run.cycle, outcome: 'BLOCKED',
+      phase, priorStage,
+      transportClassification: observed.classification,
+      retryAllowed: false, consumesRepairCycle: false,
+      scope: 'UNKNOWN', artifacts: [artifact]
+    });
+    terminalize(run, 'BLOCKED', {
+      code: 'ATTACHMENT_QUOTA_EXHAUSTED',
+      stage: priorStage,
+      phase,
+      reason: 'Explicit Web attachment quota failure; required image pixels not delivered',
+      evidenceSha256: artifact.sha256,
+      retryAllowed: false, consumesRepairCycle: false, scope: 'UNKNOWN'
+    });
+    run.updatedAt = blockedAt;
+    atomicWriteJson(resolved.file, run);
+    atomicWriteJson(path.join(runRoot(resolvedProject), 'latest.json'), {
+      runId: run.runId, runDir: resolved.runDir, updatedAt: blockedAt
+    });
+    return { runDir: resolved.runDir, run,
+      classification: observed.classification,
+      integrity: assertRunIntegrity(resolved.runDir, run),
+      nextAction: nextAction(run) };
   });
 }
 
