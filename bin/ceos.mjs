@@ -243,7 +243,7 @@ try {
         if (result.activity) console.log(`Activity: ${JSON.stringify(result.activity)}`);
         if (result.retryAfterSeconds != null) console.log(`Retry-After: ${result.retryAfterSeconds}s`);
       }
-      process.exitCode = ['UNAVAILABLE', 'NOT_ACCEPTING_TURNS', 'RATE_LIMITED'].includes(result.status) ? 2 : 0;
+      process.exitCode = ['UNAVAILABLE', 'NOT_ACCEPTING_TURNS', 'RATE_LIMITED', 'ATTACHMENT_QUOTA_EXHAUSTED'].includes(result.status) ? 2 : 0;
       break;
     }
     case 'capabilities': {
