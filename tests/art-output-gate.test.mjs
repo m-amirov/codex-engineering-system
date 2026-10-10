@@ -10,6 +10,8 @@ import {
 } from '../src/art-output-gate.mjs';
 
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ceos-output-gate-'));
+const S26_DAMIR_FIXTURE = path.resolve(import.meta.dirname, 'fixtures/art-output/s26-damir-doorway-neutral.png');
+const S26_DAMIR_SHA256 = '190c4faa3f8ba52e2e61ead5cae0eafdad5bb14d7464c6a679f96420f9be002e';
 function png(file, width, height, painter) {
   const pixels = Buffer.alloc(width * height * 4);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
@@ -46,6 +48,57 @@ test('baked opaque checkerboard is detected, not interpreted as transparency',()
   assert.equal(r.checkerboard.detected,true);
   assert.ok(r.issues.includes('BAKED_CHECKERBOARD_SUSPECTED'));
   assert.ok(r.issues.includes('ART_ALPHA_MISSING_OR_OPAQUE'));
+});
+
+test('S26 Damir regression fixture detects the real baked checkerboard and preserves its hash',()=>{
+  const r=inspectArtOutput(S26_DAMIR_FIXTURE,{kind:'sprite',width:1024,height:1536});
+  assert.equal(r.sha256,S26_DAMIR_SHA256);
+  assert.equal(r.dimensions.width,1024);
+  assert.equal(r.dimensions.height,1536);
+  assert.equal(r.checkerboard.detected,true);
+  assert.ok(r.issues.includes('BAKED_CHECKERBOARD_SUSPECTED'));
+  assert.ok(r.issues.includes('ART_ALPHA_MISSING_OR_OPAQUE'));
+  assert.ok(r.issues.includes('ART_CORNERS_NOT_TRANSPARENT'));
+  assert.equal(r.status,'BLOCKED_ART_OUTPUT');
+});
+
+test('phase-robust checkerboard regression reproducer tolerates a transition row at a sample phase',()=>{
+  const dir=temp();
+  const target=png(path.join(dir,'phase-reproducer.png'),128,128,(x,y)=>{
+    if ([56,57,120,121].includes(y)) {
+      const v=198+((x+y)%5);
+      return [v,v,v,255];
+    }
+    const v=((Math.floor(x/16)+Math.floor(y/16))%2)?174:253;
+    return [v,v,v,255];
+  });
+  const r=inspectArtOutput(target,{kind:'sprite'});
+  assert.equal(r.checkerboard.detected,true);
+  assert.ok(r.issues.includes('BAKED_CHECKERBOARD_SUSPECTED'));
+});
+
+test('checkerboard detector stays negative for clothing, background texture, gradients, and valid transparent sprites',()=>{
+  const dir=temp();
+  const clothing=png(path.join(dir,'clothing.png'),128,128,(x,y)=>{
+    const warm=(Math.floor(x/5)+Math.floor(y/7))%2;
+    return warm?[48,94,146,255]:[72,118,170,255];
+  });
+  const texture=png(path.join(dir,'texture.png'),128,128,(x,y)=>{
+    const v=128+Math.round(22*Math.sin(x/7)+18*Math.cos(y/11));
+    return [v,v,v,255];
+  });
+  const gradient=png(path.join(dir,'gradient.png'),128,128,(x,y)=>{
+    const v=64+Math.floor((x*5+y*3)/8)%160;
+    return [v,v,v,255];
+  });
+  for (const file of [clothing,texture,gradient]) {
+    assert.equal(inspectArtOutput(file,{kind:'sprite'}).checkerboard.detected,false,file);
+  }
+  const transparent=png(path.join(dir,'transparent.png'),32,32,(x,y)=>
+    (x>=6&&x<26&&y>=8&&y<25)?[36,82,136,255]:[0,0,0,0]);
+  const r=inspectArtOutput(transparent,{kind:'sprite'});
+  assert.equal(r.checkerboard.detected,false);
+  assert.equal(r.status,'PASS_ART_OUTPUT_MECHANICAL',r.issues.join(','));
 });
 
 test('transparent checker image is still blocked if a baked border is visible',()=>{
