@@ -79,7 +79,7 @@ When the user asks to create, replace, or integrate production image assets, act
 
 Freeze scope/canon → Sol Web analysis → `ceos art-brief-verify` → Terra Medium native Image Gen (max 2 per cue/variant; own trusted tool access) → actual assets → desktop/mobile runtime QA → independent Sol Web acceptance. See `policies/art-producer.md`.
 
-See `policies/art-producer.md`: model ≠ rendering tool; Web Sol does not persist images. Claim only actual workspace files.
+See `policies/art-producer.md`: model ≠ rendering tool; Web Sol does not persist images. Claim only actual workspace files. After each generated PNG run `ceos art-output-verify`; on failure stop the batch before another Image Gen call. New GENERATING checkpoints require verified output records.
 
 ## Universal audit → repair loop
 
