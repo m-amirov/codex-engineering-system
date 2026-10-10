@@ -53,7 +53,7 @@ function verifiedFile(projectDir, candidate, expectedHash, issues, field, image 
     issues.push(`${field} escapes project directory`);
     return;
   }
-  if (image && (!/\\.(png|jpe?g|webp)$/i.test(candidate) ||
+  if (image && (!/\.(png|jpe?g|webp)$/i.test(candidate) ||
       !hasImageHeader(real, candidate)))
     issues.push(`${field} must reference a PNG, JPEG or WebP with a valid image header`);
   if (typeof expectedHash !== 'string' || !SHA256.test(expectedHash) ||
