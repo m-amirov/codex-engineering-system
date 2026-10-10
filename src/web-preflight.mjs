@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { resolveCodexHome } from './ceos.mjs';
+import { classifyWebTransportFailure } from './web-transport-failure.mjs';
 
 export const DEFAULT_WEB_HEALTH_URL = 'http://127.0.0.1:17841/healthz';
 
@@ -108,6 +109,19 @@ export async function webPreflight({
     let body = null;
     try { body = await response.json(); } catch {}
     const retryAfter = retryAfterSeconds(response, body);
+    const quota = classifyWebTransportFailure({
+      message: [body?.message, body?.reason, body?.error?.message].filter(Boolean).join(' '),
+      code: body?.code ?? body?.error?.code ?? '',
+      httpStatus: response.status
+    });
+    if (quota.classification === 'ATTACHMENT_QUOTA_EXHAUSTED') {
+      return {
+        status: 'ATTACHMENT_QUOTA_EXHAUSTED', enabled: true, ready: false,
+        fallbackAllowed: false, retryAllowed: false,
+        reason: 'Web bridge reported an explicit attachment quota exhaustion',
+        manifestFile: routing.file, healthUrl, httpStatus: response.status
+      };
+    }
     if (response.status === 429 || bodySignalsRateLimit(body)) {
       return {
         status: 'RATE_LIMITED', enabled: true, ready: false, fallbackAllowed: true,
