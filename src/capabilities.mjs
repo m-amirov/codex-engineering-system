@@ -268,7 +268,10 @@ export function capabilityBlockers(capabilities, { pipeline, webRequired = false
   if (!capabilities?.filesystem?.exists) blockers.push({ code: 'PROJECT_MISSING', reason: 'project directory does not exist' });
   if (!capabilities?.filesystem?.readable) blockers.push({ code: 'PROJECT_NOT_READABLE', reason: 'project directory is not readable' });
   if (!capabilities?.filesystem?.writable) blockers.push({ code: 'PROJECT_NOT_WRITABLE', reason: 'project directory is not writable' });
-  if (webRequired && capabilities?.web?.status !== 'READY') {
+  if (webRequired && capabilities?.web?.status === 'ATTACHMENT_QUOTA_EXHAUSTED') {
+    blockers.push({ code: 'ATTACHMENT_QUOTA_EXHAUSTED',
+      reason: 'Web review required but the bridge explicitly reports an attachment quota limit; do not retry or substitute native pixel review' });
+  } else if (webRequired && capabilities?.web?.status !== 'READY') {
     blockers.push({ code: 'WEB_REQUIRED_NOT_READY', reason: `Web review required but preflight is ${capabilities?.web?.status ?? 'UNKNOWN'}` });
   }
   if (pipeline === 'production-art' && capabilities?.imageGeneration?.status === 'unavailable') {
