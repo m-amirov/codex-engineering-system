@@ -12,6 +12,29 @@ const MAX_CANDIDATES = 2;
 const hasText = x => typeof x === 'string' && x.trim().length >= 12;
 const digest = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
+/** Verify real image header bytes, not only path extension. Full decoding is a separate gate. */
+function hasImageHeader(file, name) {
+  const data = fs.readFileSync(file);
+  const ext = path.extname(name).toLowerCase();
+  if (ext === '.png') {
+    return data.length >= 24 &&
+      data.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) &&
+      data.toString('ascii', 12, 16) === 'IHDR' &&
+      data.readUInt32BE(16) > 0 && data.readUInt32BE(20) > 0;
+  }
+  if (ext === '.jpg' || ext === '.jpeg') {
+    return data.length >= 4 && data[0] === 0xff && data[1] === 0xd8 &&
+      data[data.length - 2] === 0xff && data[data.length - 1] === 0xd9;
+  }
+  if (ext === '.webp') {
+    return data.length >= 16 &&
+      data.toString('ascii', 0, 4) === 'RIFF' &&
+      data.toString('ascii', 8, 12) === 'WEBP' &&
+      ['VP8 ', 'VP8L', 'VP8X'].includes(data.toString('ascii', 12, 16));
+  }
+  return false;
+}
+
 /** No sandbox escape, symlink escape or fabricated/unreadable reference allowed. */
 function verifiedFile(projectDir, candidate, expectedHash, issues, field, image = false) {
   if (typeof candidate !== 'string' || !candidate || path.isAbsolute(candidate) ||
@@ -30,8 +53,9 @@ function verifiedFile(projectDir, candidate, expectedHash, issues, field, image 
     issues.push(`${field} escapes project directory`);
     return;
   }
-  if (image && !/\.(png|jpe?g|webp)$/i.test(candidate))
-    issues.push(`${field} must reference real PNG, JPEG or WebP pixels`);
+  if (image && (!/\\.(png|jpe?g|webp)$/i.test(candidate) ||
+      !hasImageHeader(real, candidate)))
+    issues.push(`${field} must reference a PNG, JPEG or WebP with a valid image header`);
   if (typeof expectedHash !== 'string' || !SHA256.test(expectedHash) ||
       digest(real) !== expectedHash.toLowerCase())
     issues.push(`${field} SHA-256 missing or does not match actual file bytes`);
