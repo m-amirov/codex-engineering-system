@@ -1,4 +1,4 @@
-# Install Codex Engineering OS 0.5.10
+# Install Codex Engineering OS 0.5.11
 
 ## Upgrade on Windows
 
@@ -17,7 +17,7 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.10`. Use Codex Web GPT 6.1.6+ and fully restart the launcher and Codex; start a fresh task after global installation.
+Expected version: `0.5.11`. Use Codex Web GPT 6.1.6+ and fully restart the launcher and Codex; start a fresh task after global installation.
 
 ## GPT-6 route verification
 

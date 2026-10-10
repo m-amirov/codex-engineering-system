@@ -1,4 +1,4 @@
-# CEOS 0.4.0 — Production Art Architecture
+# CEOS Production Art Architecture (updated for 0.5.11)
 
 ## Goal
 
@@ -8,7 +8,7 @@ Provide a repeatable workflow for turning an approved product/art direction into
 
 ### `ceos_art_director_web`
 
-- backend: `chatgpt-web/high`;
+- backend: `chatgpt-web/gpt-6-sol` high;
 - reasoning-only;
 - receives bounded context/evidence supplied by the parent;
 - defines or critiques character/location/style canon, generation briefs, reusable asset families, scene-to-art mappings, contact sheets, and visual consistency;
@@ -16,10 +16,10 @@ Provide a repeatable workflow for turning an approved product/art direction into
 
 ### `ceos_asset_generator`
 
-- backend: native `gpt-5.6` medium;
+- backend: native `gpt-5.6-terra` medium (dedicated image producer);
 - workspace-write;
-- executes bounded generation/integration from an approved manifest and canon;
-- uses native image generation only when the current runtime actually exposes it;
+- executes bounded generation/integration from an approved manifest, canon and an exact-HEAD verified art brief;
+- uses actual native image generation **only when the producing agent's session/turn** exposes the tool and satisfies the CEOS run-scoped capability gate; the model route by itself does not render pixels;
 - if generation capability is absent, returns `BLOCKED` instead of fabricating files or silently treating placeholders as production output;
 - persists actual files, updates project-owned mappings/manifests, and collects fresh runtime evidence.
 
@@ -31,7 +31,7 @@ scope/invariants lock
   → ceos web-preflight --json
   → Web art direction when READY
   → canonical character/location/style references
-  → native generation batches
+  → exact-HEAD art-brief-verify with real character reference SHA-256 and dual-orientation contract\n  → Terra Medium bounded native generation (max two candidates per asset/cue/variant)
   → file persistence + runtime integration
   → contact sheets / screenshots / manifest evidence
   → Web consistency critique
@@ -69,6 +69,10 @@ Mass generation must not begin from independent one-off prompts. Establish reusa
 - allowed variation by emotion, time, weather, damage/state, or narrative layer.
 
 Prefer canonical masters plus meaningful variants over one image per scene when reuse is visually and product-correct.
+
+## Quality and candidate controls
+
+Use `policies/art-producer.md` and `ceos art-brief-verify` before native generation. Require distinct desktop and portrait staging, all required characters, concrete authored actions, identity references and forbidden props. A second candidate needs pixel-backed rejection evidence and a substantially revised brief. After two semantic failures stop/escalate; lost Web attachments must not trigger new images. This is a host policy backed by read-only brief validation, **not** an API-side spending cap.
 
 ## Runtime capability boundary
 

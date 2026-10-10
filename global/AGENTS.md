@@ -62,7 +62,7 @@ When Web routing is disabled or unavailable, use the native agents:
 - `ceos_bulk_checker`: repetitive deterministic checks.
 - `ceos_explorer`: repository exploration/evidence mapping.
 - `ceos_implementer`: bounded implementation/refactor.
-- `ceos_asset_generator`: bounded native image generation + asset integration; if no native image-generation capability is available, report `BLOCKED` rather than fabricate assets.
+- `ceos_asset_generator` (`gpt-5.6-terra`, Medium): source-bound native Image Gen, separate from parent/Web. Missing producer-context tool or trusted gate → `BLOCKED`.
 - `ceos_debugger`: ambiguous/cross-component debugging.
 - `ceos_reviewer`: correctness/security/architecture/production-risk review.
 - `ceos_verifier`: independent final verification.
@@ -77,9 +77,9 @@ Generic attachment failures are not rate limits: retry only the failed turn afte
 
 When the user asks to create, replace, or integrate production image assets, activate `production-art` rather than treating image generation as an incidental implementation detail.
 
-Lock product invariants → build an asset manifest → preflight Web → establish character/location/style canon → use `ceos_art_director_web` for substantive art direction when `READY` → generate bounded batches natively with `ceos_asset_generator` when image generation is available → integrate real files and mappings → collect fresh runtime screenshots/contact sheets → Web consistency review when available → `visual-qa` → final manifest/runtime re-audit.
+Freeze scope/canon → Sol Web analysis → `ceos art-brief-verify` → Terra Medium native Image Gen (max 2 per cue/variant; own trusted tool access) → actual assets → desktop/mobile runtime QA → independent Sol Web acceptance. See `policies/art-producer.md`.
 
-Never claim a generated asset exists unless the file is present in the workspace. Prefer canonical character/location masters plus meaningful variants over independent one-off scene generation. Generation convenience must not redefine narrative/gameplay/topology/character cores. Record image-generation capability and generated/integrated asset counts in the checkpoint.
+See `policies/art-producer.md`: model ≠ rendering tool; Web Sol does not persist images. Claim only actual workspace files.
 
 ## Universal audit → repair loop
 

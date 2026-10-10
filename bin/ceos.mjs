@@ -9,6 +9,7 @@ import { webReviewPlan, validateWebReview } from '../src/web-delegation.mjs';
 import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES } from '../src/execution-engine.mjs';
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
+import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -107,6 +108,7 @@ Usage:
   ceos profile [--project dir]
   ceos context --skill <name> [--project dir]
   ceos web-preflight [--codex-home dir] [--url http://127.0.0.1:17841/healthz] [--timeout-ms 1200] [--json]
+  ceos art-brief-verify --file <source-bound-art-brief.json> [--project dir] [--json]
   ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--assurance strict|visual-content] [--json]
   ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--assurance strict|visual-content] [--json]
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
@@ -297,6 +299,14 @@ try {
         console.log(`Attestation: ${observed.file}`);
         if (refreshed.nextAction?.stage) console.log(`Next: ${refreshed.nextAction.stage}`);
       }
+      break;
+    }
+    case 'art-brief-verify': {
+      if (!args.file || args.file === true) throw new Error('--file <art-brief.json> is required');
+      const brief = JSON.parse(fs.readFileSync(path.resolve(project, String(args.file)), 'utf8'));
+      const result = validateArtProducerBrief(project, brief);
+      print(result, true);
+      process.exitCode = result.status === 'READY_TO_GENERATE' ? 0 : 2;
       break;
     }
     case 'web-plan': {

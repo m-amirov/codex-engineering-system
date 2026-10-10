@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.11 — 2026-10-10
+
+- Routed `ceos_asset_generator` to native **GPT-5.6 Terra Medium**, distinct from the parent (optionally Luna Very High) and reasoning-only GPT-6 Sol High independent Web art reviewer.
+- Added read-only `ceos art-brief-verify --file <art-brief.json>` to check exact source HEAD, physical SHA-256 of character references, authored scene/cue and actions, mandatory desktop/portrait framing, rejected candidate evidence and a maximum two-candidate ordinal. A valid brief does not authorize or attest Image Gen.
+- Added source-art quality / narrative consistency / mobile framing separation, bounded regeneration policy, actual producer-context capability checks and truthful provider/asset SHA metadata requirements.
+- No automatic Web image-file export or API model selector is implied; run-scoped native Image Gen capability attestation, original Web acceptance contracts and historical runs remain unchanged.
+- Added Terra producer brief, CLI and installation/model routing regression tests.
+
 ## 0.5.10 — 2026-10-10
 
 - Added explicit `ATTACHMENT_QUOTA_EXHAUSTED` detection for real ChatGPT/Web attachment-limit messages and provider error codes. Generic failed upload or HTTP 429 alone never implies attachment quota.
