@@ -6,7 +6,7 @@ import { CEOS_ROOT, VERSION, SUPPORTED_PROFILES, SKILL_NAMES, resolveProject, lo
 import { webPreflight } from '../src/web-preflight.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { webReviewPlan, validateWebReview } from '../src/web-delegation.mjs';
-import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, EXECUTION_PIPELINES } from '../src/execution-engine.mjs';
+import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES } from '../src/execution-engine.mjs';
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 
@@ -116,6 +116,7 @@ Usage:
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
   ceos run-status [run-id|latest] [--json]
+  ceos web-attachment-block [run-id|latest] --phase analysis|midpoint|acceptance --evidence <failed-turn-log.txt> [--project dir] [--json]
   ceos routing-trace [run-id|latest] [--web-review-file <record.json>] [--web-agents <a;b>] [--dry-run] [--native-fallback] [--fallback-reason text] [--json]
   ceos install-skills --scope repo|user [--mode copy|link] [--project dir] [--force]
   ceos install-global [--mode copy|link] [--force] [--dry-run] [--codex-home dir] [--json]
@@ -383,6 +384,15 @@ try {
     }
     case 'run-status': {
       const result = executionStatus(project, args._[1] || 'latest');
+      if (args.json) print(result, true); else printExecution(result);
+      process.exitCode = executionExitCode(result.run, result.integrity);
+      break;
+    }
+    case 'web-attachment-block': {
+      const result = recordWebAttachmentQuotaBlock(project, args._[1] || 'latest', {
+        phase: args.phase === true ? null : args.phase,
+        evidence: args.evidence === true ? null : args.evidence
+      });
       if (args.json) print(result, true); else printExecution(result);
       process.exitCode = executionExitCode(result.run, result.integrity);
       break;
