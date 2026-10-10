@@ -10,7 +10,7 @@ test('production-art is a first-class CEOS skill with a native asset route', () 
   assert.ok(SKILL_NAMES.includes('production-art'));
   const native = GLOBAL_AGENT_FILES.find(x => x.name === 'ceos_asset_generator');
   assert.ok(native);
-  assert.equal(native.model, 'gpt-5.6');
+  assert.equal(native.model, 'gpt-5.6-terra');
   assert.equal(native.effort, 'medium');
   assert.equal(fs.existsSync(path.join(CEOS_ROOT, 'skills', 'production-art', 'SKILL.md')), true);
 });
