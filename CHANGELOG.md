@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.10 — 2026-10-10
+
+- Added explicit `ATTACHMENT_QUOTA_EXHAUSTED` detection for real ChatGPT/Web attachment-limit messages and provider error codes. Generic failed upload or HTTP 429 alone never implies attachment quota.
+- Added `ceos web-attachment-block` for active enhanced-review runs: require a locally preserved authentic error excerpt, reject incorrect phase or ambiguous evidence, append an immutable evidence-hashed checkpoint, and terminalize as `BLOCKED` without consuming an art/repair cycle.
+- A bridge health response explicitly reporting quota is now a non-ready, non-fallback status. No automated quota-reset guessing, session hopping, model fallback or fake pixel acknowledgement.
+- Preserved all previous CEOS runs and Web evidence. Added classification, bridge, immutability and cycle-budget regression tests.
+
 ## 0.5.9 — 2026-10-10
 
 - Validated all routed Web High review receipts **before** the first persistent trace write; missing acknowledgement, stale source, invalid strict records, or unresolved earlier findings now stop at ingestion rather than at a later checkpoint.
