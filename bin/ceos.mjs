@@ -6,7 +6,7 @@ import { CEOS_ROOT, VERSION, SUPPORTED_PROFILES, SKILL_NAMES, resolveProject, lo
 import { webPreflight } from '../src/web-preflight.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { webReviewPlan, validateWebReview } from '../src/web-delegation.mjs';
-import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, EXECUTION_PIPELINES } from '../src/execution-engine.mjs';
+import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, EXECUTION_PIPELINES } from '../src/execution-engine.mjs';
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 
@@ -112,11 +112,11 @@ Usage:
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
   ceos capability-challenge [run-id|latest] [--codex-home dir] [--json]
   ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
-  ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--json]
+  ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--resolution-contract-file json] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
   ceos run-status [run-id|latest] [--json]
-  ceos routing-trace [run-id|latest] [--web-review-file <record.json>] [--web-agents <a;b>] [--native-fallback] [--fallback-reason text] [--json]
+  ceos routing-trace [run-id|latest] [--web-review-file <record.json>] [--web-agents <a;b>] [--dry-run] [--native-fallback] [--fallback-reason text] [--json]
   ceos install-skills --scope repo|user [--mode copy|link] [--project dir] [--force]
   ceos install-global [--mode copy|link] [--force] [--dry-run] [--codex-home dir] [--json]
   ceos global-status [--codex-home dir] [--json]
@@ -340,7 +340,10 @@ try {
         webRequired: Boolean(args['web-required']),
         webReviewMode: 'enhanced',
         webReviewAssurance: args['web-review-assurance'] || 'strict',
-        maxCycles: args['max-cycles']
+        maxCycles: args['max-cycles'],
+        resolutionReceiptContract: args['resolution-contract-file']
+          ? JSON.parse(fs.readFileSync(path.resolve(project, String(args['resolution-contract-file'])), 'utf8'))
+          : null
       });
       if (args.json) print(result, true); else printExecution(result);
       process.exitCode = executionExitCode(result.run);
@@ -385,6 +388,12 @@ try {
       break;
     }
     case 'routing-trace': {
+      if (args['dry-run']) {
+        if (!args['web-review-file']) throw new Error('--dry-run requires --web-review-file');
+        const webReview = JSON.parse(fs.readFileSync(path.resolve(project, String(args['web-review-file'])), 'utf8'));
+        print(preflightRoutingReceipt(project, args._[1] || 'latest', webReview), true);
+        break;
+      }
       const result = recordRoutingTrace(project, args._[1] || 'latest', {
         webAgentsUsed: args['web-agents'] === undefined ? undefined : listArg(args['web-agents']),
         webReview: args['web-review-file']
