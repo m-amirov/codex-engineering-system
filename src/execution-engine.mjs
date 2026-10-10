@@ -6,6 +6,7 @@ import { VERSION } from './ceos.mjs';
 import { assertPositiveEvidenceContract } from './evidence-contract.mjs';
 import { capabilityBlockers } from './capabilities.mjs';
 import { webReviewPlan, validateWebReview, verifyWebDelegation } from './web-delegation.mjs';
+import { normalizeResolutionReceiptContract, validateResolutionReceipt } from './resolution-receipt.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -426,7 +427,8 @@ export function createRun(projectDir, pipeline, {
   webRequired = false,
   maxCycles,
   webReviewMode = 'legacy',
-  webReviewAssurance = 'strict'
+  webReviewAssurance = 'strict',
+  resolutionReceiptContract = null
 } = {}) {
   const resolvedProject = path.resolve(projectDir);
   const definition = EXECUTION_PIPELINES[pipeline];
@@ -438,6 +440,14 @@ export function createRun(projectDir, pipeline, {
   if (webReviewMode === 'legacy' && webReviewAssurance !== 'strict')
     throw new Error('visual-content assurance requires enhanced Web review mode');
   const normalizedScope = normalizeScope(scope);
+  if (resolutionReceiptContract !== null) {
+    const contract = normalizeResolutionReceiptContract(resolutionReceiptContract);
+    const source = resolveArtifact(resolvedProject, resolvedProject, contract.sourceEvidence);
+    if (source.type !== 'file') throw new Error('RESOLUTION_RECEIPT_SOURCE_INVALID: expected a real evidence file');
+    const issues = validateResolutionReceipt({ historicalExactLines: contract.requiredExactLines }, contract, fs.readFileSync(source.path, 'utf8'));
+    if (issues.length) throw new Error(issues.join('; '));
+    normalizedScope.resolutionReceiptContract = { ...contract, sourceEvidenceSha256: source.sha256 };
+  }
   const visualReview = pipeline === 'production-art' || /(?:visual|image|\bart\b|screenshot|render|\bui\b|худож|визуал|изображен)/i.test([normalizedScope.target, ...normalizedScope.inScope].join(' '));
   const delegationPlan = webReviewMode === 'enhanced'
     ? webReviewPlan(pipeline, { complexity: 'high', visual: visualReview, assurance: webReviewAssurance }) : null;
@@ -819,6 +829,67 @@ export function resumeRun(projectDir, runRef = 'latest') {
   };
 }
 
+function preflightWebReview(projectDir, runDir, run, webReview) {
+  if (!webReview || typeof webReview !== 'object' || Array.isArray(webReview))
+    throw new Error('webReview must be an object');
+  if (!webReview.evidenceArtifact) throw new Error('webReview.evidenceArtifact is required');
+  const assurance = run.webDelegationPlan?.assurance ?? 'strict';
+  const contentMode = assurance === 'visual-content' && run.pipeline === 'production-art';
+  const current = gitSourceSnapshot(projectDir);
+  const issues = validateWebReview(webReview, {
+    pipeline: run.pipeline, phase: webReview.phase,
+    currentHead: current.available ? current.head : null,
+    visual: Boolean(run.webDelegationPlan?.visual), assurance
+  });
+  if (issues.length) throw new Error('WEB_REVIEW_NOT_VERIFIED: ' + issues.join('; '));
+  if (webReview.phase === 'acceptance') {
+    const trace = run.routingTrace.byCycle?.[String(run.cycle)] ?? {};
+    const pending = (trace.webReviews ?? []).filter(review => review.phase !== 'acceptance')
+      .flatMap(review => review.unresolved ?? []);
+    if (pending.some(id => !Array.isArray(webReview.resolvedFindings) ||
+        !webReview.resolvedFindings.some(item => item?.id === id &&
+          (webReview.receivedEvidenceRefs ?? []).includes(item.evidenceRef))))
+      throw new Error('RESOLUTION_RECEIPT_INCOMPLETE: historical Web findings lack independently received resolution evidence');
+    const locked = readJson(path.join(runDir, 'scope.json')).resolutionReceiptContract;
+    if (locked) {
+      const source = resolveArtifact(projectDir, runDir, locked.sourceEvidence);
+      if (source.type !== 'file' || source.sha256 !== locked.sourceEvidenceSha256)
+        throw new Error('RESOLUTION_RECEIPT_SOURCE_CHANGED: historical source is missing or no longer matches locked SHA-256');
+      const cueErrors = validateResolutionReceipt(webReview, locked, fs.readFileSync(source.path, 'utf8'));
+      if (cueErrors.length) throw new Error(cueErrors.join('; '));
+    }
+  }
+  const artifact = resolveArtifact(projectDir, runDir, webReview.evidenceArtifact);
+  const cycleTrace = run.routingTrace.byCycle?.[String(run.cycle)] ?? {};
+  if (contentMode
+      ? (run.routingTrace.webReviews ?? []).some(item => item.evidenceArtifact?.path === artifact.path)
+      : (cycleTrace.webReviews ?? []).some(item => item.reviewTraceId === webReview.reviewTraceId))
+    throw new Error('Duplicate Web reviewer identity/evidence artifact');
+  const localScreenshotArtifacts = contentMode ? webReview.visualEvidence.map(frame => {
+    const captured = resolveArtifact(projectDir, runDir, frame.path);
+    if (captured.type !== 'file' || !/\\.(?:png|jpe?g|webp)$/i.test(frame.path)
+        || captured.sha256.toLowerCase() !== frame.sha256.toLowerCase())
+      throw new Error('WEB_REVIEW_NOT_VERIFIED: screenshot hash/format mismatch: ' + frame.path);
+    return captured;
+  }) : [];
+  return { artifact, localScreenshotArtifacts };
+}
+
+/** Read-only preview; recordRoutingTrace repeats exactly these checks under the run lock. */
+export function preflightRoutingReceipt(projectDir, runRef, webReview) {
+  const resolvedProject = path.resolve(projectDir);
+  const resolved = resolveRun(resolvedProject, runRef);
+  return withRunLock(resolved.runDir, () => {
+    const run = readJson(resolved.file);
+    if (TERMINAL.has(run.state)) throw new Error('Run is terminal: ' + run.state);
+    const integrity = assertRunIntegrity(resolved.runDir, run);
+    if (!integrity.ok) throw new Error('Run integrity check failed: ' + integrity.issues.join('; '));
+    const ready = preflightWebReview(resolvedProject, resolved.runDir, run, webReview);
+    return { status: 'READY_TO_RECORD', runId: run.runId,
+      phase: webReview.phase, artifactSha256: ready.artifact.sha256 };
+  });
+}
+
 export function recordRoutingTrace(projectDir, runRef, {
   webAgentsUsed,
   webReview,
@@ -829,6 +900,11 @@ export function recordRoutingTrace(projectDir, runRef, {
   const resolved = resolveRun(resolvedProject, runRef);
   return withRunLock(resolved.runDir, () => {
     const run = readJson(resolved.file);
+    if (TERMINAL.has(run.state)) throw new Error('Run is terminal: ' + run.state);
+    const integrity = assertRunIntegrity(resolved.runDir, run);
+    if (!integrity.ok) throw new Error('Run integrity check failed: ' + integrity.issues.join('; '));
+    const preparedReview = webReview === undefined ? null
+      : preflightWebReview(resolvedProject, resolved.runDir, run, webReview);
     run.routingTrace.byCycle ||= {};
     const cycleKey = String(run.cycle);
     const cycleTrace = run.routingTrace.byCycle[cycleKey] ||= { webAgentsUsed: [], webReviews: [], nativeFallbackUsed: false, fallbackReason: null };
@@ -837,38 +913,10 @@ export function recordRoutingTrace(projectDir, runRef, {
       cycleTrace.webAgentsUsed = merged;
       run.routingTrace.webAgentsUsed = [...new Set([...(run.routingTrace.webAgentsUsed ?? []), ...merged])];
     }
-    if (webReview !== undefined) {
-      if (!webReview || typeof webReview !== 'object' || Array.isArray(webReview))
-        throw new Error('webReview must be an object');
-      if (!webReview.evidenceArtifact) throw new Error('webReview.evidenceArtifact is required');
-      const assurance = run.webDelegationPlan?.assurance ?? 'strict';
-      const contentMode = assurance === 'visual-content' && run.pipeline === 'production-art';
-      if ((!contentMode && (!webReview.reviewTraceId || !webReview.taskId)) || !webReview.phase || !webReview.agent)
-        throw new Error('webReview requires phase/agent and, in strict mode, reviewTraceId/taskId');
-      const current = gitSourceSnapshot(resolvedProject);
-      if (contentMode) {
-        const issues = validateWebReview(webReview, {
-          pipeline:run.pipeline, phase:webReview.phase,
-          currentHead:current.available ? current.head : null, visual:true, assurance
-        });
-        if (issues.length) throw new Error('WEB_REVIEW_NOT_VERIFIED: '+issues.join('; '));
-      }
-      if (current.available && webReview.sourceHead !== current.head)
-        throw new Error('WEB_REVIEW_NOT_VERIFIED: Web review sourceHead does not match current HEAD');
-      const artifact = resolveArtifact(resolvedProject, resolved.runDir, webReview.evidenceArtifact);
+    if (preparedReview) {
+      const stored = { ...webReview, evidenceArtifact: preparedReview.artifact,
+        localScreenshotArtifacts: preparedReview.localScreenshotArtifacts, recordedAt: now() };
       cycleTrace.webReviews ||= [];
-      if (contentMode
-          ? (run.routingTrace.webReviews ?? []).some(item => item.evidenceArtifact?.path === artifact.path)
-          : cycleTrace.webReviews.some(item => item.reviewTraceId === webReview.reviewTraceId))
-        throw new Error('Duplicate Web reviewer identity/evidence artifact');
-      const localScreenshotArtifacts = contentMode ? webReview.visualEvidence.map(frame => {
-        const captured = resolveArtifact(resolvedProject,resolved.runDir,frame.path);
-        if (captured.type !== 'file' || !/\.(?:png|jpe?g|webp)$/i.test(frame.path)
-            || captured.sha256.toLowerCase() !== frame.sha256.toLowerCase())
-          throw new Error('WEB_REVIEW_NOT_VERIFIED: screenshot hash/format mismatch: '+frame.path);
-        return captured;
-      }) : [];
-      const stored = { ...webReview, evidenceArtifact: artifact, localScreenshotArtifacts, recordedAt: now() };
       cycleTrace.webReviews.push(stored);
       run.routingTrace.webReviews ||= [];
       run.routingTrace.webReviews.push(stored);
