@@ -62,7 +62,7 @@ When Web routing is disabled or unavailable, use the native agents:
 - `ceos_bulk_checker`: repetitive deterministic checks.
 - `ceos_explorer`: repository exploration/evidence mapping.
 - `ceos_implementer`: bounded implementation/refactor.
-- `ceos_asset_generator`: bounded native image generation + asset integration; if no native image-generation capability is available, report `BLOCKED` rather than fabricate assets.
+- `ceos_asset_generator` (`gpt-5.6-terra`, medium): source-bound native Image Gen producer separate from the parent and Web reviewer; if no image-generation tool is callable in its own execution context or the trusted run-scoped gate is missing, report `BLOCKED` rather than fabricate assets.
 - `ceos_debugger`: ambiguous/cross-component debugging.
 - `ceos_reviewer`: correctness/security/architecture/production-risk review.
 - `ceos_verifier`: independent final verification.
@@ -77,9 +77,9 @@ Generic attachment failures are not rate limits: retry only the failed turn afte
 
 When the user asks to create, replace, or integrate production image assets, activate `production-art` rather than treating image generation as an incidental implementation detail.
 
-Lock product invariants → build an asset manifest → preflight Web → establish character/location/style canon → use `ceos_art_director_web` for substantive art direction when `READY` → generate bounded batches natively with `ceos_asset_generator` when image generation is available → integrate real files and mappings → collect fresh runtime screenshots/contact sheets → Web consistency review when available → `visual-qa` → final manifest/runtime re-audit.
+Lock product invariants → build an asset manifest → preflight Web → establish character/location/style canon → Sol Web independent art direction when `READY` → `ceos art-brief-verify` against exact HEAD and local reference hashes → bounded (max 2 candidate per cue/variant) native Image Gen with `ceos_asset_generator` (Terra Medium) only when its actual tool capability is verified → integrate actual files → fresh runtime screenshots → independent Sol Web pixel review → `visual-qa` → final manifest/runtime re-audit. Review findings must drive material brief changes, not repetitive regenerate-until-PASS cycles.
 
-Never claim a generated asset exists unless the file is present in the workspace. Prefer canonical character/location masters plus meaningful variants over independent one-off scene generation. Generation convenience must not redefine narrative/gameplay/topology/character cores. Record image-generation capability and generated/integrated asset counts in the checkpoint.
+See `policies/art-producer.md`. The text model is not the rendering model; Web Sol does not create/persist images through the current reasoning-only route. Never claim a generated asset exists unless the file is present in the workspace. Prefer canonical character/location masters plus meaningful variants over independent one-off scene generation. Generation convenience must not redefine narrative/gameplay/topology/character cores. Record image-generation capability and generated/integrated asset counts in the checkpoint.
 
 ## Universal audit → repair loop
 
