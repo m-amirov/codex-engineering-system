@@ -867,7 +867,7 @@ function preflightWebReview(projectDir, runDir, run, webReview) {
     throw new Error('Duplicate Web reviewer identity/evidence artifact');
   const localScreenshotArtifacts = contentMode ? webReview.visualEvidence.map(frame => {
     const captured = resolveArtifact(projectDir, runDir, frame.path);
-    if (captured.type !== 'file' || !/\\.(?:png|jpe?g|webp)$/i.test(frame.path)
+    if (captured.type !== 'file' || !/\.(?:png|jpe?g|webp)$/i.test(frame.path)
         || captured.sha256.toLowerCase() !== frame.sha256.toLowerCase())
       throw new Error('WEB_REVIEW_NOT_VERIFIED: screenshot hash/format mismatch: ' + frame.path);
     return captured;
