@@ -1,6 +1,19 @@
-# Codex Engineering OS (CEOS) 0.5.10
+# Codex Engineering OS (CEOS) 0.5.12
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Per-image Art Output Gate (0.5.12)
+
+After **every single Image Gen invocation**, the native Terra producer must run:
+
+```sh
+ceos art-output-verify --file assets/generated/alice.png --kind sprite --width 1024 --height 1536 --receipt artifacts/production-art/alice-output.json --json
+ceos art-output-verify --file assets/generated/notebook.png --kind prop --receipt artifacts/production-art/notebook-output.json --json
+```
+
+`BLOCKED_ART_OUTPUT` (exit code 2) stops the batch **before another generation**. The gate validates 8-bit RGB/RGBA noninterlaced PNG content, SHA-256, dimensions, transparent/nonempty alpha and corners, and strong baked-checkerboard patterns. Mechanical PASS never means independent visual acceptance. New production-art `GENERATING` checkpoints must include `--metadata-json '{"artOutputs":[{"path":"...png","kind":"sprite","width":1024,"height":1536}]}'` and pin actual file hashes; historical runs are untouched. No provider-call interception is implied outside this host-guided contract.
+
+`ceos art-output-normalize --file source.png --output normalized.png` safely crops alpha bounds and pads at 512×512 **without resampling** if the content fits. Otherwise it refuses to alter the output. Never remove a checkerboard by simply adding alpha. `ceos art-output-batch --manifest manifest.json` inspects a saved batch fail-fast but does not replace each immediate post-generation check. See `policies/art-producer.md`.
 
 ## Explicit attachment-quota blocker (0.5.10)
 

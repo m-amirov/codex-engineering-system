@@ -73,3 +73,16 @@ test('visual workflows carry bounded Web rate-limit and attachment transport pol
   const context = renderContext(temp, 'visual-qa');
   assert.match(context, /Web Transport, Rate Limit & Attachment Policy/);
 });
+
+test('Art Output Gate requires per-image validation in Terra and skill and checkpoint wiring',()=>{
+ const agent=read('agents/ceos-asset-generator.toml');
+ const skill=read('skills/production-art/SKILL.md');
+ const engine=read('src/execution-engine.mjs');
+ const policy=read('policies/art-producer.md');
+ assert.match(agent,/synchronously gate EACH output before any next generation/);
+ assert.match(skill,/art-output-verify/);
+ assert.match(policy,/STOP the batch immediately/);
+ assert.match(policy,/losslessly crop/);
+ assert.match(engine,/artOutputGateRequired/);
+ assert.match(engine,/inspectArtBatch/);
+});

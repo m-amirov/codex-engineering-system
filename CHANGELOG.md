@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.12 — 2026-10-10
+
+- Added dependency-free, decoded PNG production source-image gate: alpha/nonempty foreground/transparent corners, strong baked checkerboard, exact canvas, CRC and dimensions.
+- Added CLI `ceos art-output-verify`, fail-fast `art-output-batch`, read-only evidence receipts, and `art-output-normalize` for lossless crop/pad of already-fitting props without resampling.
+- New production-art runs require `metadata.artOutputs` at successful `GENERATING` checkpoint, revalidate each real output and include SHA-hashed files in immutable checkpoints; historical runs lack this gate flag and are unchanged.
+- Terra generation instruction now requires **synchronous gate after each** Image Gen call and immediate stop upon failure. No fake PNG-alpha, canvas resizing that degrades quality, silent retries or claimed visual acceptance.
+- Added mechanical validator / engine / CLI tests and documented decoder limitations. This policy cannot intercept unauthorized model/tool calls outside CEOS.
+
 ## 0.5.11 — 2026-10-10
 
 - Routed `ceos_asset_generator` to native **GPT-5.6 Terra Medium**, distinct from the parent (optionally Luna Very High) and reasoning-only GPT-6 Sol High independent Web art reviewer.

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { collectCapabilities } from '../src/capabilities.mjs';
+import { encodeProductionPng } from '../src/art-output-gate.mjs';
 import {
   createRun,
   recordCheckpoint,
@@ -66,6 +67,16 @@ function artifact(project, name, text = name) {
   return name;
 }
 
+function passedArtOutputs(project) {
+  const rel = 'production-asset.png';
+  const pixels = Buffer.alloc(16 * 16 * 4);
+  for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) {
+    const i = (y * 16 + x) * 4;
+    pixels.set([100, 60, 40, 255], i);
+  }
+  fs.writeFileSync(path.join(project, rel), encodeProductionPng({ width: 16, height: 16, pixels }));
+  return { artOutputs: [{ path: rel, kind: 'sprite', width: 16, height: 16 }] };
+}
 function passMetadata(overrides = {}) {
   return {
     evidenceContract: {
@@ -96,7 +107,7 @@ function blockedProductionRun(project, { maxCycles = 3, reason = 'mandatory inde
   const files = ['inventory', 'canon', 'generated', 'integrated', 'visual'].map(name => artifact(project, `${name}.json`));
   recordCheckpoint(project, id, { stage: 'INVENTORIED', artifacts: [files[0]] });
   recordCheckpoint(project, id, { stage: 'CANON_READY', artifacts: [files[1]] });
-  recordCheckpoint(project, id, { stage: 'GENERATING', artifacts: [files[2]] });
+  recordCheckpoint(project, id, { stage: 'GENERATING', artifacts: [files[2]], metadata: passedArtOutputs(project) });
   recordCheckpoint(project, id, { stage: 'INTEGRATED', artifacts: [files[3]] });
   recordCheckpoint(project, id, {
     stage: 'VISUAL_VERIFIED',
@@ -117,7 +128,7 @@ function completeProductionRun(project) {
   const files = ['inventory', 'canon', 'generated', 'integrated', 'visual', 'reaudit'].map(name => artifact(project, `${name}.json`));
   recordCheckpoint(project, id, { stage: 'INVENTORIED', artifacts: [files[0]] });
   recordCheckpoint(project, id, { stage: 'CANON_READY', artifacts: [files[1]] });
-  recordCheckpoint(project, id, { stage: 'GENERATING', artifacts: [files[2]] });
+  recordCheckpoint(project, id, { stage: 'GENERATING', artifacts: [files[2]], metadata: passedArtOutputs(project) });
   recordCheckpoint(project, id, { stage: 'INTEGRATED', artifacts: [files[3]] });
   recordCheckpoint(project, id, { stage: 'VISUAL_VERIFIED', artifacts: [files[4]] });
   recordRoutingTrace(project, id, { webAgentsUsed: ['ceos_art_director_web'] });
@@ -531,6 +542,44 @@ test('production-art requires fresh trusted presence and accepts PRESENT with UN
     trustedForGeneration: true
   }));
   assert.equal(refreshed.integrity.ok, true);
-  const after = recordCheckpoint(project, id, { stage: 'GENERATING', artifacts: [generated] });
+  const after = recordCheckpoint(project, id, { stage: 'GENERATING', artifacts: [generated], metadata: passedArtOutputs(project) });
   assert.equal(after.run.nextStage, 'INTEGRATED');
+});
+
+test('new production-art GENERATING checkpoint fails closed on opaque or missing output metadata',()=>{
+  const project=tempProject();
+  const start=createRun(project,'production-art',{ scope: scope(), capabilities: caps(project,{image:'available'}) });
+  assert.equal(start.run.artOutputGateRequired,true);
+  const id=start.run.runId;
+  const art=artifact(project,'source.txt');
+  recordCheckpoint(project,id,{stage:'INVENTORIED',artifacts:[art]});
+  recordCheckpoint(project,id,{stage:'CANON_READY',artifacts:[art]});
+  assert.throws(()=>recordCheckpoint(project,id,{stage:'GENERATING',artifacts:[art]}),/output gate refused/);
+  const outputs=passedArtOutputs(project);
+  // Alter the source so every pixel is opaque, mimicking a checkerboard sprite.
+  fs.writeFileSync(path.join(project,'production-asset.png'),encodeProductionPng({
+    width:16,height:16,pixels:Buffer.from(Array.from({length:16*16},()=>[230,230,230,255]).flat())
+  }));
+  assert.throws(()=>recordCheckpoint(project,id,{stage:'GENERATING',artifacts:[art],metadata:outputs}),/ART_ALPHA_MISSING_OR_OPAQUE/);
+  const passed=passedArtOutputs(project);
+  const result=recordCheckpoint(project,id,{stage:'GENERATING',artifacts:[art],metadata:passed});
+  assert.equal(result.run.nextStage,'INTEGRATED');
+  const checkpoint=fs.readdirSync(path.join(start.runDir,'checkpoints')).filter(f=>f.includes('generating')).map(f=>readJson(path.join(start.runDir,'checkpoints',f)))[0];
+  assert.equal(checkpoint.metadata.artOutputGate.status,'PASS_ART_BATCH_MECHANICAL');
+  assert.ok(checkpoint.artifacts.some(x=>x.path.endsWith('production-asset.png')));
+});
+
+test('existing legacy production-art run is not retroactively gated',()=>{
+  const project=tempProject();
+  const start=createRun(project,'production-art',{scope:scope(),capabilities:caps(project,{image:'available'})});
+  const id=start.run.runId;
+  const file=path.join(start.runDir,'run.json');
+  const legacy=readJson(file);
+  delete legacy.artOutputGateRequired;
+  fs.writeFileSync(file,JSON.stringify(legacy,null,2));
+  const art=artifact(project,'prior.txt');
+  recordCheckpoint(project,id,{stage:'INVENTORIED',artifacts:[art]});
+  recordCheckpoint(project,id,{stage:'CANON_READY',artifacts:[art]});
+  const result=recordCheckpoint(project,id,{stage:'GENERATING',artifacts:[art]});
+  assert.equal(result.run.nextStage,'INTEGRATED');
 });

@@ -18,6 +18,23 @@ The independent `ceos_art_director_web` on **GPT-6 Sol High** is **reasoning-onl
    `READY_TO_GENERATE` verifies the local source HEAD, structural contract and SHA-256 of referenced files **only**. It is not a quality PASS, authorization, native tool attestation, or proof of remote Image Gen access. `BLOCKED_ART_BRIEF` forbids proceeding under this CEOS workflow.
 5. At the `GENERATING` stage run the existing run-scoped CEOS Image Gen capability challenge and make sure the **actual producer's execution context** has the callable native Image Gen tool. A tool available only to the parent does not imply subagent access. If a subagent cannot meet the trusted current-session/turn attestation contract, report `BLOCKED` instead of borrowing a parent's attestation. Host-specific API names/available image models must be observed; do not guess that a particular GPT Image model can be selected.
 
+## Mandatory source-image output gate (0.5.12)
+
+**Immediately after EACH native Image Gen output, before requesting the next image**, save the actual PNG to the project and run:
+
+```sh
+ceos art-output-verify --project . --file assets/generated/alice-pose.png --kind sprite --width 1024 --height 1536 --receipt artifacts/production-art/alice-output-gate.json --json
+ceos art-output-verify --project . --file assets/generated/notebook.png --kind prop --receipt artifacts/production-art/notebook-output-gate.json --json
+```
+
+Do not ask Image Gen for another asset in the batch until the current output returns `PASS_ART_OUTPUT_MECHANICAL`. `BLOCKED_ART_OUTPUT` means **STOP the batch immediately** and preserve the invalid original, its SHA-256, failed receipt and prior ledger. One bad opaque checkerboard must stop the batch before seven more sprites are produced. The gate is deterministic and read-only; it cannot intercept calls the host makes outside the CEOS workflow.
+
+The gate checks decoded PNG raster dimensions, alpha histogram, genuine fully transparent outer corners, nonempty visible subject, and strong alternating gray checkerboard pattern at image corners. Sprites and props require real alpha, not a painted checkerboard. Props default to 512×512. The decoder supports 8-bit noninterlaced RGB/RGBA PNG and fails closed for other direct-output formats; conversion into PNG requires separate explicit preparation and truthful original provenance. Passing this mechanical gate **never** implies faces, anatomy, props, composition or source-content visual acceptance.
+
+`ceos art-output-normalize --file <prop.png> --output <new-512.png>` may losslessly crop the nonzero alpha bounds and center/pad at 512×512 **only if every occupied source pixel fits**. It never rescales, stretches, fills, erases a baked checkerboard, or overwrites originals. Large content that would need downsampling receives `NORMALIZE_REQUIRES_RESAMPLING` and needs separately authorized processing plus independent pixel QA.
+
+For a new CEOS 0.5.12+ `production-art` run, the `GENERATING` checkpoint with `CONTINUE` must include `metadata.artOutputs` (array of `{path,kind,width,height}` for each actual PNG). CEOS revalidates those files and pins their SHA-256 as checkpoint artifacts. Old runs lacking `artOutputGateRequired` retain historical behaviour and **must not** be rewritten. If any output fails, submit a truthful `BLOCKED` checkpoint with the failed gate receipt; do not claim an integrated/accepted production asset. Optional `art-output-batch --manifest` is for a read-only inventory and stops at the first invalid file, but cannot replace the mandatory per-output gate in the host orchestration.
+
 ## Candidate/rework budget
 
 - Default maximum **2 generation candidates per asset/cue/variant** within the authorized repair scope. This is a **host orchestration policy** plus a read-only brief check, not a host-level hard budget or an API usage limiter. Every real invocation must be accounted for in the parent's attempt ledger. Do not reset counters through a new brief/run to bypass repeated semantic failure.
