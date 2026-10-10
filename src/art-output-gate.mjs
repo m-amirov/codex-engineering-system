@@ -124,19 +124,21 @@ function bakedCheckerboard(image) {
   for (const tile of [4, 8, 12, 16, 24, 32, 48, 64]) {
     if (width < tile * 5 || height < tile * 5) continue;
     for (const [sx, sy] of [[0, 0], [width - tile * 4, 0], [0, height - tile * 4], [width - tile * 4, height - tile * 4]]) {
-      let parityColors = [null, null], ok = true, n = 0;
+      let parityColors = [null, null], parityCounts = [0, 0], ok = true, n = 0;
       for (let iy = 0; iy < 4 && ok; iy++) for (let ix = 0; ix < 4; ix++) {
         const x = Math.min(width - 1, sx + Math.floor((ix + .5) * tile));
         const y = Math.min(height - 1, sy + Math.floor((iy + .5) * tile));
         const rgb = pixel(image, x, y);
         const p = (ix + iy) % 2;
-        if (rgb[3] !== 255 || Math.max(rgb[0], rgb[1], rgb[2]) - Math.min(rgb[0], rgb[1], rgb[2]) > 12) { ok = false; break; }
+        if (rgb[3] !== 255 || Math.max(rgb[0], rgb[1], rgb[2]) - Math.min(rgb[0], rgb[1], rgb[2]) > 12) continue;
         const val = (rgb[0] + rgb[1] + rgb[2]) / 3;
         if (parityColors[p] === null) parityColors[p] = val;
         else if (Math.abs(parityColors[p] - val) > 6) { ok = false; break; }
+        parityCounts[p]++;
         n++;
       }
-      if (ok && n === 16 && parityColors.every(Number.isFinite) &&
+      // Foreground can obscure up to four samples; require both checker parities.
+      if (ok && n >= 12 && parityCounts.every(count => count >= 5) && parityColors.every(Number.isFinite) &&
           Math.abs(parityColors[0] - parityColors[1]) >= 8 &&
           Math.abs(parityColors[0] - parityColors[1]) <= 110) return { detected: true, tileSize: tile };
     }
@@ -233,6 +235,10 @@ export function inspectArtBatch(manifest, { projectDir = process.cwd() } = {}) {
     const abs = path.resolve(root, asset.path);
     if (!abs.startsWith(root + path.sep)) {
       return { status: 'BLOCKED_ART_BATCH', firstFailedIndex: index, inspected, issues: ['ART_BATCH_PATH_ESCAPE'] };
+    }
+    // Resolve symlinks as well as lexical paths: a project-relative link must not read outside the project.
+    if (fs.existsSync(abs) && !fs.realpathSync(abs).startsWith(root + path.sep)) {
+      return { status: 'BLOCKED_ART_BATCH', firstFailedIndex: index, inspected, issues: ['ART_BATCH_SYMLINK_ESCAPE'] };
     }
     const entry = inspectArtOutput(abs, { kind: asset.kind, width: asset.width, height: asset.height });
     inspected.push(entry);
