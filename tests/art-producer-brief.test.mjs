@@ -19,9 +19,10 @@ function makeProject() {
   run(dir,'config','user.email','ceos-test@example.invalid');
   run(dir,'config','user.name','CEOS Fixture');
   fs.mkdirSync(path.join(dir,'assets','refs'),{recursive:true});
-  // Image bytes are only for local path/hash validation; no visual acceptance.
+  // Valid 1x1 PNG fixture; header checks do not claim visual acceptance.
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==','base64');
   for(const name of ['alice','eric','nick','damir'])
-    fs.writeFileSync(path.join(dir,'assets','refs',name+'.png'),Buffer.from('local-ref-'+name));
+    fs.writeFileSync(path.join(dir,'assets','refs',name+'.png'),png);
   fs.writeFileSync(path.join(dir,'source.txt'),'verified local source');
   run(dir,'add','.');
   run(dir,'commit','-qm','fixture');
@@ -102,6 +103,14 @@ test('candidate three stops, candidate two requires independently referenced rej
   assert.equal(validateArtProducerBrief(dir,b).status,'READY_TO_GENERATE');
   fs.writeFileSync(path.join(dir,p),'tampered');
   assert.match(validateArtProducerBrief(dir,b).issues.join('; '),/SHA-256/);
+});
+
+test('art brief rejects fake PNG bytes even when SHA matches',()=>{
+  const dir=makeProject(), b=brief(dir);
+  const img='assets/refs/alice.png';
+  fs.writeFileSync(path.join(dir,img),Buffer.from('not actual PNG pixels'));
+  b.characterReferences[0].sha256=hash(fs.readFileSync(path.join(dir,img)));
+  assert.match(validateArtProducerBrief(dir,b).issues.join('; '),/valid image header/);
 });
 
 test('semantic text omissions block as structurally incomplete, without judging image quality',()=>{
