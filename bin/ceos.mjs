@@ -10,6 +10,7 @@ import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, 
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
+import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -47,6 +48,15 @@ function metadataArg(args) {
     metadata.defectCount = count;
   }
   return metadata;
+}
+function saveArtOutputReceipt(project, name, result) {
+  if (typeof name !== 'string' || !name || path.isAbsolute(name) || name.split(/[\\/]/).includes('..'))
+    throw new Error('--receipt must be a project-relative new path');
+  const resolved = path.resolve(project, name);
+  if (!resolved.startsWith(path.resolve(project) + path.sep))
+    throw new Error('--receipt escapes project directory');
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, JSON.stringify({ ...result, recordedAt: new Date().toISOString() }, null, 2) + '\n', { flag: 'wx' });
 }
 function timeoutArg(args) {
   const timeoutMs = args['timeout-ms'] ? Number(args['timeout-ms']) : 1200;
@@ -109,6 +119,9 @@ Usage:
   ceos context --skill <name> [--project dir]
   ceos web-preflight [--codex-home dir] [--url http://127.0.0.1:17841/healthz] [--timeout-ms 1200] [--json]
   ceos art-brief-verify --file <source-bound-art-brief.json> [--project dir] [--json]
+  ceos art-output-verify --file <generated.png> --kind sprite|prop|background [--width N --height N] [--receipt <new.json>] [--json]
+  ceos art-output-batch --manifest <assets.json> [--receipt <new.json>] [--json]
+  ceos art-output-normalize --file <prop.png> --output <new.png> [--width 512 --height 512] [--json]
   ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--assurance strict|visual-content] [--json]
   ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--assurance strict|visual-content] [--json]
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
@@ -307,6 +320,37 @@ try {
       const result = validateArtProducerBrief(project, brief);
       print(result, true);
       process.exitCode = result.status === 'READY_TO_GENERATE' ? 0 : 2;
+      break;
+    }
+    case 'art-output-verify': {
+      if (typeof args.file !== 'string' || !args.kind) throw new Error('--file and --kind are required');
+      const result = inspectArtOutput(path.resolve(project, args.file), {
+        kind: args.kind,
+        width: args.width === undefined ? undefined : Number(args.width),
+        height: args.height === undefined ? undefined : Number(args.height)
+      });
+      if (args.receipt) saveArtOutputReceipt(project, args.receipt, result);
+      print(result, true);
+      process.exitCode = result.status === 'PASS_ART_OUTPUT_MECHANICAL' ? 0 : 2;
+      break;
+    }
+    case 'art-output-batch': {
+      if (typeof args.manifest !== 'string') throw new Error('--manifest is required');
+      const manifest = JSON.parse(fs.readFileSync(path.resolve(project, args.manifest), 'utf8'));
+      const result = inspectArtBatch(manifest, { projectDir: project });
+      if (args.receipt) saveArtOutputReceipt(project, args.receipt, result);
+      print(result, true);
+      process.exitCode = result.status === 'PASS_ART_BATCH_MECHANICAL' ? 0 : 2;
+      break;
+    }
+    case 'art-output-normalize': {
+      if (typeof args.file !== 'string' || typeof args.output !== 'string')
+        throw new Error('--file and --output are required');
+      const result = normalizeArtCanvas(path.resolve(project, args.file), path.resolve(project, args.output), {
+        width: args.width === undefined ? 512 : Number(args.width),
+        height: args.height === undefined ? 512 : Number(args.height)
+      });
+      print(result, true);
       break;
     }
     case 'web-plan': {
