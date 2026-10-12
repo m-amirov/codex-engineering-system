@@ -10,7 +10,7 @@ metadata:
 
 ## Source of truth and trust
 
-Load the authored canonical scene data and real executable route graph independently. Do not infer actual reachable state from the manuscript alone. This skill extends \`romance-narrative\` invariants and the project's optional Starter Kit \`narrative-game\` validator. A PASS from a JSON example is not proof the game runtime shares that graph; require extraction from production data or runtime reachability evidence.
+Load the authored canonical scene data and real executable route graph independently. Do not infer actual reachable state from the manuscript alone. This skill extends `romance-narrative` invariants and the project's optional Starter Kit `narrative-game` validator. A PASS from a JSON example is not proof the game runtime shares that graph; require extraction from production data or runtime reachability evidence.
 
 ## Continuity model
 
@@ -22,6 +22,12 @@ Track a small per-scene, per-route ledger of:
 - **Payoff obligations:** material established state has either an intended payoff or documented intentional non-use.
 - **Save/Back:** a restored scene and state preserves route, knowledge, flags and one-shot effects. Back cannot reissue rewards or accidentally rewrite history.
 
+## Route-conditioned story promises
+
+If an author uses the optional `templates/narrative/STORY_PROMISE_LEDGER.md`, carry stable promise IDs, setup scene/cue, relevant route guard, eventual payoff reference and author decisions. On affected paths, test both directions: a claimed payoff must have a reachable antecedent; a material setup whose resolution is due must have an authored payoff or an explicitly intentional open end. An optional unanswered mystery is not automatically a continuity defect.
+
+A ledger with `planned` scene references cannot establish runtime reachability. Check authored IDs against production scene data where available. `authored` means a source scene exists; `runtime-verified` requires actual executed route/state evidence. Missing files or untested guards are EVIDENCE_GAP, not PASS. Preserve save/Back one-shot and knowledge provenance across episode context handoffs.
+
 ## Mechanical versus semantic
 
 A graph/model checker can prove *declared* edge validity, reachability, conditions, state constraints and save serializability within its bounded state space. It cannot prove the dialogue actually refers to the right character or that a promise was emotionally honored. Use anchored scene/cue excerpts and an independent editorial assessment for the latter. Full-season PASS requires explicit complete route/branch coverage, not zero counters or one happy-path run.
@@ -30,7 +36,7 @@ A graph/model checker can prove *declared* edge validity, reachability, conditio
 
 1. Start from a single authoritative game-head and canon revision; identify the affected scene/route graph.
 2. Capture each relevant state effect and antecedent (fact source, prerequisite event, actor/location). Preserve actual code-derived IDs.
-3. Run project-local \`narrative-game\` graph checks when opted in: all edges, endings, guards/effects, locale dialogue and save fixtures.
+3. Run project-local `narrative-game` graph checks when opted in: all edges, endings, guards/effects, locale dialogue and save fixtures.
 4. Run focused narrative semantic checks over paths involving revised beats: unreachable facts, unexplained moves, repeated one-shot acts, wrong route locks, knowledge from unvisited paths.
 5. Confirm failures in production runtime or executable data before editing code. Distinguish model/harness defect from real game defect.
 6. Record minimal impacted routes/tests and revalidate changed dependencies; do not regenerate prose or assets as a shortcut.
