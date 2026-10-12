@@ -19,5 +19,5 @@ test('CEOS art budget does not substitute for independent Web pixel acceptance',
  assert.match(code,/ESCALATE_ART_GENERATION/);
  assert.match(code,/BLOCKED_WEB_TRANSPORT/);
  const doc=fs.readFileSync(path.join(CEOS_ROOT,'docs/art-rework-budget.md'),'utf8');
- assert.match(doc,/does not.*prove/i);
+ assert.match(doc,/does \*\*not\*\* prove/i);
 });
