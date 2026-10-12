@@ -31,6 +31,15 @@ This is a semantic editorial contract, **not** a claim that automated tests can 
 7. **Consistency and endings:** verify chronology, presence, objects, knowledge, promises, consent/boundaries, behavior patterns, route reachability and ending causality against project-owned canon/state contracts.
 8. **Presentation:** after art exists, verify character identity and expression, staging, framing, mobile legibility and that key romantic beats have meaningful visual support. Do not classify missing assets as a script defect when concept-only work is in scope.
 
+## Focused editorial companion skills
+
+Activate these only when the identified problem demands them, not all in every episode:
+- `narrative-dialogue-editor`: character-specific speech, subtext, exposition, RU/EN dialogue parity and attribution.
+- `narrative-continuity-engine`: actual route-conditioned chronology, character knowledge, inventory/promise provenance and save/Back invariants; optionally use the Starter Kit `narrative-game` graph validator.
+- `reader-experience-review`: one bounded blind reading of player-visible text before exposing the reviewer to story canon, for comprehension, engagement and earned payoff.
+
+The parent `romance-narrative` owns relationship arcs and choice causality. Companion reports must cite the actual scene/route evidence, keep source/editorial/reader hypotheses distinct, avoid re-reading unchanged chapters and obey existing Web High quotas. A good prose diagnosis must never be represented as a mechanistic runtime PASS.
+
 ## Executable continuity invariants
 
 For implemented interactive fiction, convert recurring continuity failures into project-owned assertions where the state model makes them mechanically decidable. At minimum, audit these invariant classes when applicable:
