@@ -36,6 +36,12 @@ Turn an approved product/art direction into real project-owned image assets with
 9. **Runtime verification.** Use `visual-qa` for fresh desktop/mobile/browser/runtime evidence after integration. Source inspection alone does not prove staging, crop, readability, or scene-to-art correctness. Verify the authored visual event before and after the cue that triggers it, recording expected event id, observed asset source/hash and runtime state; filename similarity is not coverage.
 10. **Fresh final re-audit.** Re-evaluate the completed asset set against the original manifest and canon, not merely against previous recommendations.
 
+## Mechanical pre-repair authorization
+
+For new image-led repair work, record actual scoped P0/P1/P2 findings and the prior attempt ledger, then run the read-only preflight `node bin/art-rework-budget.mjs --request <json>` before another asset generation, mapping, staging or crop repair. A nonzero exit forbids that CEOS repair step: P3-only advice is not a blocking art defect, two generated candidates or three distinct failed approaches require escalation, and attachment/rate limits are transport blockers.
+
+The preflight is a host-side guard; do not claim interception of native Image Gen outside the CEOS workflow. Keep truthful pixel receipt provenance, do not substitute this result for Web High acceptance, and preserve existing immutable engine checkpoints.
+
 ## Scene CG-first and meaningful-review priority
 
 For static or mostly static illustrated narrative beats with characters, **default to a unified full-scene CG** covering the authored cast, location and action. Prefer a cohesive landscape/portrait composition over layered sprites; dynamic sprites require a recorded reason (material animation, changing poses/expressions, interactivity, or comparable performance/accessibility constraints). Do not automatically replace unrelated gameplay effects or a working dynamic stage. A CG cannot hide wrong cast, plot contradictions or physical placement.
