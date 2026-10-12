@@ -22,6 +22,14 @@ Every visual verdict references current-runtime image evidence and records SHA-2
 For each affected viewport assert mechanically: content reaches all four viewport edges, no document or internal scroll chain, readable text, and no overlap of the primary action with text or controls. For authored cues, capture before/after pairs and match observed event id and asset hash to the current coverage ledger. Stale or missing ledgers are evidence gaps. Playwright timeout, unavailable browser, or inaccessible screenshot is `BLOCKED`/`EVIDENCE_GAP`, never `PASS`; functional, DOM, save/load, pagination and route checks cannot promote visual acceptance.
 
 
+## Narrative CG-first review
+
+For a static narrative beat, prefer a complete scene-specific CG to layered character sprites. Retain sprites when an authored dynamic interaction needs them, with a documented reason.
+
+Block material defects first: wrong actor or action, wrong location or cue order, important crop, impossible physical placement, or unreadable dialogue/controls. Each blocking finding needs a scene/cue reference, observed image evidence and player-facing impact. Purely subjective polish does not justify repeated generation; observe existing attempt limits.
+
+After an image or mapping repair, separately verify production preload, crossfade, failed loads, stale transitions, slow network and reduced-motion behavior. Still screenshots alone do not prove transition quality.
+
 ## Web review transport discipline
 
 When independent review uses a Web High route, follow `policies/web-transport.md`. Do not fire attachment-bearing review turns in parallel. Prefer one confirmed master/reference followed by one runtime screenshot per turn, and do not resend viewport frames that already have a valid pixel-backed verdict.

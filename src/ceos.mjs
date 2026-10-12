@@ -9,7 +9,7 @@ import { parseYamlLite } from './yaml-lite.mjs';
 export const CEOS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const VERSION = fs.readFileSync(path.join(CEOS_ROOT, 'VERSION'), 'utf8').trim();
 export const SUPPORTED_PROFILES = ['generic', 'node-web', 'yandex-games', 'twork-desktop', 'platibridge'];
-export const SKILL_NAMES = ['audit', 'audit-repair-loop', 'fix', 'verification', 'release', 'visual-qa', 'video-production', 'romance-narrative', 'production-art', 'prod-check', 'incident-analysis'];
+export const SKILL_NAMES = ['audit', 'audit-repair-loop', 'fix', 'verification', 'release', 'visual-qa', 'video-production', 'romance-narrative', 'narrative-dialogue-editor', 'narrative-continuity-engine', 'reader-experience-review', 'production-art', 'prod-check', 'incident-analysis'];
 
 export const GLOBAL_INSTRUCTIONS_BEGIN = '<!-- CEOS:GLOBAL:BEGIN -->';
 export const GLOBAL_INSTRUCTIONS_END = '<!-- CEOS:GLOBAL:END -->';
@@ -34,6 +34,9 @@ const SKILL_POLICY_MAP = {
   'visual-qa': ['safety', 'evidence', 'testing', 'web-transport', 'stop-conditions'],
   'video-production': ['safety', 'evidence', 'git', 'testing', 'web-transport', 'stop-conditions'],
   'romance-narrative': ['safety', 'evidence', 'native-delegation', 'stop-conditions'],
+  'narrative-dialogue-editor': ['safety', 'evidence', 'native-delegation', 'stop-conditions'],
+  'narrative-continuity-engine': ['safety', 'evidence', 'testing', 'native-delegation', 'stop-conditions'],
+  'reader-experience-review': ['safety', 'evidence', 'native-delegation', 'web-transport', 'stop-conditions'],
   'production-art': ['safety', 'evidence', 'git', 'testing', 'web-transport', 'art-producer', 'stop-conditions'],
   'prod-check': ['safety', 'evidence', 'production', 'stop-conditions'],
   'incident-analysis': ['safety', 'evidence', 'testing', 'stop-conditions']

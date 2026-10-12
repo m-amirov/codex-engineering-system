@@ -35,6 +35,14 @@ The gate checks decoded PNG raster dimensions, alpha histogram, genuine fully tr
 
 For a new CEOS 0.5.12+ `production-art` run, the `GENERATING` checkpoint with `CONTINUE` must include `metadata.artOutputs` (array of `{path,kind,width,height}` for each actual PNG). CEOS revalidates those files and pins their SHA-256 as checkpoint artifacts. Old runs lacking `artOutputGateRequired` retain historical behaviour and **must not** be rewritten. If any output fails, submit a truthful `BLOCKED` checkpoint with the failed gate receipt; do not claim an integrated/accepted production asset. Optional `art-output-batch --manifest` is for a read-only inventory and stops at the first invalid file, but cannot replace the mandatory per-output gate in the host orchestration.
 
+## CG-first narrative staging and art severity
+
+For a fixed emotional or story-defining multi-character beat, choose a coherent **full-scene CG before sprite-layer staging** when the approved art canon, rights and source references permit it. A sprite composition is an explicit exception for authored movement, frequent expression/state changes or other verified interaction/performance needs. Replacing a working dynamic sequence solely to satisfy this preference is not required.
+
+Web High reviews should separate material P0/P1 errors (wrong actor identity, incorrect action, location or time, cue ordering, important crop, impossible ground plane, unreadable controls) from P2 quality improvements and P3 taste-level suggestions. P3 alone is not authorization for new images or endless polish. Link each material finding to exact authored scene/cue, actual pixels, user-facing impact and a minimal correction. Root cause first: mapping/stage/CSS or underlying image. Never reset the existing two-candidate generation budget by renaming a scene or creating a new run.
+
+Image-driven runtime integration needs bounded preload and decoded-frame crossfade with last-frame retention, stale-request cancellation, failure fallback, reduced-motion behavior and Slow 3G checks at affected cues. These runtime checks are distinct from independent still-frame Web review and cannot be replaced by a source-image gate.
+
 ## Candidate/rework budget
 
 - Default maximum **2 generation candidates per asset/cue/variant** within the authorized repair scope. This is a **host orchestration policy** plus a read-only brief check, not a host-level hard budget or an API usage limiter. Every real invocation must be accounted for in the parent's attempt ledger. Do not reset counters through a new brief/run to bypass repeated semantic failure.
