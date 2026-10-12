@@ -36,6 +36,16 @@ Turn an approved product/art direction into real project-owned image assets with
 9. **Runtime verification.** Use `visual-qa` for fresh desktop/mobile/browser/runtime evidence after integration. Source inspection alone does not prove staging, crop, readability, or scene-to-art correctness. Verify the authored visual event before and after the cue that triggers it, recording expected event id, observed asset source/hash and runtime state; filename similarity is not coverage.
 10. **Fresh final re-audit.** Re-evaluate the completed asset set against the original manifest and canon, not merely against previous recommendations.
 
+## Scene CG-first and meaningful-review priority
+
+For static or mostly static illustrated narrative beats with characters, **default to a unified full-scene CG** covering the authored cast, location and action. Prefer a cohesive landscape/portrait composition over layered sprites; dynamic sprites require a recorded reason (material animation, changing poses/expressions, interactivity, or comparable performance/accessibility constraints). Do not automatically replace unrelated gameplay effects or a working dynamic stage. A CG cannot hide wrong cast, plot contradictions or physical placement.
+
+Prioritize art defects in this order: **P0/P1** incorrect character identity or acting role, action/dialogue mismatch, wrong location/time/props, invalid scene/cue order, important subject cropped or covered by dialogue, impossible spatial perspective, unreadable UI; **P2** material style/framing/readability issues; **P3** purely subjective polish with no player-facing defect. A subjective preference alone must not trigger generation or indefinite review.
+
+For each requested repair retain the concrete authored line/cue, current image observation, player impact, severity and smallest effective fix. Diagnose mapping/stage/CSS versus source image before regenerating. Retest only changed and causally affected beats with real source/runtime pixels. Limit candidates and repeated repairs under existing CEOS limits; repeated stylistic suggestions without a new material defect terminate as no-op, not another generation. Transport/quota failures are BLOCKED and never count as art REWORK.
+
+For image-heavy games, preserve a smooth decoded-image preload/crossfade contract: bounded in-flight requests/cache, stale-transition cancellation, keep last valid frame during slow or failed loading, fallback on errors, reduced-motion handling, no black flashes, and mobile-memory limits. Changing an art asset or its cue mapping requires targeted regression of these behaviors on the actual production runtime; they cannot be inferred from screenshot PASS.
+
 ## Completion contract
 
 A `PASS` requires evidence that:
