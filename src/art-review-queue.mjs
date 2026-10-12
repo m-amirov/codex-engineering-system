@@ -12,8 +12,8 @@ function hash(value) { return typeof value === 'string' && SHA.test(value); }
 export function summarizeArtReviewQueue(ledger, receipts, { limit = 6 } = {}) {
   if (ledger?.schemaVersion !== 1 || !HEAD.test(ledger?.sourceHead ?? '') || !Array.isArray(ledger?.items))
     throw new Error('invalid coverage ledger: expected schemaVersion 1, exact sourceHead and items[]');
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
-    throw new Error('limit must be an integer between 1 and 100');
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000)
+    throw new Error('limit must be an integer between 1 and 1000');
   if (!Array.isArray(receipts)) throw new Error('receipts must be an array');
 
   const seen = new Set();
