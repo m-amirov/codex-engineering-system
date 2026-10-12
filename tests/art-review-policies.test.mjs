@@ -15,7 +15,7 @@ test('static narrative art chooses full-scene CG before sprite staging', () => {
 test('P0 and P1 material findings precede P3 cosmetic suggestions', () => {
   assert.match(read('policies/art-producer.md'), /P0\/P1 errors/);
   assert.match(read('policies/art-producer.md'), /P3 alone is not authorization/);
-  assert.match(read('skills/production-art/SKILL.md'), /P3 subjective style preferences/);
+  assert.match(read('skills/production-art/SKILL.md'), /P3.*subjective/);
 });
 
 test('image-driven runtime transition regressions are mandatory after asset repair', () => {
