@@ -36,6 +36,31 @@ A successful Web turn resets the consecutive rate-limit counter.
 
 Do not switch Web modes/models, parallelize sessions, or use native fallback merely to evade a usage limit. If Web review is optional, the existing single native fallback contract may be used after the Web unit is classified unavailable. If the user or acceptance contract explicitly requires Web review, native fallback does not satisfy the gate.
 
+## Quota-aware review packet planning
+
+Prefer a small **read-only pending review queue**, which skips accepted exact-HEAD/pixel
+receipts, keeps REWORK with the repair owner, and groups three viewports of the
+same authored scene/cue into **one optional contact sheet**. A contact sheet is a
+proposal for reducing upload count, **not** proof of uploaded pixels: create it
+locally without downscaling the originals (for example, desktop 1920x900 above
+two mobile frames at native widths), label every frame, and retain original
+SHA-256 separately. Attach only if size/legibility allows; review an unreadable
+frame individually. Every constituent viewport requires a specific observation
+and receipt, and a composite cannot justify a bulk PASS.
+
+`node bin/web-high-review-packets.mjs --ledger <coverage.json> --receipts <receipts.json> --max-attachments 2`
+prepares packets without making Web calls. `--quota-log <actual-error.log>`
+may be used **only** with an observed explicit host quota error; the planner then
+outputs PAUSED and sends nothing. The local `--max-attachments` setting is a
+**voluntary per-attempt ceiling**, never the provider's remaining capacity;
+ChatGPT does not expose that capacity through CEOS health checks.
+
+Never open parallel sessions, switch providers/models to evade limits, fabricate
+a provider reset time, or resubmit old approved frames. Existing terminal
+quota-blocked CEOS runs stay terminal; launch an authorized fresh run for
+remaining frames after real upload capability is available. See
+`docs/web-high-quota-review-packets.md`.
+
 ## Attachment quota hard-stop
 
 On an explicit `ATTACHMENT_QUOTA_EXHAUSTED` error, **do not resend the failed image, switch models/conversations to evade a limit, invoke native fallback to pretend Web pixel acceptance, or consume repair/regeneration cycles**. Persist the actual error message and affected review phase. For an active enhanced CEOS run, use `ceos web-attachment-block <run> --phase <phase> --evidence <project-local-log>` to record an immutable `BLOCKED / ATTACHMENT_QUOTA_EXHAUSTED` event and the evidence SHA-256. CEOS does not control the host-side upload service; the parent must invoke this command based on a real observed failure. A generic timeout, failed upload or bare HTTP 429 is insufficient. The provider's quota scope, availability and reset time remain unknown without explicit evidence.
