@@ -10,7 +10,7 @@ metadata:
 
 ## Scope and authority
 
-This skill complements \`romance-narrative\`; the project-owned Story Bible, current script, routes, locales, and author-approved voice canon are authoritative. Use \`ceos context --skill narrative-dialogue-editor --project .\` when available. Never change route topology, state effects, romance boundaries, visual mapping or character canon merely to improve a sentence. For a narrative without romance, use this skill independently.
+This skill complements `romance-narrative`; the project-owned Story Bible, current script, routes, locales, and author-approved voice canon are authoritative. Use `ceos context --skill narrative-dialogue-editor --project .` when available. Never change route topology, state effects, romance boundaries, visual mapping or character canon merely to improve a sentence. For a narrative without romance, use this skill independently.
 
 ## Three-layer dialogue review
 
@@ -29,6 +29,10 @@ Label **CONFIRMED_DEFECT** only when contradicted by source/canon/route state or
 4. Propose the **minimum** line edits with before/after IDs and editorial rationale. Preserve branching IDs, cue-to-art mapping, effects and all locales; when altering a cue or stateful meaning, explicitly request scope expansion and relevant tests.
 5. Verify original and translated intent, gender/person references, speaker identity, pronouns, punctuation, timing, and long-line mobile readability. Translate dramatic function, not word-for-word phrasing.
 6. Reinspect only dependent dialogue and affected route transitions. Run project dialogue/localization tests when available. Independent Web review is bounded and subject to quota/actual-evidence rules.
+
+## Bounded episode handoff
+
+For the next dialogue beat, load only authoritative prior route/choice state, character knowledge, changed relationship tension/boundaries, outstanding material promise IDs and neighboring scene/cue references. Revalidate this context against the actual source, not a previous model's memory. When setup/payoff is under review, check that spoken action naturally supports the expectation, without forced exposition or a reminder in every conversation. Preserve route/locale semantics and mark unwritten outcomes `planned`, not accepted.
 
 ## Output
 

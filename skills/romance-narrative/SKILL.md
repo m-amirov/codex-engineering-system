@@ -20,6 +20,12 @@ This is a semantic editorial contract, **not** a claim that automated tests can 
 - Generate genuinely distinct premises with a concrete romantic hook, protagonist desire outside romance, differentiated romantic dynamics, credible external stakes, meaningful relationship obstacles, and a sustainable scene engine. A setting swap of the same mystery is not a new concept.
 - Do not write a full season or change product files before the concept and creative direction are approved. Do not require a particular romance/mystery percentage or fixed number of dates/kisses/conflicts.
 
+## Optional concept prototype and episode blueprint
+
+For a **future** interactive-fiction concept, optionally compare two or three genuinely distinct premises using a few short choice-driven beats that expose protagonist agency, relationship tension and consequences. This is a conceptual reading test, **not** a required 10–15-question interview, a new RPG subsystem or a production game. Only ask the author about decisions material to the brief. Do not impose fixed route counts, word counts or chapter counts.
+
+After the author approves a premise, use an episode blueprint: dramatic objective, protagonist/love-interest initiative, emotional starting point, pressure and change, pivotal player choice, visible consequence and next-episode transition. A cliffhanger is optional; quiet intimacy and a resolved chapter are valid. Do not begin full-season drafting before creative approval. Use the original template in `templates/narrative/STORY_PROMISE_LEDGER.md`.
+
 ## Romance-first design review
 
 1. **Narrative center:** identify the primary dramatic question and whether the major beats directly develop relationship, personal choice, or romantic consequences. Investigation, lore and external intrigue must support, not silently displace, an approved romance-first brief.
@@ -39,6 +45,14 @@ Activate these only when the identified problem demands them, not all in every e
 - `reader-experience-review`: one bounded blind reading of player-visible text before exposing the reviewer to story canon, for comprehension, engagement and earned payoff.
 
 The parent `romance-narrative` owns relationship arcs and choice causality. Companion reports must cite the actual scene/route evidence, keep source/editorial/reader hypotheses distinct, avoid re-reading unchanged chapters and obey existing Web High quotas. A good prose diagnosis must never be represented as a mechanistic runtime PASS.
+
+## Route-aware promise/payoff and relationship tracking
+
+Maintain a small **route-conditioned story promise ledger** only for material expectations established for a reader. Give each promise a stable ID, setup scene/cue, relevant branch conditions, optional reinforcement and intended payoff or author-approved open ending. Distinguish statuses `planned`, `authored`, `runtime-verified`, `intentionally-open` and `unresolved`. A planned resolution cannot be reported as delivered, and incidental details must not automatically become payoff obligations.
+
+Track emotional relationships through demonstrated actions and consequences: trust, mutual discovery, autonomy, boundaries, vulnerability, conflict and changed understanding. For each key beat record before/after emotional position and player agency. No mandatory linear attraction progression, synthetic chemistry score, minimum argument count or automatic route rewrite.
+
+Before drafting another episode, create a bounded context packet: approved canon revision, route/choice history, exact last time/place, what characters know, outstanding promise IDs and the next goal. Treat summaries as a **cache**, not proof of production state; revalidate after branch or save/Back transitions. Only compare actually affected routes and passages. Use `docs/NARRATIVE_DEVELOPMENT_WORKFLOW.md`.
 
 ## Executable continuity invariants
 
