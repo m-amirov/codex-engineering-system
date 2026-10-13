@@ -1,5 +1,23 @@
 # Git Policy
 
+## GitHub-first task preflight
+
+When a repository has an authorized GitHub upstream, the **remote is the reference for current committed state**, not an instruction to discard local commits or uncommitted work. Before reading task-critical files or mutating a checkout, verify the actual repository root, branch, HEAD, remote URL, dirty status and upstream divergence. Run an actual fetch to distinguish stale local tracking refs from the current remote; a healthy connection or previously reported SHA is not evidence.
+
+Use the mechanically guarded CLI when available:
+
+```powershell
+ceos git-preflight --project . --remote origin --branch main --expect-repo owner/repo --fetch --json
+# Only after a BEHIND_FAST_FORWARD_AVAILABLE verdict, with a clean target branch:
+ceos git-preflight --project . --remote origin --branch main --expect-repo owner/repo --fetch --apply --json
+```
+
+`git-preflight` defaults to read-only. `--fetch` updates *remote tracking refs only*; `--apply` requires `--fetch` and permits only `git merge --ff-only` with a clean worktree and a matching branch. It never stashes, resets, cleans, rebases, commits, checks out another branch or pushes. Failure to fetch means **freshness not verified**, not IN_SYNC. An invocation without `--fetch` may inspect stale tracking information and is not sufficient for a GitHub-first task.
+
+Treat `BLOCKED_BRANCH`, `BLOCKED_REMOTE_MISMATCH`, `BLOCKED_DIRTY`, `BLOCKED_DIVERGED`, `AHEAD_LOCAL`, `BLOCKED_FETCH` and similar results as an explicit reconciliation boundary; investigate and preserve parallel work rather than silently switching branches or resetting. A dirty but already synchronized checkout may report `IN_SYNC_DIRTY`; do not confuse this with permission to overwrite user files. In detached-HEAD/worktree workflows, choose the intended branch explicitly or stop safely.
+
+After an authorized implementation: run scoped checks, inspect diff/status, commit only in-scope changes, fetch again, prove non-divergence and push without force. Verify the final remote SHA. Never claim a GitHub file absent until `origin/main` has been refreshed or the remote file was read directly.
+
 - Inspect branch, HEAD and worktree before mutation.
 - Preserve unrelated user changes.
 - Do not reset/clean/checkout away user work to simplify the task.
