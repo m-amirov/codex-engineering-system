@@ -22,6 +22,8 @@ For narrative drafting/editorial repair, the parent is the sole native writer/ed
 Always load `policies/safety.md`, `policies/evidence.md`, and the resolved project profile. Load other policies only when relevant.
 
 ## Invariants
+For Git-backed engineering tasks, begin with the fresh-remote Git preflight in `policies/git.md`. Do not trust only the local checkout when evaluating whether a requested GitHub file exists. The policy is non-destructive and does not authorize forced synchronization.
+
 
 1. Evidence, not assertion, determines PASS. Engine-backed terminal PASS also requires the executable `metadata.evidenceContract`; zero counters, artifacts without assertions, partial coverage, stale HEAD evidence, and unresolved manual/external conditions are not PASS.
 2. Default production access is read-only.
