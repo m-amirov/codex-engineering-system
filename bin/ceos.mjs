@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { CEOS_ROOT, VERSION, SUPPORTED_PROFILES, SKILL_NAMES, resolveProject, loadManifest, doctor, gitState, resolveGates, runVerification, validateEvidence, createManifest, detectManifestForProject, latestEvidenceDir, readFailures, renderContext, installSkills, installGlobal, globalStatus, routingTable } from '../src/ceos.mjs';
 import { webPreflight } from '../src/web-preflight.mjs';
+import { gitPreflight } from '../src/git-preflight.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { webReviewPlan, validateWebReview } from '../src/web-delegation.mjs';
 import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES } from '../src/execution-engine.mjs';
@@ -110,6 +111,7 @@ Usage:
   ceos init --profile <profile> [--project dir]
   ceos adopt --project dir [--profile profile] [--dry-run] [--force] [--json]
   ceos status [--project dir] [--json]
+  ceos git-preflight [--project dir] [--remote origin] [--branch main] [--expect-repo owner/repo] [--fetch] [--apply] [--json]
   ceos doctor [--project dir] [--json]
   ceos gates [--mode verification|release] [--project dir] [--json]
   ceos verify [--mode verification|release] [--project dir] [--evidence dir] [--baseline-ref ref] [--dry-run] [--json]
@@ -183,6 +185,21 @@ try {
         if (args.json) print(applied, true); else console.log('VERDICT: APPLIED');
       } else if (!args['dry-run'] && args.json) print(plan, true);
       process.exitCode = ['READY', 'IN_SYNC', 'APPLIED'].includes(plan.status) ? 0 : 2;
+      break;
+    }
+    case 'git-preflight': {
+      const r = gitPreflight(project, {
+        remote: args.remote || 'origin', branch: args.branch || 'main',
+        expectRepo: args['expect-repo'] || null, fetch: Boolean(args.fetch), apply: Boolean(args.apply)
+      });
+      if (args.json) print(r, true);
+      else {
+        console.log(`Git preflight: ${r.status}`);
+        console.log(`Local: ${r.localHead ?? 'unknown'} | Remote: ${r.remoteHead ?? 'unknown'}`);
+        if (r.ahead !== null) console.log(`Ahead: ${r.ahead} | Behind: ${r.behind} | Dirty: ${r.dirty}`);
+        if (r.reason) console.log(`Reason: ${r.reason}`);
+      }
+      process.exitCode = ['IN_SYNC', 'IN_SYNC_DIRTY', 'FAST_FORWARDED'].includes(r.status) ? 0 : 2;
       break;
     }
     case 'status': {
