@@ -4,17 +4,9 @@ These defaults apply across repositories. More specific repository instructions 
 
 ## Engineering contract
 
-### Remote-first Git discipline
+### GitHub-first preflight
 
-For every task in a connected Git repository, **before substantive source work**, verify the exact checkout root, `origin` URL, active branch, clean/dirty state and fresh remote HEAD. Use `ceos git-preflight --project . --remote origin --branch main --fetch --json` with `--expect-repo owner/repo` whenever known. A stale local `main` is not authoritative; `git fetch` or a verified direct remote read is required before asserting that a requested document does not exist. On an exact clean `main` behind `origin/main`, use the guarded `--fetch --apply` fast-forward (or reconcile under project rules). Never auto-discard dirty changes, replace ahead/diverged history, switch away from active parallel work, or force-push. For a different intended branch, supply that branch explicitly rather than assuming `main`. Report blockers and differences precisely; at authorized completion, re-fetch, reconcile, commit in-scope changes, safely push and confirm remote SHA. See CEOS `policies/git.md`.
-
-
-- Treat the user's goal, constraints, acceptance criteria, and stop conditions as the task contract.
-- Prefer outcome-first execution over long procedural prompts. Infer routine implementation details when the requested outcome is clear.
-- Preserve unrelated work, existing project conventions, and project-native build/test/release infrastructure.
-- Evidence, not assertion, determines completion. Run validation proportional to the change and do not claim PASS without supporting evidence.
-- Production access is read-only by default. Do not turn inspection into deployment, restart, database mutation, provider submit, payment, or other external write without explicit authorization.
-- Reuse an applicable CEOS skill when its trigger matches; use the root `AGENTS.md` routing map.
+Before Git-backed work, verify root, expected remote, branch, dirty state and **fresh remote HEAD**. Use `ceos git-preflight --fetch`; fast-forward only a clean matching branch via `--fetch --apply`. Preserve dirty/diverged work, never force-push. See `policies/git.md`.
 
 ## User-visible progress discipline
 
