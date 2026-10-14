@@ -36,6 +36,33 @@ Turn an approved product/art direction into real project-owned image assets with
 9. **Runtime verification.** Use `visual-qa` for fresh desktop/mobile/browser/runtime evidence after integration. Source inspection alone does not prove staging, crop, readability, or scene-to-art correctness. Verify the authored visual event before and after the cue that triggers it, recording expected event id, observed asset source/hash and runtime state; filename similarity is not coverage.
 10. **Fresh final re-audit.** Re-evaluate the completed asset set against the original manifest and canon, not merely against previous recommendations.
 
+## Mandatory dual-format CGs for visual novels (all episodes)
+
+For every enabled Starter Kit `narrative-game` project, the **default production
+contract is dual-format**: each unique narrative CG has a genuine portrait 2:3
+mobile image and a separate desktop 16:9 wide composition. Target 1024×1536 and
+1920×1080 respectively; preserve canonical faces, cast, location, time, wardrobe,
+actions, important props and safe dialogue areas in both. The desktop image must
+not be a cropped, stretched or blurred-background mobile image. Reuse a coherent
+pair across consecutive scenes when justified; do not generate an image per line.
+
+A CEOS production-art run created with project-owned
+`config/narrative-game.local.json` enabled is flagged
+`narrativeDualFormatRequired=true`. At `INTEGRATED` and final passing
+`REAUDITED`, provide `metadata.dualFormatManifest` pointing to the complete,
+source-HEAD-bound episode art manifest. The mechanical gate reads the actual
+narrative graph, checks **every authored scene** of that episode and requires
+two distinct, full-decodable PNGs with verified dimensions, ratios and SHA-256
+for each mapped CG. Missing desktop or portrait art blocks the production-art
+PASS. Prior persisted runs and non-narrative games remain unchanged.
+
+Mechanical asset checks never prove visual quality. Obtain separate real-pixel
+mobile and desktop Web High/runtime acceptance for every materially distinct
+composition; compare identity, narrative content, crop, and continuity. Verify
+viewport-based asset selection, preload/crossfade, resize, Back, and graceful
+failed-load fallback without changing story or saved narrative state.
+See `docs/NARRATIVE_DUAL_FORMAT_ART.md` for the canonical schema and checks.
+
 ## Mechanical pre-repair authorization
 
 For new image-led repair work, record actual scoped P0/P1/P2 findings and the prior attempt ledger, then run the read-only preflight `node bin/art-rework-budget.mjs --request <json>` before another asset generation, mapping, staging or crop repair. A nonzero exit forbids that CEOS repair step: P3-only advice is not a blocking art defect, two generated candidates or three distinct failed approaches require escalation, and attachment/rate limits are transport blockers.
