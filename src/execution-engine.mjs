@@ -10,6 +10,7 @@ import { normalizeResolutionReceiptContract, validateResolutionReceipt } from '.
 import { classifyWebTransportFailure } from './web-transport-failure.mjs';
 import { inspectArtBatch } from './art-output-gate.mjs';
 import { narrativeDualFormatEnabled, verifyNarrativeDualFormatArt } from './narrative-dual-format-art.mjs';
+import { inspectNativeProducerRoute, nativeProducerParentContext } from './native-producer-routing.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -326,6 +327,8 @@ function nextAction(run) {
   if (def.requiresImageGeneration) requirements.push('fresh trusted image-generation presence with generationAllowed = true (PRESENT + UNKNOWN service is sufficient for the first real invocation)');
   if (def.id === 'GENERATING' && run.artOutputGateRequired)
     requirements.push('metadata.artOutputs: real generated PNG paths, kind and expected dimensions; each output must pass ceos art-output-verify before the next Image Gen call');
+  if (def.id === 'GENERATING' && run.nativeProducerRouteRequired)
+    requirements.push('metadata.producerTraceFile: actual Codex child rollout JSONL proving agent_role=ceos_asset_generator and effective model=gpt-5.6-terra/medium; a parent assertion is insufficient');
   if (run.narrativeDualFormatRequired && (def.id === 'INTEGRATED' || def.id === 'REAUDITED'))
     requirements.push('metadata.dualFormatManifest: source-bound episode art mapping; both portrait 2:3 and desktop 16:9 real PNG assets required for every scene');
   if (def.finalReview) requirements.push('explicit outcome PASS, FAIL, BLOCKED, or ESCALATE plus metadata.evidenceContract for PASS');
@@ -478,6 +481,8 @@ export function createRun(projectDir, pipeline, {
     pipeline,
     artOutputGateRequired: pipeline === 'production-art',
     narrativeDualFormatRequired: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject),
+    nativeProducerRouteRequired: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject),
+    producerParentSessionId: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? nativeProducerParentContext() : null,
     projectDir: resolvedProject,
     runDir,
     createdAt,
@@ -663,6 +668,16 @@ export function recordCheckpoint(projectDir, runRef, {
       }
     }
 
+    let producerRouteGate = null;
+    if (stage === 'GENERATING' && run.nativeProducerRouteRequired === true &&
+        (normalizedOutcome === 'CONTINUE' || normalizedOutcome === 'PASS')) {
+      producerRouteGate = inspectNativeProducerRoute(metadata?.producerTraceFile, {
+        parentSessionId: run.producerParentSessionId
+      });
+      if (!producerRouteGate.ok)
+        throw new Error(producerRouteGate.status + ': ' + producerRouteGate.detail);
+    }
+
     let outputGate = null;
     if (stage === 'GENERATING' && run.artOutputGateRequired === true &&
         (normalizedOutcome === 'CONTINUE' || normalizedOutcome === 'PASS')) {
@@ -722,7 +737,8 @@ export function recordCheckpoint(projectDir, runRef, {
       metadata: {
         ...(metadata && typeof metadata === 'object' ? metadata : {}),
         ...(outputGate ? { artOutputGate: { status: outputGate.status, checks: outputGate.inspected.map(x => ({ path: x.path, sha256: x.sha256, dimensions: x.dimensions, alpha: x.alpha, checkerboard: x.checkerboard })) } } : {}),
-        ...(dualFormatGate ? { dualFormatGate } : {})
+        ...(dualFormatGate ? { dualFormatGate } : {}),
+        ...(producerRouteGate ? { producerRouteGate } : {})
       },
       source: currentSource,
       artifacts: artifactRecords
