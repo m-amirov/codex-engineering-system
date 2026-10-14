@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { decodeProductionPng } from './art-output-gate.mjs';
 
 const SHA = /^[a-f0-9]{64}$/i;
 const HEAD = /^[a-f0-9]{40}$/i;
@@ -46,11 +47,10 @@ function readConfinedFile(projectDir, relative, errors, id) {
 }
 
 function pngDimensions(bytes) {
-  if (!bytes || bytes.length < 24 ||
-      !bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex')) ||
-      bytes.toString('ascii',12,16) !== 'IHDR') return null;
-  const width = bytes.readUInt32BE(16), height = bytes.readUInt32BE(20);
-  return width > 0 && height > 0 ? {width,height} : null;
+  try {
+    const {width,height} = decodeProductionPng(bytes);
+    return {width,height};
+  } catch { return null; }
 }
 
 /** Mechanical contract only; independent Web High must review actual pixels of BOTH variants. */
@@ -77,7 +77,8 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {currentH
     ? readConfinedFile(projectDir,profile.modelPath,errors,'graph') : null;
   let graph;
   try { graph = JSON.parse(graphBytes.toString('utf8')); } catch { fail('ART_GRAPH_JSON'); }
-  const required = (graph?.scenes ?? []).filter(s => s?.episode === manifest.episode).map(s=>s.id);
+  const required = (Array.isArray(graph?.scenes) ? graph.scenes : [])
+    .filter(s => s?.episode === manifest.episode).map(s=>s.id);
   if (!required.length || new Set(required).size !== required.length) fail('ART_EPISODE_SCENES_MISSING');
   for (const id of required) if (!safeName(id) || !safeName(manifest.sceneAssets[id]))
     fail('ART_SCENE_UNMAPPED',String(id));
