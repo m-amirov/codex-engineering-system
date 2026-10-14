@@ -91,7 +91,7 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {currentH
   let inspected = 0;
   for (const id of used) {
     const asset = manifest.assets[id];
-    if (!isRecord(asset)) continue;
+    if (!isRecord(asset)) { fail('ART_ASSET_SCHEMA',id); continue; }
     const signatures = [];
     for (const [format,shape] of Object.entries(FORMATS)) {
       const variant = asset[format];
