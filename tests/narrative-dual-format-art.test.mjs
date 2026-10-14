@@ -89,6 +89,13 @@ test('cannot claim complete episode by omitting an authored scene',t=>{
   assert.ok(check().errors.some(e=>e.code==='ART_SCENE_UNMAPPED'));
 });
 
+test('null asset object cannot bypass missing-format verification',t=>{
+  const {doc,check,save}=manifest(t);
+  doc.assets.cg01=null;
+  save();
+  assert.ok(check().errors.some(e=>e.code==='ART_ASSET_SCHEMA'));
+});
+
 test('missing or forged PNG bytes cannot be counted as artwork',t=>{
   const {root,doc,check,save}=manifest(t);
   const target=path.join(root,doc.assets.cg01.desktop.path);
