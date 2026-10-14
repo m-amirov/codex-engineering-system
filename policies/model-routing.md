@@ -14,7 +14,7 @@ CEOS separates **role selection** from **backend selection** and distinguishes *
 | repository exploration / dependency tracing | — | `ceos_explorer` → `gpt-5.6-terra` | tools required |
 | tool-backed bulk checks / log-file batches | — | `ceos_bulk_checker` → `gpt-5.6-luna` | tools required |
 | implementation | — | `ceos_implementer` → `gpt-5.6` medium | workspace-write |
-| production image generation + asset integration | — | `ceos_asset_generator` → `gpt-5.6` medium | workspace-write + native image generation when actually available |
+| production image generation + asset integration | — | `ceos_asset_generator` → `gpt-5.6-terra` medium | workspace-write + native image generation only after real child-role/model rollout verification |
 | debugging | — | `ceos_debugger` → `gpt-5.6` high | project-defined |
 | review | — | `ceos_reviewer` → `gpt-5.6` high | read-only/tool-backed |
 | verification | — | `ceos_verifier` → `gpt-5.6` high | read-only/tool-backed |
@@ -26,6 +26,38 @@ The critical evidence/write/debug/risk/final-verification path remains native. B
 ## Native agent orchestration
 
 Routing a task to a *native role* does not automatically justify spawning another native Codex subagent. Follow `policies/native-delegation.md`: the parent performs long-form literary drafting, content repair and simple local checks by default, with one bounded Web High independent critique after each finished episode when required. Launch an additional native specialist only with a recorded reason (e.g. mandatory independent tool-backed verification or a genuinely distinct high-risk task). Web High selection remains unchanged and does not imply Web execution consumes the same Codex quota as native subagents.
+
+## Fail-closed native producer routing
+
+For enabled `narrative-game` projects, a **new** `production-art` run must
+verify its actual producer identity before recording `GENERATING`. Merely
+having `ceos-asset-generator.toml` installed, saying `task_name:
+"ceos_asset_generator"`, or assigning a label in a parent prompt does not
+select the custom agent.
+
+Use a real host `spawn_agent` surface with explicit `agent_type` selection
+when available. If the Codex host exposes only `task_name,message,fork_turns`
+(the Multi-Agent V2 restricted schema), do not launch a generic child hoping
+it will adopt Terra. Return `BLOCKED_NATIVE_AGENT_ROUTING_UNAVAILABLE`
+for this workflow, or use a separately authorized/verified independent native
+Codex process when host support and image-generation tool access are confirmed;
+this alternative is not mislabeled as the CEOS-managed subagent.
+
+To audit the actual rollout use:
+
+```sh
+ceos producer-route-check latest --project . --trace <real-CODEX_HOME/sessions/.../rollout.jsonl> --json
+```
+
+The gate reads Codex-owned `session_meta` and `turn_context`: child
+`agent_role=ceos_asset_generator`, parent session match, effective
+`model=gpt-5.6-terra` and `effort=medium`. A generic child, inherited
+parent model, missing rollout or wrong session **BLOCKS** the checkpoint.
+Supply the path as `metadata.producerTraceFile` on `GENERATING`.
+This evidence is **host-observed local JSONL**, not a provider-signed model
+attestation or proof that native Image Gen is available. It does not
+start the agent itself or override the host tool schema. Old runs retain
+their original route-gate state. See `docs/NATIVE_TERRA_ROUTING.md`.
 
 ## Production-art capability boundary
 
