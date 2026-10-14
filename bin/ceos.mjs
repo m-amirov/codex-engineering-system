@@ -12,6 +12,7 @@ import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapability
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
 import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
+import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -129,6 +130,7 @@ Usage:
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
   ceos capability-challenge [run-id|latest] [--codex-home dir] [--json]
   ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
+  ceos producer-route-check [run-id|latest] --trace <actual-child-rollout.jsonl> [--codex-home dir] [--json]
   ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--resolution-contract-file json] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
@@ -490,6 +492,23 @@ try {
         console.log(`Native fallback: ${result.run.routingTrace.nativeFallbackUsed}`);
         if (result.run.routingTrace.fallbackReason) console.log(`Fallback reason: ${result.run.routingTrace.fallbackReason}`);
       }
+      break;
+    }
+    case 'producer-route-check': {
+      const ref = args._[1] || 'latest';
+      const run = resumeRun(project, ref);
+      if (run.run.pipeline !== 'production-art') throw new Error('producer route check requires production-art run');
+      const result = inspectNativeProducerRoute(args.trace, {
+        codexHome: args['codex-home'] || undefined,
+        parentSessionId: run.run.producerParentSessionId
+      });
+      if (args.json) print(result, true);
+      else {
+        console.log('VERDICT: ' + result.status);
+        if (!result.ok) console.log('Reason: ' + result.detail);
+        else console.log('Model: ' + result.actualModel + ' / ' + result.actualEffort + ' | Agent: ' + result.agentId);
+      }
+      process.exitCode = result.ok ? 0 : 2;
       break;
     }
     case 'install-skills': {
