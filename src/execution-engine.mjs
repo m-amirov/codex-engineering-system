@@ -9,6 +9,7 @@ import { webReviewPlan, validateWebReview, verifyWebDelegation } from './web-del
 import { normalizeResolutionReceiptContract, validateResolutionReceipt } from './resolution-receipt.mjs';
 import { classifyWebTransportFailure } from './web-transport-failure.mjs';
 import { inspectArtBatch } from './art-output-gate.mjs';
+import { narrativeDualFormatEnabled, verifyNarrativeDualFormatArt } from './narrative-dual-format-art.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -325,6 +326,8 @@ function nextAction(run) {
   if (def.requiresImageGeneration) requirements.push('fresh trusted image-generation presence with generationAllowed = true (PRESENT + UNKNOWN service is sufficient for the first real invocation)');
   if (def.id === 'GENERATING' && run.artOutputGateRequired)
     requirements.push('metadata.artOutputs: real generated PNG paths, kind and expected dimensions; each output must pass ceos art-output-verify before the next Image Gen call');
+  if (run.narrativeDualFormatRequired && (def.id === 'INTEGRATED' || def.id === 'REAUDITED'))
+    requirements.push('metadata.dualFormatManifest: source-bound episode art mapping; both portrait 2:3 and desktop 16:9 real PNG assets required for every scene');
   if (def.finalReview) requirements.push('explicit outcome PASS, FAIL, BLOCKED, or ESCALATE plus metadata.evidenceContract for PASS');
   return {
     terminal: false,
@@ -474,6 +477,7 @@ export function createRun(projectDir, pipeline, {
     runId,
     pipeline,
     artOutputGateRequired: pipeline === 'production-art',
+    narrativeDualFormatRequired: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject),
     projectDir: resolvedProject,
     runDir,
     createdAt,
@@ -670,12 +674,31 @@ export function recordCheckpoint(projectDir, runRef, {
           (outputGate.firstFailedIndex === undefined ? '' : ' at index ' + outputGate.firstFailedIndex));
     }
 
+    // Opted-in narrative games require independently authored portrait and desktop CG files.
+    // Existing/historical runs without this flag are unchanged; scope does not silently
+    // claim complete artistic acceptance merely from file existence.
+    let dualFormatGate = null;
+    if (run.narrativeDualFormatRequired && (stage === 'INTEGRATED' ||
+        (stage === 'REAUDITED' && normalizedOutcome === 'PASS')) &&
+        (normalizedOutcome === 'CONTINUE' || normalizedOutcome === 'PASS')) {
+      if (typeof metadata?.dualFormatManifest !== 'string' || !metadata.dualFormatManifest.trim())
+        throw new Error('NARRATIVE_DUAL_FORMAT_MANIFEST_REQUIRED: metadata.dualFormatManifest');
+      dualFormatGate = verifyNarrativeDualFormatArt(resolvedProject, metadata.dualFormatManifest, {
+        currentHead: currentSource.available ? currentSource.head : undefined
+      });
+      if (dualFormatGate.status !== 'PASS_DUAL_FORMAT_ART_MECHANICAL')
+        throw new Error('NARRATIVE_DUAL_FORMAT_ART_BLOCKED: ' +
+          dualFormatGate.errors.map(e => e.code + ':' + e.id).join(', '));
+    }
+
     if (definition.requiresDefectCount) {
       const count = metadata?.defectCount;
       if (!Number.isInteger(count) || count < 0) throw new Error('DEFECTS_CONFIRMED requires metadata.defectCount as a non-negative integer');
     }
 
     const artifactInputs = normalizeList(artifacts);
+    if (dualFormatGate && !artifactInputs.includes(metadata.dualFormatManifest))
+      artifactInputs.push(metadata.dualFormatManifest);
     if (outputGate) {
       // Pin actual source image bytes to immutable checkpoint evidence, not just a mutable receipt.
       for (const entry of outputGate.inspected) {
@@ -696,9 +719,11 @@ export function recordCheckpoint(projectDir, runRef, {
       outcome: normalizedOutcome,
       skipped: Boolean(skipped),
       note: note || null,
-      metadata: outputGate
-        ? { ...metadata, artOutputGate: { status: outputGate.status, checks: outputGate.inspected.map(x => ({ path: x.path, sha256: x.sha256, dimensions: x.dimensions, alpha: x.alpha, checkerboard: x.checkerboard })) } }
-        : (metadata && typeof metadata === 'object' ? metadata : {}),
+      metadata: {
+        ...(metadata && typeof metadata === 'object' ? metadata : {}),
+        ...(outputGate ? { artOutputGate: { status: outputGate.status, checks: outputGate.inspected.map(x => ({ path: x.path, sha256: x.sha256, dimensions: x.dimensions, alpha: x.alpha, checkerboard: x.checkerboard })) } } : {}),
+        ...(dualFormatGate ? { dualFormatGate } : {})
+      },
       source: currentSource,
       artifacts: artifactRecords
     };
