@@ -38,7 +38,7 @@ function createNovel(t) {
   t.after(()=>{if(prev===undefined)delete process.env.CODEX_HOME; else process.env.CODEX_HOME=prev;});
   const caps={
     imageGeneration:{trustedForGeneration:true,capabilityPresence:'PRESENT',generationAllowed:true},
-    web:{status:'NOT_CONFIGURED'},project:{},executables:{},filesystem:{}
+    web:{status:'NOT_CONFIGURED'},project:{},executables:{},filesystem:{exists:true,readable:true,writable:true}
   };
   const run=createRun(game,'production-art',{scope:{
     target:'EP1 production art',inScope:['S01'],outOfScope:[],
@@ -119,7 +119,7 @@ test('new narrative production-art checkpoint refuses missing and generic child 
 test('generic production-art runs are unaffected by novel-only routing gate',t=>{
   const x=setup(t),game=path.join(x.root,'ordinary');
   fs.mkdirSync(game);
-  const caps={imageGeneration:{trustedForGeneration:true,capabilityPresence:'PRESENT',generationAllowed:true},web:{status:'NOT_CONFIGURED'}};
+  const caps={imageGeneration:{trustedForGeneration:true,capabilityPresence:'PRESENT',generationAllowed:true},web:{status:'NOT_CONFIGURED'},filesystem:{exists:true,readable:true,writable:true}};
   const run=createRun(game,'production-art',{scope:{target:'generic asset',inScope:['art'],outOfScope:[],acceptanceContract:'generated',mutationBoundary:'art'},capabilities:caps});
   assert.equal(run.run.nativeProducerRouteRequired,false);
 });
