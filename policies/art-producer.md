@@ -18,6 +18,25 @@ The independent `ceos_art_director_web` on **GPT-6 Sol High** is **reasoning-onl
    `READY_TO_GENERATE` verifies the local source HEAD, structural contract and SHA-256 of referenced files **only**. It is not a quality PASS, authorization, native tool attestation, or proof of remote Image Gen access. `BLOCKED_ART_BRIEF` forbids proceeding under this CEOS workflow.
 5. At the `GENERATING` stage run the existing run-scoped CEOS Image Gen capability challenge and make sure the **actual producer's execution context** has the callable native Image Gen tool. A tool available only to the parent does not imply subagent access. If a subagent cannot meet the trusted current-session/turn attestation contract, report `BLOCKED` instead of borrowing a parent's attestation. Host-specific API names/available image models must be observed; do not guess that a particular GPT Image model can be selected.
 
+## Dual-format delivery for illustrated narrative games
+
+If the project opts in to `narrative-game`, a scene brief with desktop and portrait
+staging is **not** evidence that both images were made. Deliver separate real
+`portrait` (2:3 mobile, target 1024×1536) and `desktop` (16:9 wide, target
+1920×1080) files for every unique CG. Do not repurpose a cropped mobile frame,
+blurred background, stretched image or a single output as the second format.
+Generate and gate every actual output individually. Reuse a pair for consecutive
+scenes only when identical composition is faithful to narrative continuity.
+
+CEOS now checks `metadata.dualFormatManifest` at `INTEGRATED` and final
+passing `REAUDITED` in **new** production-art runs for the enabled profile.
+The validator independently derives all episode scenes from the actual narrative
+graph; each mapped CG needs two distinct full-decodable PNGs, real paths, hashes,
+dimensions and correct aspect ratios. `PASS_DUAL_FORMAT_ART_MECHANICAL` is not
+visual acceptance. Inspect and approve portrait and desktop runtime pixels
+**separately**, checking character identity, action, props and crop. Read
+`docs/NARRATIVE_DUAL_FORMAT_ART.md` before preparing future episode batches.
+
 ## Mandatory source-image output gate (0.5.12)
 
 **Immediately after EACH native Image Gen output, before requesting the next image**, save the actual PNG to the project and run:
