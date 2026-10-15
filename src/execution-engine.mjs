@@ -333,6 +333,17 @@ function isRecoverableBlocked(run) {
     EXTERNAL_RECOVERY_FAILURES.test(String(stopReason.reason ?? ''));
 }
 
+/** Read-only recovery classification, sharing the exact allowlist used by reopenBlockedRun. */
+export function inspectBlockedRunRecovery(run) {
+  const blocked = run?.verdict === 'BLOCKED' && run?.state === 'BLOCKED';
+  return {
+    blocked,
+    reopenSupported: blocked && isRecoverableBlocked(run),
+    reason: blocked ? (run.stopReason ?? null) : null,
+    policy: 'Never reopen automatically; require fresh external evidence and an explicit reason.'
+  };
+}
+
 function reopenTarget(run, stopReason) {
   const stage = typeof stopReason?.stage === 'string' && stageDefinition(run.pipeline, stopReason.stage)
     ? stopReason.stage
