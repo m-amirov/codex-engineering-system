@@ -13,7 +13,7 @@ Keep this file short. Load only the skill/profile/policy required by the task.
 - Browser/presentation QA → `skills/visual-qa/SKILL.md`
 - Gameplay videos / platform media evidence / trailers → `skills/video-production/SKILL.md`
 - Romance-first interactive fiction: concept development and editorial review → `skills/romance-narrative/SKILL.md` (combine with `audit` / `audit-repair-loop` for existing drafts)
-- Production image assets / character sheets / backgrounds / CG integration → `skills/production-art/SKILL.md`
+- Production image assets / character sheets / backgrounds / CG integration → `skills/production-art/SKILL.md`; for enabled narrative-game use story-first `docs/NARRATIVE_ART_ACCEPTANCE_V2.md`
 - Production inspection → `skills/prod-check/SKILL.md`
 - Runtime/log incident diagnosis → `skills/incident-analysis/SKILL.md`
 
