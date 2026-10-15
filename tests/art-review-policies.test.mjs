@@ -12,10 +12,12 @@ test('static narrative art chooses full-scene CG before sprite staging', () => {
   assert.match(read('skills/visual-qa/SKILL.md'), /complete scene-specific CG/);
 });
 
-test('P0 and P1 material findings precede P3 cosmetic suggestions', () => {
-  assert.match(read('policies/art-producer.md'), /P0\/P1 errors/);
-  assert.match(read('policies/art-producer.md'), /P3 alone is not authorization/);
-  assert.match(read('skills/production-art/SKILL.md'), /P3.*subjective/);
+test('narrative V2 blocks only verified material P0/P1 and never P3 cosmetic suggestions', () => {
+  assert.match(read('policies/art-producer.md'), /P0\/P1 are blocking only when/);
+  assert.match(read('policies/art-producer.md'), /P3 is cosmetic and never blocks/);
+  assert.match(read('skills/production-art/SKILL.md'), /P2 is advisory by default/);
+  assert.match(read('skills/production-art/SKILL.md'), /P3 is never blocking/);
+  assert.match(read('docs/NARRATIVE_ART_ACCEPTANCE_V2.md'), /P3.*NEVER/);
 });
 
 test('image-driven runtime transition regressions are mandatory after asset repair', () => {
