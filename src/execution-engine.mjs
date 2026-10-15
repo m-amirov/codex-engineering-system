@@ -11,6 +11,7 @@ import { classifyWebTransportFailure } from './web-transport-failure.mjs';
 import { inspectArtBatch } from './art-output-gate.mjs';
 import { narrativeDualFormatEnabled, verifyNarrativeDualFormatArt } from './narrative-dual-format-art.mjs';
 import { inspectNativeProducerRoute, nativeProducerParentContext } from './native-producer-routing.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -482,6 +483,7 @@ export function createRun(projectDir, pipeline, {
     artOutputGateRequired: pipeline === 'production-art',
     narrativeDualFormatRequired: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject),
     nativeProducerRouteRequired: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject),
+    artAcceptanceProfile: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? NARRATIVE_ART_ACCEPTANCE_V2 : null,
     producerParentSessionId: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? nativeProducerParentContext() : null,
     projectDir: resolvedProject,
     runDir,
@@ -587,7 +589,8 @@ function assertWebReviewPhase(run, capabilities, stage, currentHead) {
   const reviews = (trace.webReviews ?? []).filter(review => review.phase === phase);
   const plan = { ...run.webDelegationPlan, phases: [phase] };
   const verdict = verifyWebDelegation(plan, reviews, {
-    pipeline: run.pipeline, currentHead, defectCount: run.lastDefectCount ?? null
+    pipeline: run.pipeline, currentHead, defectCount: run.lastDefectCount ?? null,
+    artAcceptanceProfile: run.artAcceptanceProfile ?? null
   });
   if (!verdict.ok) throw new Error(`${verdict.code}: ${verdict.errors.join('; ')}`);
   if (phase === 'acceptance') {
@@ -969,7 +972,8 @@ function preflightWebReview(projectDir, runDir, run, webReview) {
   const issues = validateWebReview(webReview, {
     pipeline: run.pipeline, phase: webReview.phase,
     currentHead: current.available ? current.head : null,
-    visual: Boolean(run.webDelegationPlan?.visual), assurance
+    visual: Boolean(run.webDelegationPlan?.visual), assurance,
+    artAcceptanceProfile: run.artAcceptanceProfile ?? null
   });
   if (issues.length) throw new Error('WEB_REVIEW_NOT_VERIFIED: ' + issues.join('; '));
   if (webReview.phase === 'acceptance') {
