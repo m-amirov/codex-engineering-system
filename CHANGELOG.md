@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.19 — 2026-10-15
+
+- Replaced the 32-MiB whole-file native Terra rollout parser with bounded incremental JSONL scanning and a SHA-256 digest of all original bytes. Real >32-MiB Codex traces no longer fail solely because of file size.
+- Preserved strict parent/child identity, genuine sessions-path, single session_meta, all turn_context model/effort checks, complete-record JSON integrity, and fail-closed producer-route attestation.
+- Limited source file size to 512 MiB and any JSONL record to 64 MiB; detect source changes during read. Added >32-MiB and adversarial regression tests.
+- Historical terminal CEOS runs and producer receipts remain immutable; existing blocked runs require the supported new-run recovery path.
+
 ## 0.5.18 — 2026-10-15
 
 - Carried dependency-based currentness through the production-art state machine's `INTEGRATED` and final narrative dual-format checks.
