@@ -12,6 +12,7 @@ import { inspectArtBatch } from './art-output-gate.mjs';
 import { narrativeDualFormatEnabled, verifyNarrativeDualFormatArt } from './narrative-dual-format-art.mjs';
 import { inspectNativeProducerRoute, nativeProducerParentContext } from './native-producer-routing.mjs';
 import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
+import { VERIFIED_EXISTING_ART_REUSE, verifyExistingArtReuse } from './existing-art-reuse.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -30,6 +31,24 @@ const EXTERNAL_RECOVERY_WORDS = /\b(web|transport|capability|review|rate[_ -]?li
 const EXTERNAL_RECOVERY_FAILURES = /\b(unavailable|not ready|disconnect(?:ed)?|failed?|failure|blocked|recover(?:ed|able)?|rate[_ -]?limited|usage limit(?:ed)?)\b/i;
 const NATIVE_FALLBACK_STATUSES = new Set(['UNAVAILABLE', 'NOT_ACCEPTING_TURNS', 'RATE_LIMITED']);
 const NATIVE_FALLBACK_REASON = /\b(transport|backend|runtime|bridge|connect(?:ion)?|disconnect(?:ed)?|unavailable|not accepting|rate[_ -]?limit(?:ed)?|usage limit(?:ed)?|timeout|timed out|http\s+\d{3}|refused)\b/i;
+export const ART_MODES = Object.freeze({
+  NEW_GENERATION: 'NEW_GENERATION',
+  VERIFIED_EXISTING_ART_REUSE
+});
+
+function normalizeArtMode(pipeline, value) {
+  if (pipeline !== 'production-art') {
+    if (value !== undefined && value !== null) throw new Error('artMode is only supported for production-art runs');
+    return null;
+  }
+  const mode = String(value ?? ART_MODES.NEW_GENERATION).trim().toUpperCase();
+  if (!Object.values(ART_MODES).includes(mode)) throw new Error(`artMode must be one of: ${Object.values(ART_MODES).join(', ')}`);
+  return mode;
+}
+
+function usesExistingArtReuse(run) {
+  return run.pipeline === 'production-art' && run.artMode === ART_MODES.VERIFIED_EXISTING_ART_REUSE;
+}
 
 export const EXECUTION_PIPELINES = {
   'audit-repair-loop': {
@@ -325,7 +344,9 @@ function nextAction(run) {
   const requirements = [];
   if (def.minArtifacts) requirements.push(`at least ${def.minArtifacts} persisted evidence artifact(s)`);
   if (def.requiresDefectCount) requirements.push('metadata.defectCount as a non-negative integer');
-  if (def.requiresImageGeneration) requirements.push('fresh trusted image-generation presence with generationAllowed = true (PRESENT + UNKNOWN service is sufficient for the first real invocation)');
+  if (def.requiresImageGeneration && !usesExistingArtReuse(run)) requirements.push('fresh trusted image-generation presence with generationAllowed = true (PRESENT + UNKNOWN service is sufficient for the first real invocation)');
+  if (def.id === 'GENERATING' && usesExistingArtReuse(run))
+    requirements.push('metadata.existingArtReuse: VERIFIED_EXISTING_ART_REUSE contract with current files, hashes, manifest, provenance, runtime pixels, independent art acceptance and clean blocking-findings summary');
   if (def.id === 'GENERATING' && run.artOutputGateRequired)
     requirements.push('metadata.artOutputs: real generated PNG paths, kind and expected dimensions; each output must pass ceos art-output-verify before the next Image Gen call');
   if (def.id === 'GENERATING' && run.nativeProducerRouteRequired)
@@ -439,7 +460,8 @@ export function createRun(projectDir, pipeline, {
   maxCycles,
   webReviewMode = 'legacy',
   webReviewAssurance = 'strict',
-  resolutionReceiptContract = null
+  resolutionReceiptContract = null,
+  artMode
 } = {}) {
   const resolvedProject = path.resolve(projectDir);
   const definition = EXECUTION_PIPELINES[pipeline];
@@ -450,6 +472,7 @@ export function createRun(projectDir, pipeline, {
   if (!['legacy', 'enhanced'].includes(webReviewMode)) throw new Error('Invalid webReviewMode');
   if (webReviewMode === 'legacy' && webReviewAssurance !== 'strict')
     throw new Error('visual-content assurance requires enhanced Web review mode');
+  const normalizedArtMode = normalizeArtMode(pipeline, artMode);
   const normalizedScope = normalizeScope(scope);
   if (resolutionReceiptContract !== null) {
     const contract = normalizeResolutionReceiptContract(resolutionReceiptContract);
@@ -480,9 +503,10 @@ export function createRun(projectDir, pipeline, {
     ceosVersion: VERSION,
     runId,
     pipeline,
-    artOutputGateRequired: pipeline === 'production-art',
+    artMode: normalizedArtMode,
+    artOutputGateRequired: pipeline === 'production-art' && normalizedArtMode !== ART_MODES.VERIFIED_EXISTING_ART_REUSE,
     narrativeDualFormatRequired: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject),
-    nativeProducerRouteRequired: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject),
+    nativeProducerRouteRequired: pipeline === 'production-art' && normalizedArtMode !== ART_MODES.VERIFIED_EXISTING_ART_REUSE && narrativeDualFormatEnabled(resolvedProject),
     artAcceptanceProfile: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? NARRATIVE_ART_ACCEPTANCE_V2 : null,
     producerParentSessionId: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? nativeProducerParentContext() : null,
     projectDir: resolvedProject,
@@ -657,6 +681,10 @@ export function recordCheckpoint(projectDir, runRef, {
 
     const currentCapabilities = readJson(path.join(resolved.runDir, 'capabilities.json'));
     const currentSource = gitSourceSnapshot(resolvedProject);
+    const existingArtReuse = usesExistingArtReuse(run);
+    if (stage === 'GENERATING' && metadata?.existingArtReuse && !existingArtReuse) {
+      throw new Error('EXISTING_ART_REUSE_MODE_REQUIRED: create the run with artMode=VERIFIED_EXISTING_ART_REUSE');
+    }
     if (normalizedOutcome === 'PASS' || normalizedOutcome === 'CONTINUE') {
       assertWebReviewPhase(run, currentCapabilities, stage, currentSource.head);
     }
@@ -664,7 +692,24 @@ export function recordCheckpoint(projectDir, runRef, {
       assertFinalRouting(run, currentCapabilities);
       assertPositiveEvidenceContract(metadata, { currentSourceHead: currentSource.available ? currentSource.head : null });
     }
-    if (definition.requiresImageGeneration) {
+    let existingReuseGate = null;
+    if (stage === 'GENERATING' && existingArtReuse &&
+        (normalizedOutcome === 'CONTINUE' || normalizedOutcome === 'PASS')) {
+      if (Object.hasOwn(metadata ?? {}, 'artOutputs') ||
+          Object.hasOwn(metadata ?? {}, 'producerTraceFile') ||
+          Object.hasOwn(metadata ?? {}, 'imageGeneration') ||
+          Object.hasOwn(metadata?.existingArtReuse ?? {}, 'generationReceipt')) {
+        throw new Error('VERIFIED_EXISTING_ART_REUSE_MIXED_GENERATION: reuse checkpoints cannot carry generation outputs, producer traces or generation receipts');
+      }
+      existingReuseGate = verifyExistingArtReuse(resolvedProject, metadata?.existingArtReuse, {
+        currentHead: currentSource.available ? currentSource.head : null,
+        narrativeDualFormatRequired: run.narrativeDualFormatRequired === true
+      });
+      if (existingReuseGate.status !== 'PASS_VERIFIED_EXISTING_ART_REUSE') {
+        throw new Error('VERIFIED_EXISTING_ART_REUSE_BLOCKED: ' + existingReuseGate.errors.join(', '));
+      }
+    }
+    if (definition.requiresImageGeneration && !existingArtReuse) {
       const image = currentCapabilities.imageGeneration;
       if (!(image?.trustedForGeneration === true && image?.capabilityPresence === 'PRESENT' && image?.generationAllowed === true)) {
         throw new Error('GENERATING requires fresh trusted native image-generation presence; create and answer a run-scoped capability challenge from the current Codex turn');
@@ -672,7 +717,7 @@ export function recordCheckpoint(projectDir, runRef, {
     }
 
     let producerRouteGate = null;
-    if (stage === 'GENERATING' && run.nativeProducerRouteRequired === true &&
+    if (stage === 'GENERATING' && !existingArtReuse && run.nativeProducerRouteRequired === true &&
         (normalizedOutcome === 'CONTINUE' || normalizedOutcome === 'PASS')) {
       producerRouteGate = inspectNativeProducerRoute(metadata?.producerTraceFile, {
         parentSessionId: run.producerParentSessionId
@@ -682,7 +727,7 @@ export function recordCheckpoint(projectDir, runRef, {
     }
 
     let outputGate = null;
-    if (stage === 'GENERATING' && run.artOutputGateRequired === true &&
+    if (stage === 'GENERATING' && !existingArtReuse && run.artOutputGateRequired === true &&
         (normalizedOutcome === 'CONTINUE' || normalizedOutcome === 'PASS')) {
       const entries = metadata?.artOutputs;
       outputGate = inspectArtBatch({ assets: entries }, { projectDir: resolvedProject });
@@ -724,6 +769,11 @@ export function recordCheckpoint(projectDir, runRef, {
         if (!artifactInputs.includes(rel)) artifactInputs.push(rel);
       }
     }
+    if (existingReuseGate) {
+      for (const artifact of existingReuseGate.artifacts) {
+        if (!artifactInputs.includes(artifact)) artifactInputs.push(artifact);
+      }
+    }
     const allowNoArtifacts = skipped === true && stage === 'REPAIRING' && run.lastDefectCount === 0;
     if ((definition.minArtifacts ?? 0) > artifactInputs.length && !allowNoArtifacts) {
       throw new Error(`${stage} requires at least ${definition.minArtifacts} artifact(s)`);
@@ -741,6 +791,7 @@ export function recordCheckpoint(projectDir, runRef, {
         ...(metadata && typeof metadata === 'object' ? metadata : {}),
         ...(outputGate ? { artOutputGate: { status: outputGate.status, checks: outputGate.inspected.map(x => ({ path: x.path, sha256: x.sha256, dimensions: x.dimensions, alpha: x.alpha, checkerboard: x.checkerboard })) } } : {}),
         ...(dualFormatGate ? { dualFormatGate } : {}),
+        ...(existingReuseGate ? { existingArtReuseGate: { status: existingReuseGate.status, assetCount: existingReuseGate.assetCount, visualAcceptance: existingReuseGate.visualAcceptance } } : {}),
         ...(producerRouteGate ? { producerRouteGate } : {})
       },
       source: currentSource,
