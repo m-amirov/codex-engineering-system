@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.16 — 2026-10-15
+
+- Added explicit `DEPENDENCY_BASED_REUSE` currentness for existing-art recovery when Git HEAD changes but all source-bound dependency hashes remain identical.
+- Dependency-based reuse keeps the base-head provenance anchor, validates every dependency against the current checkout, and rejects mismatched base heads or changed bytes.
+
 ## 0.5.15 — 2026-10-15
 
 - Added explicit `VERIFIED_EXISTING_ART_REUSE` production-art mode for source-bound reuse of already accepted assets without invoking Image Gen.
