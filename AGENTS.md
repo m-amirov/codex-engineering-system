@@ -6,6 +6,7 @@ Keep this file short. Load only the skill/profile/policy required by the task.
 
 ## Routing
 
+- Continue an existing CEOS run from persisted checkpoints → `skills/ceos-continue/SKILL.md`; `ceos continue` plans one safe next action, it does not execute host tools itself.
 - Audit without product mutation → `skills/audit/SKILL.md`
 - Reproduce + repair a defect → `skills/fix/SKILL.md`
 - Independent completion check → `skills/verification/SKILL.md`

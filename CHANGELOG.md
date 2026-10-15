@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.20 — 2026-10-15
+
+- Added ceos continue: persisted one-step planning (inspect/guided/auto), read-only default, fail-closed run selection/integrity/Git checks, atomic per-run action claims and safe token release.
+- Added ceos-continue Codex host skill; the Node CLI never claims to invoke Web High, Image Gen or mark checkpoints complete.
+- Uses existing blocked-run recoverability classification rather than bypassing terminal checkpoints, provider attestations or producer-route gates.
+- Added continuation tests, documentation and global skill registration. Project-level cross-episode workflow scheduling remains outside the V1 contract.
+
 ## 0.5.19 — 2026-10-15
 
 - Replaced the 32-MiB whole-file native Terra rollout parser with bounded incremental JSONL scanning and a SHA-256 digest of all original bytes. Real >32-MiB Codex traces no longer fail solely because of file size.
