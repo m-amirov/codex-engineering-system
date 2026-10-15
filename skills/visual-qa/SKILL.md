@@ -26,7 +26,7 @@ For each affected viewport assert mechanically: content reaches all four viewpor
 
 For a static narrative beat, prefer a complete scene-specific CG to layered character sprites. Retain sprites when an authored dynamic interaction needs them, with a documented reason.
 
-Block material defects first: wrong actor or action, wrong location or cue order, important crop, impossible physical placement, or unreadable dialogue/controls. Each blocking finding needs a scene/cue reference, observed image evidence and player-facing impact. Purely subjective polish does not justify repeated generation; observe existing attempt limits.
+Block material defects first: wrong actor or action, wrong location or cue order, truly story-critical crop, or unreadable dialogue/controls. For an enabled narrative-game use `NARRATIVE_ART_ACCEPTANCE_V2` (`docs/NARRATIVE_ART_ACCEPTANCE_V2.md`): P2 is advisory unless an independent reviewer documents actual material player impact and the exact authored cue; incidental wall photographs or imperfectly visible nonessential props are not blockers. Judge real gameplay with dialogue-safe areas, not isolated aesthetic pixel perfection. Each blocking finding needs observed source/runtime pixels and player-facing impact. Purely subjective polish does not justify repeated generation; observe existing attempt limits.
 
 After an image or mapping repair, separately verify production preload, crossfade, failed loads, stale transitions, slow network and reduced-motion behavior. Still screenshots alone do not prove transition quality.
 
