@@ -63,6 +63,24 @@ viewport-based asset selection, preload/crossfade, resize, Back, and graceful
 failed-load fallback without changing story or saved narrative state.
 See `docs/NARRATIVE_DUAL_FORMAT_ART.md` for the canonical schema and checks.
 
+### Verified existing-art reuse
+
+When the locked scope explicitly excludes new image generation, create the
+run with `--art-mode VERIFIED_EXISTING_ART_REUSE`. The `GENERATING` checkpoint
+then becomes a verified-reuse checkpoint: it requires
+`metadata.existingArtReuse` with current dependency hashes, a real PNG asset
+manifest, separate portrait and desktop files, documented provenance, current
+canon, runtime pixels, independent `NARRATIVE_ART_ACCEPTANCE_V2` acceptance,
+intact receipts and zero open P0/P1/material P2 findings.
+
+This mode never accepts `artOutputs`, a producer trace, a generation receipt or
+an image-generation capability claim. It pins all referenced bytes into the
+immutable checkpoint and returns `VERIFIED_EXISTING_ART_REUSE_BLOCKED` for
+missing files, hash drift, stale source-bound evidence, incomplete acceptance,
+unknown provenance or mixed generation/reuse state. Ordinary production-art
+runs retain the native capability challenge, producer-route and generated
+output gates; historical runs without an explicit mode are not rewritten.
+
 ## Mechanical pre-repair authorization
 
 For new image-led repair work, record actual scoped P0/P1/P2 findings and the prior attempt ledger, then run the read-only preflight `node bin/art-rework-budget.mjs --request <json>` before another asset generation, mapping, staging or crop repair. A nonzero exit forbids that CEOS repair step: P3-only advice is not a blocking art defect, two generated candidates or three distinct failed approaches require escalation, and attachment/rate limits are transport blockers.

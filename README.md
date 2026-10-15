@@ -1,4 +1,4 @@
-# Codex Engineering OS (CEOS) 0.5.14
+# Codex Engineering OS (CEOS) 0.5.15
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
 
@@ -174,6 +174,13 @@ SCOPE_LOCKED
 ```
 
 `GENERATING` is mechanically rejected unless the current capability snapshot says `imageGeneration.status=available`.
+
+For recovery of already-created art, use an explicit
+`--art-mode VERIFIED_EXISTING_ART_REUSE` production-art run. The mode does not
+attest or invoke Image Gen; it requires a current source-bound reuse contract
+with real PNG hashes, dual-format/scene mapping, provenance, runtime pixels,
+independent art acceptance, canon and clean blocking-findings evidence. See
+`docs/execution-engine-0.5.15.md`.
 
 The standalone Node CLI cannot inspect the host model's private tool catalog. CEOS therefore installs Codex lifecycle hooks that record only current session/turn freshness and uses a run-scoped in-session capability challenge before production generation. A future host integration may also persist a **session-bound** callable inventory at `$CODEX_HOME/ceos/native-capabilities.json`:
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.15 — 2026-10-15
+
+- Added explicit `VERIFIED_EXISTING_ART_REUSE` production-art mode for source-bound reuse of already accepted assets without invoking Image Gen.
+- Added fail-closed actual-file, SHA-256, PNG, portrait/desktop, manifest, dependency, provenance, runtime-pixel, canon, independent-art-acceptance and blocking-findings validation.
+- Reuse checkpoints pin every referenced evidence and asset byte immutably, reject generation/reuse mixing, and preserve the existing native-generation capability and producer-route gates for ordinary runs.
+- Added CLI `--art-mode`, execution-engine regression coverage, and recovery documentation.
+
 ## 0.5.12 — 2026-10-10
 
 - Added dependency-free, decoded PNG production source-image gate: alpha/nonempty foreground/transparent corners, strong baked checkerboard, exact canvas, CRC and dimensions.

@@ -80,6 +80,25 @@ test('ceos run fails closed when deterministic scope lock is incomplete', () => 
   assert.match(r.stderr, /mutationBoundary is required/);
 });
 
+test('ceos run exposes an explicit existing-art reuse mode without generation capability', () => {
+  const project = tempProject();
+  const created = run([
+    'run', 'production-art',
+    '--project', project,
+    '--target', 'verified existing art',
+    '--in-scope', 'existing PNGs;runtime evidence',
+    '--acceptance', 'existing art reuse evidence passes',
+    '--mutation-boundary', 'evidence and CEOS checkpoints only',
+    '--art-mode', 'VERIFIED_EXISTING_ART_REUSE',
+    '--json'
+  ], project);
+  assert.equal(created.status, 0, created.stderr);
+  const data = JSON.parse(created.stdout);
+  assert.equal(data.run.artMode, 'VERIFIED_EXISTING_ART_REUSE');
+  assert.equal(data.run.artOutputGateRequired, false);
+  assert.equal(data.nextAction.stage, 'INVENTORIED');
+});
+
 test('ceos resume --reopen-blocked explicitly reopens an external Web blocker', () => {
   const project = tempProject();
   fs.writeFileSync(path.join(project, 'evidence.txt'), 'fresh evidence');

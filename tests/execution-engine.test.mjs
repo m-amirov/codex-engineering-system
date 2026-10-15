@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { encodeProductionPng } from '../src/art-output-gate.mjs';
 import {
@@ -65,6 +67,100 @@ function artifact(project, name, text = name) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, text);
   return name;
+}
+
+function digestFile(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function gitProject() {
+  const project = tempProject();
+  fs.writeFileSync(path.join(project, 'source.txt'), 'source-bound dependency');
+  for (const args of [
+    ['init', '-q'],
+    ['config', 'user.name', 'CEOS Test'],
+    ['config', 'user.email', 'ceos-test@example.invalid'],
+    ['add', '.'],
+    ['-c', 'user.name=CEOS Test', '-c', 'user.email=ceos-test@example.invalid', 'commit', '-qm', 'fixture']
+  ]) {
+    const result = spawnSync('git', ['-C', project, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  }
+  return project;
+}
+
+function existingReuseFixture(project, overrides = {}) {
+  const portrait = path.join(project, 'art', 'scene-portrait.png');
+  const desktop = path.join(project, 'art', 'scene-desktop.png');
+  fs.mkdirSync(path.dirname(portrait), { recursive: true });
+  fs.writeFileSync(portrait, encodeProductionPng({ width: 2, height: 3, pixels: Buffer.alloc(2 * 3 * 4, 180) }));
+  fs.writeFileSync(desktop, encodeProductionPng({ width: 16, height: 9, pixels: Buffer.alloc(16 * 9 * 4, 120) }));
+  const assetManifestPath = path.join(project, 'existing-assets.json');
+  fs.writeFileSync(assetManifestPath, JSON.stringify({
+    schemaVersion: 1,
+    assets: [
+      { id: 'scene-portrait', format: 'portrait', path: 'art/scene-portrait.png', kind: 'background', width: 2, height: 3, sha256: digestFile(portrait) },
+      { id: 'scene-desktop', format: 'desktop', path: 'art/scene-desktop.png', kind: 'background', width: 16, height: 9, sha256: digestFile(desktop) }
+    ]
+  }, null, 2));
+  const evidence = {};
+  for (const name of ['provenance.json', 'acceptance.json', 'runtime.json', 'canon.json']) {
+    const file = path.join(project, name);
+    fs.writeFileSync(file, JSON.stringify({ name, status: 'PASS' }));
+    evidence[name] = { path: name, sha256: digestFile(file) };
+  }
+  const runtimePixels = path.join(project, 'runtime.png');
+  fs.writeFileSync(runtimePixels, encodeProductionPng({ width: 16, height: 9, pixels: Buffer.alloc(16 * 9 * 4, 90) }));
+  const runtimePortrait = path.join(project, 'runtime-portrait.png');
+  fs.writeFileSync(runtimePortrait, encodeProductionPng({ width: 2, height: 3, pixels: Buffer.alloc(2 * 3 * 4, 90) }));
+  const head = spawnSync('git', ['-C', project, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+  const contract = {
+    schemaVersion: 1,
+    mode: 'VERIFIED_EXISTING_ART_REUSE',
+    generationInvoked: false,
+    sourceHead: head,
+    dependencies: [{ path: 'source.txt', sha256: digestFile(path.join(project, 'source.txt')) }],
+    assetManifest: 'existing-assets.json',
+    assetManifestSha256: digestFile(assetManifestPath),
+    provenance: { status: 'DOCUMENTED', sourceHead: head, evidence: evidence['provenance.json'].path, evidenceSha256: evidence['provenance.json'].sha256 },
+    artAcceptance: {
+      profile: 'NARRATIVE_ART_ACCEPTANCE_V2', status: 'PASS', actualPixelsReceived: true,
+      sourceHead: head, evidence: evidence['acceptance.json'].path, evidenceSha256: evidence['acceptance.json'].sha256,
+      reviewedItems: ['scene-portrait', 'scene-desktop'], unresolved: []
+    },
+    runtimeEvidence: {
+      status: 'PASS', actualPixelsReceived: true, sourceHead: head,
+      evidence: evidence['runtime.json'].path, evidenceSha256: evidence['runtime.json'].sha256,
+      screenshots: [
+        { path: 'runtime-portrait.png', sha256: digestFile(runtimePortrait) },
+        { path: 'runtime.png', sha256: digestFile(runtimePixels) }
+      ]
+    },
+    canon: { status: 'CURRENT', sourceHead: head, evidence: evidence['canon.json'].path, evidenceSha256: evidence['canon.json'].sha256 },
+    issueSummary: { openP0: 0, openP1: 0, openMaterialP2: 0 },
+    receipts: [evidence['acceptance.json'], evidence['runtime.json']]
+  };
+  return {
+    contract: { ...contract, ...overrides },
+    portrait,
+    desktop,
+    assetManifestPath,
+    runtimePixels,
+    head
+  };
+}
+
+function reuseRun(project) {
+  const fixture = existingReuseFixture(project);
+  const start = createRun(project, 'production-art', {
+    scope: scope(),
+    capabilities: caps(project, { image: 'unknown' }),
+    artMode: 'VERIFIED_EXISTING_ART_REUSE'
+  });
+  const id = start.run.runId;
+  recordCheckpoint(project, id, { stage: 'INVENTORIED', artifacts: ['source.txt'] });
+  recordCheckpoint(project, id, { stage: 'CANON_READY', artifacts: ['canon.json'] });
+  return { ...fixture, id, start };
 }
 
 function passedArtOutputs(project) {
@@ -582,4 +678,197 @@ test('existing legacy production-art run is not retroactively gated',()=>{
   recordCheckpoint(project,id,{stage:'CANON_READY',artifacts:[art]});
   const result=recordCheckpoint(project,id,{stage:'GENERATING',artifacts:[art]});
   assert.equal(result.run.nextStage,'INTEGRATED');
+});
+
+test('VERIFIED_EXISTING_ART_REUSE validates real files and advances without image generation', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  const result = recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING',
+    artifacts: ['canon.json'],
+    metadata: { existingArtReuse: fixture.contract }
+  });
+  assert.equal(result.run.artMode, 'VERIFIED_EXISTING_ART_REUSE');
+  assert.equal(result.run.nextStage, 'INTEGRATED');
+  assert.equal(fixture.start.capabilities.imageGeneration.generationAllowed, false);
+  const checkpoint = fs.readdirSync(path.join(fixture.start.runDir, 'checkpoints'))
+    .find(file => file.includes('generating'));
+  const saved = JSON.parse(fs.readFileSync(path.join(fixture.start.runDir, 'checkpoints', checkpoint), 'utf8'));
+  assert.equal(saved.metadata.existingArtReuse.mode, 'VERIFIED_EXISTING_ART_REUSE');
+  assert.ok(saved.artifacts.some(entry => entry.path.endsWith('scene-portrait.png')));
+});
+
+test('VERIFIED_EXISTING_ART_REUSE reuses current acceptance without new Web High routing', () => {
+  const project = gitProject();
+  const fixture = existingReuseFixture(project);
+  const start = createRun(project, 'production-art', {
+    scope: scope(), capabilities: caps(project, { web: 'READY', image: 'unknown' }),
+    webRequired: true, webReviewMode: 'enhanced', artMode: 'VERIFIED_EXISTING_ART_REUSE'
+  });
+  const id = start.run.runId;
+  recordCheckpoint(project, id, { stage: 'INVENTORIED', artifacts: ['source.txt'] });
+  recordCheckpoint(project, id, { stage: 'CANON_READY', artifacts: ['canon.json'] });
+  recordCheckpoint(project, id, { stage: 'GENERATING', metadata: { existingArtReuse: fixture.contract } });
+  recordCheckpoint(project, id, { stage: 'INTEGRATED', artifacts: ['source.txt'] });
+  recordCheckpoint(project, id, { stage: 'VISUAL_VERIFIED', artifacts: ['runtime.png'] });
+  const result = recordCheckpoint(project, id, {
+    stage: 'REAUDITED', artifacts: ['acceptance.json'], outcome: 'PASS', metadata: passMetadata({ sourceHead: fixture.head })
+  });
+  assert.equal(result.run.state, 'PASS');
+});
+
+test('narrative existing-art reuse also validates dual-format scene mapping', () => {
+  const project = gitProject();
+  const fixture = existingReuseFixture(project);
+  fs.mkdirSync(path.join(project, 'config'), { recursive: true });
+  fs.mkdirSync(path.join(project, 'narrative'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'config', 'narrative-game.local.json'), JSON.stringify({
+    profile: 'narrative-game', enabled: true, modelPath: 'narrative/graph.json'
+  }));
+  fs.writeFileSync(path.join(project, 'narrative', 'graph.json'), JSON.stringify({ scenes: [{ id: 'S01', episode: 1 }] }));
+
+  const portrait = path.join(project, 'art', 'scene-portrait.png');
+  const desktop = path.join(project, 'art', 'scene-desktop.png');
+  fs.writeFileSync(portrait, encodeProductionPng({ width: 768, height: 1152, pixels: Buffer.alloc(768 * 1152 * 4, 180) }));
+  fs.writeFileSync(desktop, encodeProductionPng({ width: 1280, height: 720, pixels: Buffer.alloc(1280 * 720 * 4, 120) }));
+  const manifest = {
+    schemaVersion: 1,
+    assets: [
+      { id: 'scene-portrait', format: 'portrait', path: 'art/scene-portrait.png', kind: 'background', width: 768, height: 1152, sha256: digestFile(portrait) },
+      { id: 'scene-desktop', format: 'desktop', path: 'art/scene-desktop.png', kind: 'background', width: 1280, height: 720, sha256: digestFile(desktop) }
+    ]
+  };
+  fs.writeFileSync(fixture.assetManifestPath, JSON.stringify(manifest, null, 2));
+  const dualFormatManifest = {
+    schemaVersion: 1, profile: 'narrative-game', episode: 1, sourceHead: fixture.head,
+    sceneAssets: { S01: 'scene-1' },
+    assets: {
+      'scene-1': {
+        portrait: { path: 'art/scene-portrait.png', sha256: digestFile(portrait), width: 768, height: 1152 },
+        desktop: { path: 'art/scene-desktop.png', sha256: digestFile(desktop), width: 1280, height: 720 }
+      }
+    }
+  };
+  fs.writeFileSync(path.join(project, 'dual-format.json'), JSON.stringify(dualFormatManifest, null, 2));
+  const contract = {
+    ...fixture.contract,
+    assetManifestSha256: digestFile(fixture.assetManifestPath),
+    dualFormatManifest: 'dual-format.json'
+  };
+  const start = createRun(project, 'production-art', {
+    scope: scope(), capabilities: caps(project, { image: 'unknown' }),
+    artMode: 'VERIFIED_EXISTING_ART_REUSE'
+  });
+  recordCheckpoint(project, start.run.runId, { stage: 'INVENTORIED', artifacts: ['source.txt'] });
+  recordCheckpoint(project, start.run.runId, { stage: 'CANON_READY', artifacts: ['canon.json'] });
+  const result = recordCheckpoint(project, start.run.runId, {
+    stage: 'GENERATING', metadata: { existingArtReuse: contract }
+  });
+  assert.equal(result.run.nextStage, 'INTEGRATED');
+});
+
+test('existing-art reuse blocks a missing PNG', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  fs.rmSync(fixture.portrait);
+  assert.throws(() => recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING', metadata: { existingArtReuse: fixture.contract }
+  }), /EXISTING_ART_ASSET_0_FILE_MISSING/);
+});
+
+test('existing-art reuse blocks a SHA-256 mismatch', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  fs.appendFileSync(fixture.portrait, Buffer.from('changed'));
+  assert.throws(() => recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING', metadata: { existingArtReuse: fixture.contract }
+  }), /EXISTING_ART_ASSET_0_HASH_MISMATCH/);
+});
+
+test('existing-art reuse blocks an invalid asset manifest', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  fs.writeFileSync(fixture.assetManifestPath, '{ invalid json');
+  assert.throws(() => recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING', metadata: { existingArtReuse: fixture.contract }
+  }), /EXISTING_ART_MANIFEST_INVALID/);
+});
+
+test('existing-art reuse blocks missing portrait or desktop coverage', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  const manifest = JSON.parse(fs.readFileSync(fixture.assetManifestPath, 'utf8'));
+  manifest.assets = manifest.assets.filter(entry => entry.id !== 'scene-desktop');
+  fs.writeFileSync(fixture.assetManifestPath, JSON.stringify(manifest, null, 2));
+  assert.throws(() => recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING', metadata: { existingArtReuse: fixture.contract }
+  }), /EXISTING_ART_FORMAT_COVERAGE/);
+});
+
+test('existing-art reuse blocks stale runtime evidence', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  const stale = { ...fixture.contract, runtimeEvidence: { ...fixture.contract.runtimeEvidence, sourceHead: '0'.repeat(40) } };
+  assert.throws(() => recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING', metadata: { existingArtReuse: stale }
+  }), /EXISTING_ART_RUNTIME_CURRENTNESS/);
+});
+
+test('existing-art reuse blocks stale independent art acceptance', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  const stale = { ...fixture.contract, artAcceptance: { ...fixture.contract.artAcceptance, sourceHead: '0'.repeat(40) } };
+  assert.throws(() => recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING', metadata: { existingArtReuse: stale }
+  }), /EXISTING_ART_ACCEPTANCE_CURRENTNESS/);
+});
+
+test('existing-art reuse blocks unknown provenance', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  const unknown = { ...fixture.contract, provenance: { ...fixture.contract.provenance, status: 'UNKNOWN' } };
+  assert.throws(() => recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING', metadata: { existingArtReuse: unknown }
+  }), /EXISTING_ART_PROVENANCE_UNKNOWN/);
+});
+
+test('existing-art reuse blocks incomplete independent acceptance', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  const incomplete = { ...fixture.contract, artAcceptance: { ...fixture.contract.artAcceptance, status: 'PENDING', unresolved: ['scene-portrait'] } };
+  assert.throws(() => recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING', metadata: { existingArtReuse: incomplete }
+  }), /EXISTING_ART_ACCEPTANCE_INCOMPLETE/);
+});
+
+test('existing-art reuse rejects a new-generation payload under the reuse mode', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  assert.throws(() => recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING',
+    metadata: { existingArtReuse: fixture.contract, artOutputs: [{ path: 'art/scene-desktop.png', kind: 'background', width: 16, height: 9 }] }
+  }), /VERIFIED_EXISTING_ART_REUSE_MIXED_GENERATION/);
+});
+
+test('generation and reuse cannot mix without an explicit art mode', () => {
+  const project = gitProject();
+  const fixture = existingReuseFixture(project);
+  const start = createRun(project, 'production-art', { scope: scope(), capabilities: caps(project, { image: 'unknown' }) });
+  recordCheckpoint(project, start.run.runId, { stage: 'INVENTORIED', artifacts: ['source.txt'] });
+  recordCheckpoint(project, start.run.runId, { stage: 'CANON_READY', artifacts: ['canon.json'] });
+  assert.throws(() => recordCheckpoint(project, start.run.runId, {
+    stage: 'GENERATING', metadata: { existingArtReuse: fixture.contract }
+  }), /EXISTING_ART_REUSE_MODE_REQUIRED/);
+});
+
+test('immutable reuse checkpoint detects changed source bytes on resume', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING', metadata: { existingArtReuse: fixture.contract }
+  });
+  fs.appendFileSync(fixture.desktop, Buffer.from('changed'));
+  const resumed = resumeRun(project, fixture.id);
+  assert.equal(resumed.integrity.ok, false);
+  assert.match(resumed.integrity.issues.join('\n'), /artifact changed after checkpoint GENERATING/);
 });
