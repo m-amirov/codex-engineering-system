@@ -110,3 +110,26 @@ Stop and report a root-cause finding if the selected model is not available
 in the current host, `spawn_agent` cannot select a role, the child rollout
 lacks effective model evidence, or image generation is inaccessible. Do not
 regenerate images to test model routing.
+
+## Large genuine Codex rollouts (CEOS 0.5.19+)
+
+Image-generation child rollouts may grow beyond 32 MiB because the Codex host
+records many unrelated message/tool payloads. The route checker now reads genuine
+`$CODEX_HOME/sessions/**/*.jsonl` traces incrementally, parses every complete
+JSONL record, retains only relevant producer routing fields, and SHA-256 hashes
+**all original bytes**. It does not accept a shortened/re-serialized JSONL,
+caller-authored summary, or copied session_meta as replacement evidence.
+
+The reader caps source files at **512 MiB** and individual JSONL records at
+**64 MiB**, detects changes during read, and still verifies a unique
+`session_meta`, distinct child identity, exact parent session, real
+`ceos_asset_generator` role, and every `turn_context` as `gpt-5.6-terra`
+with effort `medium`. Invalid UTF-8, malformed JSONL, missing/duplicate
+metadata and disallowed role/model/parent still block.
+
+For Stage 9.4 recovery, upgrade the installed CEOS before checking the
+**original unmodified** 43.42-MiB child trace. Compare the returned SHA-256
+with the preserved evidence. Do not rewrite terminal `BLOCKED` checkpoints;
+use an explicitly authorized fresh run and CEOS-supported evidence reuse,
+retaining original PNG bytes and previous receipts. An accepted route trace is
+not a production-art or Web High artistic PASS.
