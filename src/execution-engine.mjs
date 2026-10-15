@@ -252,6 +252,17 @@ function writeCheckpoint(runDir, run, checkpoint) {
   run.checkpointCount = index;
 }
 
+function priorExistingArtReuseContract(runDir) {
+  const checkpointsDir = path.join(runDir, 'checkpoints');
+  if (!fs.existsSync(checkpointsDir)) return null;
+  const files = fs.readdirSync(checkpointsDir).filter(file => file.endsWith('.json')).sort().reverse();
+  for (const file of files) {
+    const checkpoint = readJson(path.join(checkpointsDir, file));
+    if (checkpoint?.metadata?.existingArtReuse) return checkpoint.metadata.existingArtReuse;
+  }
+  return null;
+}
+
 function withRunLock(runDir, fn) {
   const lockFile = path.join(runDir, '.lock');
   const acquire = () => {
@@ -687,6 +698,9 @@ export function recordCheckpoint(projectDir, runRef, {
     const currentCapabilities = readJson(path.join(resolved.runDir, 'capabilities.json'));
     const currentSource = gitSourceSnapshot(resolvedProject);
     const existingArtReuse = usesExistingArtReuse(run);
+    const existingArtReuseContract = existingArtReuse
+      ? (metadata?.existingArtReuse ?? priorExistingArtReuseContract(resolved.runDir))
+      : null;
     if (stage === 'GENERATING' && metadata?.existingArtReuse && !existingArtReuse) {
       throw new Error('EXISTING_ART_REUSE_MODE_REQUIRED: create the run with artMode=VERIFIED_EXISTING_ART_REUSE');
     }
@@ -752,7 +766,9 @@ export function recordCheckpoint(projectDir, runRef, {
       if (typeof metadata?.dualFormatManifest !== 'string' || !metadata.dualFormatManifest.trim())
         throw new Error('NARRATIVE_DUAL_FORMAT_MANIFEST_REQUIRED: metadata.dualFormatManifest');
       dualFormatGate = verifyNarrativeDualFormatArt(resolvedProject, metadata.dualFormatManifest, {
-        currentHead: currentSource.available ? currentSource.head : undefined
+        currentHead: currentSource.available ? currentSource.head : undefined,
+        baseHead: existingArtReuseContract?.sourceHead,
+        dependencyBased: existingArtReuseContract?.currentness?.mode === 'DEPENDENCY_BASED_REUSE'
       });
       if (dualFormatGate.status !== 'PASS_DUAL_FORMAT_ART_MECHANICAL')
         throw new Error('NARRATIVE_DUAL_FORMAT_ART_BLOCKED: ' +

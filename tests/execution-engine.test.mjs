@@ -786,6 +786,53 @@ test('narrative existing-art reuse also validates dual-format scene mapping', ()
   assert.equal(result.run.nextStage, 'INTEGRATED');
 });
 
+test('narrative dependency-based reuse carries currentness through integration', () => {
+  const project = gitProject();
+  const fixture = existingReuseFixture(project);
+  fs.mkdirSync(path.join(project, 'config'), { recursive: true });
+  fs.mkdirSync(path.join(project, 'narrative'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'config', 'narrative-game.local.json'), JSON.stringify({
+    profile: 'narrative-game', enabled: true, modelPath: 'narrative/graph.json'
+  }));
+  fs.writeFileSync(path.join(project, 'narrative', 'graph.json'), JSON.stringify({ scenes: [{ id: 'S01', episode: 1 }] }));
+  const portrait = path.join(project, 'art', 'scene-portrait.png');
+  const desktop = path.join(project, 'art', 'scene-desktop.png');
+  fs.writeFileSync(portrait, encodeProductionPng({ width: 768, height: 1152, pixels: Buffer.alloc(768 * 1152 * 4, 180) }));
+  fs.writeFileSync(desktop, encodeProductionPng({ width: 1280, height: 720, pixels: Buffer.alloc(1280 * 720 * 4, 120) }));
+  fs.writeFileSync(fixture.assetManifestPath, JSON.stringify({
+    schemaVersion: 1,
+    assets: [
+      { id: 'scene-portrait', format: 'portrait', path: 'art/scene-portrait.png', kind: 'background', width: 768, height: 1152, sha256: digestFile(portrait) },
+      { id: 'scene-desktop', format: 'desktop', path: 'art/scene-desktop.png', kind: 'background', width: 1280, height: 720, sha256: digestFile(desktop) }
+    ]
+  }, null, 2));
+  const dual = {
+    schemaVersion: 1, profile: 'narrative-game', episode: 1, sourceHead: fixture.head,
+    sceneAssets: { S01: 'scene-1' },
+    assets: { 'scene-1': {
+      portrait: { path: 'art/scene-portrait.png', sha256: digestFile(portrait), width: 768, height: 1152 },
+      desktop: { path: 'art/scene-desktop.png', sha256: digestFile(desktop), width: 1280, height: 720 }
+    } }
+  };
+  fs.writeFileSync(path.join(project, 'dual-format.json'), JSON.stringify(dual, null, 2));
+  const contract = {
+    ...fixture.contract,
+    currentness: { mode: 'DEPENDENCY_BASED_REUSE', baseHead: fixture.head },
+    assetManifestSha256: digestFile(fixture.assetManifestPath),
+    dualFormatManifest: 'dual-format.json'
+  };
+  const start = createRun(project, 'production-art', { scope: scope(), capabilities: caps(project, { image: 'unknown' }), artMode: 'VERIFIED_EXISTING_ART_REUSE' });
+  recordCheckpoint(project, start.run.runId, { stage: 'INVENTORIED', artifacts: ['source.txt'] });
+  recordCheckpoint(project, start.run.runId, { stage: 'CANON_READY', artifacts: ['canon.json'] });
+  recordCheckpoint(project, start.run.runId, { stage: 'GENERATING', metadata: { existingArtReuse: contract } });
+  const commit = spawnSync('git', ['-C', project, 'commit', '--allow-empty', '-qm', 'integration head'], { encoding: 'utf8' });
+  assert.equal(commit.status, 0, commit.stderr);
+  const result = recordCheckpoint(project, start.run.runId, {
+    stage: 'INTEGRATED', artifacts: ['dual-format.json'], metadata: { dualFormatManifest: 'dual-format.json' }
+  });
+  assert.equal(result.run.nextStage, 'VISUAL_VERIFIED');
+});
+
 test('existing-art reuse blocks a missing PNG', () => {
   const project = gitProject();
   const fixture = reuseRun(project);
