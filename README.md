@@ -1,6 +1,23 @@
-# Codex Engineering OS (CEOS) 0.5.13
+# Codex Engineering OS (CEOS) 0.5.14
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Narrative Art Acceptance V2 (0.5.14)
+
+New `production-art` runs for an enabled `narrative-game` profile use
+`NARRATIVE_ART_ACCEPTANCE_V2`. Web High prioritizes story correctness and
+player-facing readability over incidental/background pixel differences.
+P2 is non-blocking by default unless an independent reviewer provides
+specific pixel-backed evidence of material impact on understanding the
+authored cue; P3 is always advisory. P0/P1 story-critical errors remain
+blocking. A cosmetic-only `REWORK` cannot be promoted to PASS by the
+parent: the real Web reviewer must issue a fresh independent verdict.
+
+This is enforced in the Web acceptance validator, the opt-in V2 coverage
+queue and rework preflight. Full actual-pixel coverage, immutable receipts,
+source hashes, dual-format output and native model routing gates are
+unchanged. Existing runs are not retroactively rewritten.
+See `docs/NARRATIVE_ART_ACCEPTANCE_V2.md`.
 
 ## Per-image Art Output Gate (0.5.12)
 
