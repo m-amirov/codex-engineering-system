@@ -1,3 +1,5 @@
+import { NARRATIVE_ART_ACCEPTANCE_V2, assessNarrativeArtFindings } from './narrative-art-acceptance.mjs';
+
 /**
  * CEOS Web High review orchestration. Web reviewers reason over native-collected
  * evidence; this module does not claim to invoke agents or inspect screenshots.
@@ -49,7 +51,7 @@ export function webReviewPlan(pipeline, { complexity = 'high', visual = false, t
   };
 }
 
-export function validateWebReview(review, { pipeline, phase, currentHead, visual = false, assurance = 'strict' } = {}) {
+export function validateWebReview(review, { pipeline, phase, currentHead, visual = false, assurance = 'strict', artAcceptanceProfile = null } = {}) {
   const errors = [];
   if (!review || typeof review !== 'object' || Array.isArray(review)) return ['Web review record must be an object'];
   const contentMode = isVisualContent(pipeline,visual,assurance);
@@ -82,11 +84,22 @@ export function validateWebReview(review, { pipeline, phase, currentHead, visual
   if (!Array.isArray(review.unresolved)) errors.push('Missing unresolved observations list');
   else if (phase !== 'analysis' && review.unresolved.length) errors.push('Review contains unresolved observations');
   if (review.status === 'FINDINGS' && !review.findings?.length) errors.push('FINDINGS requires substantive findings');
+  if (artAcceptanceProfile === NARRATIVE_ART_ACCEPTANCE_V2 && pipeline === 'production-art' && phase === 'acceptance') {
+    if (review.artAcceptanceProfile !== NARRATIVE_ART_ACCEPTANCE_V2) {
+      errors.push('Narrative art acceptance V2 requires an explicit independent V2 reviewer decision');
+    } else {
+      const evaluation = assessNarrativeArtFindings(review.findings);
+      if (!evaluation.ok)
+        errors.push('Narrative art V2 findings invalid: ' + evaluation.errors.join('; '));
+      if (evaluation.blockingFindings.length)
+        errors.push('Narrative art V2 still contains plot-critical blocking findings');
+    }
+  }
   if (visual && review.actualPixelsReceived !== true) errors.push('Visual review requires explicit actual-pixel receipt');
   return errors;
 }
 
-export function verifyWebDelegation(plan, reviews, { pipeline, currentHead, defectCount = null } = {}) {
+export function verifyWebDelegation(plan, reviews, { pipeline, currentHead, defectCount = null, artAcceptanceProfile = null } = {}) {
   const errors = [];
   const assurance = plan?.assurance ?? 'strict';
   const contentMode = isVisualContent(pipeline,plan?.visual,assurance);
@@ -100,7 +113,7 @@ export function verifyWebDelegation(plan, reviews, { pipeline, currentHead, defe
     if (records.length > 1 && new Set(records.map(review => contentMode ? review.evidenceArtifact : review.taskId)).size !== records.length)
       errors.push(`Duplicate delegated task identity at ${phase}`);
     const valid = records.filter(review => validateWebReview(review, {
-      pipeline, phase, currentHead, visual: plan.visual, assurance
+      pipeline, phase, currentHead, visual: plan.visual, assurance, artAcceptanceProfile
     }).length === 0);
     if (!valid.length) errors.push(`WEB_REVIEW_NOT_VERIFIED: ${phase} evidence/receipt/provenance invalid`);
     // Analysis may discover defects; they must be explicitly resolved by the
