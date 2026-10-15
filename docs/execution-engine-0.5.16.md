@@ -1,4 +1,4 @@
-# CEOS 0.5.16 — dependency-based existing-art reuse
+# CEOS 0.5.17 — dependency-based existing-art reuse
 
 `VERIFIED_EXISTING_ART_REUSE` is an explicit production-art trust-boundary
 mode. It validates and integrates existing project assets without invoking

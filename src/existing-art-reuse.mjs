@@ -192,7 +192,9 @@ export function verifyExistingArtReuse(projectDir, contract, {
     if (typeof contract.dualFormatManifest !== 'string' || !contract.dualFormatManifest.trim()) {
       issues.push('EXISTING_ART_DUAL_FORMAT_MANIFEST_MISSING');
     } else {
-      const dual = verifyNarrativeDualFormatArt(resolvedProject, contract.dualFormatManifest, { currentHead });
+      const dual = verifyNarrativeDualFormatArt(resolvedProject, contract.dualFormatManifest, {
+        currentHead, baseHead: sourceHead, dependencyBased
+      });
       artifacts.add(contract.dualFormatManifest);
       if (dual.status !== 'PASS_DUAL_FORMAT_ART_MECHANICAL') {
         for (const error of dual.errors ?? []) issues.push(`EXISTING_ART_DUAL_FORMAT:${error.code}:${error.id}`);

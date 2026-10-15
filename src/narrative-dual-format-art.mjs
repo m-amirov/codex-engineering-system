@@ -54,7 +54,7 @@ function pngDimensions(bytes) {
 }
 
 /** Mechanical contract only; independent Web High must review actual pixels of BOTH variants. */
-export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {currentHead} = {}) {
+export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {currentHead, baseHead, dependencyBased = false} = {}) {
   const errors = [];
   const fail = (code, id = '') => errors.push({code, id});
   const buffer = readConfinedFile(projectDir, manifestPath, errors, 'manifest');
@@ -66,7 +66,9 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {currentH
       manifest.episode < 1 || !isRecord(manifest.sceneAssets) || !isRecord(manifest.assets))
     return {status:'BLOCKED_DUAL_FORMAT_ART', errors:[...errors,{code:'ART_MANIFEST_SCHEMA',id:''}],visualAcceptance:'NOT_VERIFIED'};
   const head = currentHead ?? spawnSync('git',['rev-parse','HEAD'],{cwd:projectDir,encoding:'utf8'}).stdout?.trim();
-  if (!HEAD.test(head ?? '') || manifest.sourceHead !== head) fail('ART_SOURCE_HEAD_MISMATCH');
+  const sourceCurrent = manifest.sourceHead === head ||
+    (dependencyBased && manifest.sourceHead === baseHead);
+  if (!HEAD.test(head ?? '') || !sourceCurrent) fail('ART_SOURCE_HEAD_MISMATCH');
 
   // Inventory is drawn from the real narrative graph; a manually shortened scene list cannot earn coverage.
   const profileBytes = readConfinedFile(projectDir,'config/narrative-game.local.json',errors,'profile');

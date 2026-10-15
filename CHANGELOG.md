@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.17 — 2026-10-15
+
+- Propagated `DEPENDENCY_BASED_REUSE` currentness to the narrative dual-format manifest validator so source-bound scene mappings remain fail-closed across history-only HEAD changes.
+
 ## 0.5.16 — 2026-10-15
 
 - Added explicit `DEPENDENCY_BASED_REUSE` currentness for existing-art recovery when Git HEAD changes but all source-bound dependency hashes remain identical.
