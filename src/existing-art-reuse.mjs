@@ -5,6 +5,7 @@ import { decodeProductionPng, inspectArtBatch } from './art-output-gate.mjs';
 import { verifyNarrativeDualFormatArt } from './narrative-dual-format-art.mjs';
 
 export const VERIFIED_EXISTING_ART_REUSE = 'VERIFIED_EXISTING_ART_REUSE';
+export const DEPENDENCY_BASED_REUSE = 'DEPENDENCY_BASED_REUSE';
 export const EXISTING_ART_REUSE_SCHEMA_VERSION = 1;
 
 const SHA = /^[a-f0-9]{64}$/i;
@@ -62,16 +63,19 @@ function readJsonFile(projectDir, relative, label, issues, artifacts) {
   }
 }
 
-function checkEvidence(projectDir, section, label, currentHead, issues, artifacts, {
+function checkEvidence(projectDir, section, label, currentHead, sourceHead, issues, artifacts, {
   status,
-  requirePixels = false
+  requirePixels = false,
+  dependencyBased = false
 } = {}) {
   if (!isRecord(section)) {
     issues.push(`${label}_MISSING`);
     return;
   }
   if (section.status !== status) issues.push(`${label}_STATUS`);
-  if (section.sourceHead !== currentHead) issues.push(`${label}_CURRENTNESS`);
+  const current = section.sourceHead === currentHead ||
+    (dependencyBased && section.sourceHead === sourceHead);
+  if (!current) issues.push(`${label}_CURRENTNESS`);
   if (requirePixels && section.actualPixelsReceived !== true) issues.push(`${label}_PIXELS_MISSING`);
   const evidence = resolveFile(projectDir, section.evidence, `${label}_EVIDENCE`, issues, artifacts);
   if (evidence && section.evidenceSha256 === undefined) issues.push(`${label}_EVIDENCE_HASH_MISSING`);
@@ -173,7 +177,14 @@ export function verifyExistingArtReuse(projectDir, contract, {
   }
   if (contract.mode !== VERIFIED_EXISTING_ART_REUSE) issues.push('EXISTING_ART_MODE_INVALID');
   if (contract.generationInvoked !== false) issues.push('EXISTING_ART_GENERATION_NOT_FALSE');
-  if (!HEAD.test(currentHead ?? '') || contract.sourceHead !== currentHead) issues.push('EXISTING_ART_CURRENTNESS');
+  const dependencyBased = contract.currentness?.mode === DEPENDENCY_BASED_REUSE;
+  const sourceHead = contract.sourceHead;
+  if (!HEAD.test(currentHead ?? '') || !HEAD.test(sourceHead ?? '')) issues.push('EXISTING_ART_CURRENTNESS');
+  if (dependencyBased) {
+    if (contract.currentness.baseHead !== sourceHead) issues.push('EXISTING_ART_CURRENTNESS_BASE');
+  } else if (sourceHead !== currentHead) {
+    issues.push('EXISTING_ART_CURRENTNESS');
+  }
   checkDependencies(resolvedProject, contract.dependencies, currentHead, issues, artifacts);
   const manifest = checkAssetManifest(resolvedProject, contract, issues, artifacts);
 
@@ -190,9 +201,9 @@ export function verifyExistingArtReuse(projectDir, contract, {
   }
 
   if (contract.provenance?.status !== 'DOCUMENTED') issues.push('EXISTING_ART_PROVENANCE_UNKNOWN');
-  checkEvidence(resolvedProject, contract.provenance, 'EXISTING_ART_PROVENANCE', currentHead, issues, artifacts, { status: 'DOCUMENTED' });
-  checkEvidence(resolvedProject, contract.artAcceptance, 'EXISTING_ART_ACCEPTANCE', currentHead, issues, artifacts, {
-    status: 'PASS', requirePixels: true
+  checkEvidence(resolvedProject, contract.provenance, 'EXISTING_ART_PROVENANCE', currentHead, sourceHead, issues, artifacts, { status: 'DOCUMENTED', dependencyBased });
+  checkEvidence(resolvedProject, contract.artAcceptance, 'EXISTING_ART_ACCEPTANCE', currentHead, sourceHead, issues, artifacts, {
+    status: 'PASS', requirePixels: true, dependencyBased
   });
   if (contract.artAcceptance?.profile !== 'NARRATIVE_ART_ACCEPTANCE_V2' ||
       !Array.isArray(contract.artAcceptance?.reviewedItems) ||
@@ -200,15 +211,15 @@ export function verifyExistingArtReuse(projectDir, contract, {
       !Array.isArray(contract.artAcceptance?.unresolved) || contract.artAcceptance.unresolved.length > 0) {
     issues.push('EXISTING_ART_ACCEPTANCE_INCOMPLETE');
   }
-  checkEvidence(resolvedProject, contract.runtimeEvidence, 'EXISTING_ART_RUNTIME', currentHead, issues, artifacts, {
-    status: 'PASS', requirePixels: true
+  checkEvidence(resolvedProject, contract.runtimeEvidence, 'EXISTING_ART_RUNTIME', currentHead, sourceHead, issues, artifacts, {
+    status: 'PASS', requirePixels: true, dependencyBased
   });
   checkRuntimePixels(resolvedProject, contract.runtimeEvidence, issues, artifacts);
   if (Array.isArray(contract.runtimeEvidence?.screenshots) &&
       contract.runtimeEvidence.screenshots.length < (manifest?.assets?.length ?? 1)) {
     issues.push('EXISTING_ART_RUNTIME_COVERAGE_INCOMPLETE');
   }
-  checkEvidence(resolvedProject, contract.canon, 'EXISTING_ART_CANON', currentHead, issues, artifacts, { status: 'CURRENT' });
+  checkEvidence(resolvedProject, contract.canon, 'EXISTING_ART_CANON', currentHead, sourceHead, issues, artifacts, { status: 'CURRENT', dependencyBased });
   checkReceipts(resolvedProject, contract.receipts, issues, artifacts);
 
   const summary = contract.issueSummary;

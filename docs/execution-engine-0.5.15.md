@@ -15,7 +15,11 @@ ceos run production-art `
 
 The `GENERATING` checkpoint must provide `metadata.existingArtReuse` with:
 
-- a current Git `sourceHead` and hashed dependency files;
+- a current Git `sourceHead` and hashed dependency files. When only Git history
+  moved after those dependencies were verified, `currentness.mode` may be
+  `DEPENDENCY_BASED_REUSE` with `currentness.baseHead` equal to `sourceHead`;
+  the same dependency hashes are still required and every source-bound receipt
+  must remain anchored to that base head;
 - an asset manifest with real PNG bytes, SHA-256, PNG decoding and separate
   `portrait` and `desktop` entries;
 - the narrative dual-format manifest when the project opts into the

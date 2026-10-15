@@ -1,4 +1,4 @@
-# Install Codex Engineering OS 0.5.15
+# Install Codex Engineering OS 0.5.16
 
 ## Upgrade on Windows
 
@@ -17,9 +17,9 @@ ceos capabilities --project .
 ceos web-preflight
 ```
 
-Expected version: `0.5.15`. Use Codex Web GPT 6.1.6+ and fully restart the launcher and Codex; start a fresh task after global installation.
+Expected version: `0.5.16`. Use Codex Web GPT 6.1.6+ and fully restart the launcher and Codex; start a fresh task after global installation.
 
-For a production-art recovery that reuses unchanged, independently accepted files, create the run explicitly with `--art-mode VERIFIED_EXISTING_ART_REUSE`. This mode never unlocks Image Gen; its checkpoint must carry the actual-file reuse contract and current evidence described in `docs/execution-engine-0.5.15.md`.
+For a production-art recovery that reuses unchanged, independently accepted files, create the run explicitly with `--art-mode VERIFIED_EXISTING_ART_REUSE`. This mode never unlocks Image Gen; its checkpoint must carry the actual-file reuse contract and current evidence described in `docs/execution-engine-0.5.16.md`.
 
 ## GPT-6 route verification
 

@@ -698,6 +698,25 @@ test('VERIFIED_EXISTING_ART_REUSE validates real files and advances without imag
   assert.ok(saved.artifacts.some(entry => entry.path.endsWith('scene-portrait.png')));
 });
 
+test('VERIFIED_EXISTING_ART_REUSE permits a dependency-only HEAD change', () => {
+  const project = gitProject();
+  const fixture = reuseRun(project);
+  const commit = spawnSync('git', ['-C', project, 'commit', '--allow-empty', '-qm', 'dependency-only integration head'], { encoding: 'utf8' });
+  assert.equal(commit.status, 0, commit.stderr);
+  const currentHead = spawnSync('git', ['-C', project, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+  assert.notEqual(currentHead, fixture.head);
+  const contract = {
+    ...fixture.contract,
+    currentness: { mode: 'DEPENDENCY_BASED_REUSE', baseHead: fixture.head }
+  };
+  const result = recordCheckpoint(project, fixture.id, {
+    stage: 'GENERATING',
+    artifacts: ['canon.json'],
+    metadata: { existingArtReuse: contract }
+  });
+  assert.equal(result.run.nextStage, 'INTEGRATED');
+});
+
 test('VERIFIED_EXISTING_ART_REUSE reuses current acceptance without new Web High routing', () => {
   const project = gitProject();
   const fixture = existingReuseFixture(project);
