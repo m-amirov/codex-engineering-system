@@ -13,6 +13,7 @@ import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
 import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
+import { planContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -133,6 +134,7 @@ Usage:
   ceos producer-route-check [run-id|latest] --trace <actual-child-rollout.jsonl> [--codex-home dir] [--json]
   ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--art-mode NEW_GENERATION|VERIFIED_EXISTING_ART_REUSE] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--resolution-contract-file json] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
+  ceos continue [run-id|latest] [--project dir] [--mode inspect|guided|auto] [--dry-run] [--claim --action-id HASH | --release TOKEN] [--json]
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
   ceos run-status [run-id|latest] [--json]
   ceos web-attachment-block [run-id|latest] --phase analysis|midpoint|acceptance --evidence <failed-turn-log.txt> [--project dir] [--json]
@@ -454,6 +456,28 @@ try {
       }
       if (args.json) print(result, true); else printExecution(result);
       process.exitCode = executionExitCode(result.run, result.integrity);
+      break;
+    }
+    case 'continue': {
+      const runRef = args._[1] || undefined;
+      const mode = args.mode || 'inspect';
+      if (args.claim && args.release) throw new Error('Cannot claim and release simultaneously');
+      if (args['dry-run'] && (args.claim || args.release))
+        throw new Error('--dry-run cannot claim/release');
+      const result = args.release
+        ? releaseContinuation(project,{runRef,token:args.release === true ? null : args.release})
+        : args.claim
+          ? claimContinuation(project,{runRef,mode,expectedActionId:args['action-id']})
+          : planContinuation(project,{runRef,mode});
+      if (args.json) print(result,true);
+      else {
+        console.log('CONTINUE: ' + result.status);
+        if (result.runId) console.log('Run: ' + result.runId);
+        if (result.action) console.log('Next: ' + result.action.kind + ' | ' + result.action.instruction);
+        if (result.lease) console.log('Lease: ' + result.lease.token);
+        if (!result.executable) console.log('No host work authorized by this response.');
+      }
+      process.exitCode = ['READY_FOR_CODEX','DONE','RELEASED'].includes(result.status) ? 0 : 2;
       break;
     }
     case 'run-status': {
