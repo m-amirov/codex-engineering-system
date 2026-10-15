@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
@@ -122,4 +123,67 @@ test('generic production-art runs are unaffected by novel-only routing gate',t=>
   const caps={imageGeneration:{trustedForGeneration:true,capabilityPresence:'PRESENT',generationAllowed:true},web:{status:'NOT_CONFIGURED'},filesystem:{exists:true,readable:true,writable:true}};
   const run=createRun(game,'production-art',{scope:{target:'generic asset',inScope:['art'],outOfScope:[],acceptanceContract:'generated',mutationBoundary:'art'},capabilities:caps});
   assert.equal(run.run.nativeProducerRouteRequired,false);
+});
+
+
+function appendRolloutPadding(file, count = 34) {
+  // Reuse one 1-MiB JSONL record to exceed the historical 32-MiB cap
+  // without allocating the entire test trace in RAM.
+  const line = JSON.stringify({type:'event_msg',payload:{text:'x'.repeat(1024 * 1024)}}) + '\n';
+  const fd = fs.openSync(file, 'a');
+  try {
+    for (let i = 0; i < count; i++) fs.writeSync(fd, line);
+  } finally { fs.closeSync(fd); }
+}
+
+test('genuine 35+ MiB producer rollout passes and hashes ALL original bytes', t => {
+  const x = setup(t);
+  appendRolloutPadding(x.trace);
+  assert.ok(fs.statSync(x.trace).size > 32 * 1024 * 1024);
+  const result = inspectNativeProducerRoute(x.trace, {codexHome:x.home,parentSessionId:x.parent});
+  assert.equal(result.status, 'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED');
+  assert.equal(result.traceSha256, crypto.createHash('sha256').update(fs.readFileSync(x.trace)).digest('hex'));
+  assert.equal(result.agentId, x.child);
+});
+
+test('a wrong late turn context in a >32 MiB rollout is still rejected', t => {
+  const x = setup(t);
+  appendRolloutPadding(x.trace);
+  fs.appendFileSync(x.trace, JSON.stringify({type:'turn_context',payload:{model:'gpt-5.6-sol',effort:'medium'}}) + '\n');
+  assert.equal(inspectNativeProducerRoute(x.trace,{codexHome:x.home,parentSessionId:x.parent}).status,
+    'BLOCKED_NATIVE_AGENT_MODEL_MISMATCH');
+});
+
+test('malformed late JSONL is rejected even when the header and model are valid', t => {
+  const x = setup(t);
+  appendRolloutPadding(x.trace);
+  fs.appendFileSync(x.trace, '{bad-json}\n');
+  assert.equal(inspectNativeProducerRoute(x.trace,{codexHome:x.home,parentSessionId:x.parent}).status,
+    'BLOCKED_NATIVE_AGENT_TRACE_INVALID');
+});
+
+test('multiple session_meta records remain untrusted', t => {
+  const x = setup(t);
+  fs.appendFileSync(x.trace, JSON.stringify({type:'session_meta',payload:{id:'child-spoofed',source:{subagent:{thread_spawn:{agent_role:'ceos_asset_generator',parent_thread_id:x.parent}}}}}) + '\n');
+  assert.equal(inspectNativeProducerRoute(x.trace,{codexHome:x.home,parentSessionId:x.parent}).status,
+    'BLOCKED_NATIVE_AGENT_TRACE_INCOMPLETE');
+});
+
+test('oversized sparse rollout and unbounded JSONL record fail closed', t => {
+  const x = setup(t);
+  fs.truncateSync(x.trace, 513 * 1024 * 1024); // sparse: no 513 MiB test fixture allocation
+  assert.equal(inspectNativeProducerRoute(x.trace,{codexHome:x.home,parentSessionId:x.parent}).status,
+    'BLOCKED_NATIVE_AGENT_TRACE_INVALID');
+  x.write();
+  fs.truncateSync(x.trace, 65 * 1024 * 1024); // single record >64 MiB, no newline
+  assert.equal(inspectNativeProducerRoute(x.trace,{codexHome:x.home,parentSessionId:x.parent}).status,
+    'BLOCKED_NATIVE_AGENT_TRACE_INVALID');
+});
+
+test('CRLF, large records across read chunks and UTF-8 remain supported', t => {
+  const x = setup(t);
+  const record = JSON.stringify({type:'event_msg',payload:{text:'É'.repeat(40_000)}});
+  fs.appendFileSync(x.trace, record + '\r\n');
+  const result = inspectNativeProducerRoute(x.trace,{codexHome:x.home,parentSessionId:x.parent});
+  assert.equal(result.status,'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED');
 });
