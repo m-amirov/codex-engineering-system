@@ -595,6 +595,10 @@ function retryOrFail(run, stage, nextStage, reason) {
 }
 
 function assertWebReviewPhase(run, capabilities, stage, currentHead) {
+  // Existing-art reuse carries a current, independently accepted art packet in
+  // its immutable GENERATING checkpoint. Requiring a second Web High turn here
+  // would turn reuse into an implicit re-generation/re-review path.
+  if (usesExistingArtReuse(run)) return;
   if (run.webReviewMode !== 'enhanced') return;
   const phases = run.pipeline === 'production-art'
     ? { CANON_READY: 'analysis', VISUAL_VERIFIED: 'midpoint', REAUDITED: 'acceptance' }
@@ -631,6 +635,7 @@ function assertWebReviewPhase(run, capabilities, stage, currentHead) {
 }
 
 function assertFinalRouting(run, capabilities) {
+  if (usesExistingArtReuse(run)) return;
   const trace = run.routingTrace.byCycle?.[String(run.cycle)] ?? {
     webAgentsUsed: run.routingTrace.webAgentsUsed ?? [],
     nativeFallbackUsed: run.routingTrace.nativeFallbackUsed ?? false,

@@ -698,6 +698,25 @@ test('VERIFIED_EXISTING_ART_REUSE validates real files and advances without imag
   assert.ok(saved.artifacts.some(entry => entry.path.endsWith('scene-portrait.png')));
 });
 
+test('VERIFIED_EXISTING_ART_REUSE reuses current acceptance without new Web High routing', () => {
+  const project = gitProject();
+  const fixture = existingReuseFixture(project);
+  const start = createRun(project, 'production-art', {
+    scope: scope(), capabilities: caps(project, { web: 'READY', image: 'unknown' }),
+    webRequired: true, webReviewMode: 'enhanced', artMode: 'VERIFIED_EXISTING_ART_REUSE'
+  });
+  const id = start.run.runId;
+  recordCheckpoint(project, id, { stage: 'INVENTORIED', artifacts: ['source.txt'] });
+  recordCheckpoint(project, id, { stage: 'CANON_READY', artifacts: ['canon.json'] });
+  recordCheckpoint(project, id, { stage: 'GENERATING', metadata: { existingArtReuse: fixture.contract } });
+  recordCheckpoint(project, id, { stage: 'INTEGRATED', artifacts: ['source.txt'] });
+  recordCheckpoint(project, id, { stage: 'VISUAL_VERIFIED', artifacts: ['runtime.png'] });
+  const result = recordCheckpoint(project, id, {
+    stage: 'REAUDITED', artifacts: ['acceptance.json'], outcome: 'PASS', metadata: passMetadata({ sourceHead: fixture.head })
+  });
+  assert.equal(result.run.state, 'PASS');
+});
+
 test('narrative existing-art reuse also validates dual-format scene mapping', () => {
   const project = gitProject();
   const fixture = existingReuseFixture(project);
