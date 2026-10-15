@@ -27,7 +27,11 @@ For engine-backed multi-stage workflows (`audit-repair-loop` and `production-art
 
 CEOS controls stage order, cycle limits, capability gates, evidence provenance, resume, and verdict acceptance; the parent agent performs semantic/tool work.
 
-### Native capability attestation
+### Short continue requests
+
+On an existing CEOS task, resolve `ceos continue --mode inspect --json` and use the `ceos-continue` skill for a single claimed and evidence-backed action. Never reconstruct the run from conversation prose. `continue` is a read-only control-plane planner; only Codex executes host tools, and auto does not grant new external actions.
+
+## Native capability attestation
 
 For production-art, use a fresh run-scoped `ceos capability-challenge`; manual/env evidence cannot unlock `GENERATING`.
 
