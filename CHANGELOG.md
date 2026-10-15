@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.18 — 2026-10-15
+
+- Carried dependency-based currentness through the production-art state machine's `INTEGRATED` and final narrative dual-format checks.
+
 ## 0.5.17 — 2026-10-15
 
 - Propagated `DEPENDENCY_BASED_REUSE` currentness to the narrative dual-format manifest validator so source-bound scene mappings remain fail-closed across history-only HEAD changes.
