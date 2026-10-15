@@ -115,6 +115,19 @@ test('source head mismatch and path traversal are not accepted',t=>{
   assert.ok(codes.includes('ART_UNSAFE_PATH'));
 });
 
+test('dependency-based reuse accepts a history-only HEAD change',t=>{
+  const {root,head,check}=manifest(t);
+  const commit=spawnSync('git',['commit','--allow-empty','-qm','integration head'],{cwd:root,encoding:'utf8'});
+  assert.equal(commit.status,0,commit.stderr);
+  const currentHead=spawnSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).stdout.trim();
+  const result=verifyNarrativeDualFormatArt(root,'art.json',{
+    currentHead,baseHead:head,dependencyBased:true
+  });
+  assert.equal(result.status,'PASS_DUAL_FORMAT_ART_MECHANICAL',JSON.stringify(result.errors));
+  assert.notEqual(currentHead,head);
+  assert.equal(check().status,'PASS_DUAL_FORMAT_ART_MECHANICAL');
+});
+
 test('production-art state machine requires verified pairs only for new opted-in narrative runs',()=>{
   const engine=fs.readFileSync(new URL('../src/execution-engine.mjs',import.meta.url),'utf8');
   assert.match(engine,/narrativeDualFormatRequired: pipeline === 'production-art' && narrativeDualFormatEnabled/);

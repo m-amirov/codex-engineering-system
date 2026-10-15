@@ -1,4 +1,4 @@
-# Codex Engineering OS (CEOS) 0.5.16
+# Codex Engineering OS (CEOS) 0.5.17
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
 
