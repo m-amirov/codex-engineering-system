@@ -45,7 +45,8 @@ function availableRuns(projectDir) {
   if (!fs.existsSync(base)) return [];
   const entries = fs.readdirSync(base, {withFileTypes:true})
     .filter(x => x.isDirectory() && /^[A-Za-z0-9._-]+$/.test(x.name))
-    .slice(0, 256);
+;
+  if (entries.length > 256) throw new Error('BLOCKED_TOO_MANY_RUNS: select a bounded CEOS project');
   const runs = [];
   for (const entry of entries) {
     const name = entry.name, file = path.join(base,name,'run.json');
@@ -59,7 +60,11 @@ function availableRuns(projectDir) {
 }
 
 function resolveSelection(projectDir, runRef) {
-  if (runRef && runRef !== 'latest') return {id:runRef};
+  if (runRef && runRef !== 'latest') {
+    if (typeof runRef !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(runRef) || runRef.includes('..'))
+      return {status:'BLOCKED_RUN_REF_INVALID'};
+    return {id:runRef};
+  }
   const runs = availableRuns(projectDir);
   if (!runs.length) return {status:'BLOCKED_NO_RUN'};
   const active = runs.filter(x => !TERMINAL.has(x.verdict ?? x.state));
