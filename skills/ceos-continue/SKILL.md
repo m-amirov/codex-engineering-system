@@ -18,25 +18,30 @@ is a **Codex-host execution adapter**, not a separate model host or daemon.
    established task, not by guessing. For work run:
    ceos continue RUN_ID --mode guided --json
    Or choose --mode auto ONLY when user authorization covers the work.
-2. Respect BLOCKED, NEEDS_RECOVERY_DECISION, RECOVERY_CHECK_REQUIRED,
+2. Before any Git-backed mutation, run CEOS fresh-remote git-preflight
+   with the actual branch, expected repository and --fetch; do not assume
+   the local-only Git snapshot proves remote synchronization. Stop on
+   diverged, dirty or behind state unless a safe fast-forward is explicitly
+   permitted. Preserve parallel worktrees.
+3. Respect BLOCKED, NEEDS_RECOVERY_DECISION, RECOVERY_CHECK_REQUIRED,
    STOP_TERMINAL and DONE results. Planning does not reopen, create runs,
    generate art or mark review PASS.
-3. If READY_FOR_CODEX, claim the exact returned action:
+4. If READY_FOR_CODEX, claim the exact returned action:
    ceos continue RUN_ID --mode guided --claim --action-id ACTION_ID --json
    auto enables only already authorized host work, not new side effects.
    A dry run never claims or mutates state.
-4. Perform ONLY that action under existing CEOS skill/project scope.
+5. Perform ONLY that action under existing CEOS skill/project scope.
    Use real tools and required models/capabilities. Reuse accepted evidence
    only with matching dependency hashes and compatible currentness rules;
    never replay completed image generation. Validate actual Web delivery and
    visual pixels when required.
-5. Persist genuine artifacts and call ceos checkpoint with real evidence
+6. Persist genuine artifacts and call ceos checkpoint with real evidence
    once the stage is actually complete. Do not infer art, episode, or
    independent acceptance from continue itself or from a partial batch.
-6. Always release the exact lease token, including on errors:
+7. Always release the exact lease token, including on errors:
    ceos continue RUN_ID --release LEASE_TOKEN --json
    Missing/wrong-token claims block; never hijack or delete another claim.
-7. Inspect again. Continue only within scope, budgets and permissions.
+8. Inspect again. Continue only within scope, budgets and permissions.
    Stop on terminal outcome, no material progress, ambiguous state,
    transport/capability block or user-approval boundary.
 
