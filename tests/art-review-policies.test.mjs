@@ -17,7 +17,7 @@ test('narrative V2 blocks only verified material P0/P1 and never P3 cosmetic sug
   assert.match(read('policies/art-producer.md'), /P3 is cosmetic and never blocks/);
   assert.match(read('skills/production-art/SKILL.md'), /P2 is advisory by default/);
   assert.match(read('skills/production-art/SKILL.md'), /P3 is never blocking/);
-  assert.match(read('docs/NARRATIVE_ART_ACCEPTANCE_V2.md'), /P3.*NEVER/);
+  assert.match(read('docs/NARRATIVE_ART_ACCEPTANCE_V2.md'), /P3:[\\s\\S]{0,200}NEVER/);
 });
 
 test('image-driven runtime transition regressions are mandatory after asset repair', () => {
