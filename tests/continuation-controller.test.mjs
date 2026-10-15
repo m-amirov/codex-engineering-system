@@ -156,3 +156,10 @@ test('CLI continue --dry-run is stable, no mutation; explicit claim and release 
   assert.equal(result.status,0,result.stderr);
   assert.equal(JSON.parse(result.stdout).status,'RELEASED');
 });
+
+test('explicit run reference cannot escape the project run directory',t=>{
+  const project=setup(t);
+  const external=planContinuation(project,{runRef:'../../outside'});
+  assert.equal(external.status,'BLOCKED_RUN_REF_INVALID');
+  assert.equal(external.executable,false);
+});
