@@ -889,6 +889,10 @@ function verifiedProducerParent(projectDir, run, capabilities, {codexHome} = {})
 export function preflightNativeProducerRoute(projectDir, runRef='latest', traceFile, {codexHome}={}) {
   const project=path.resolve(projectDir);
   const resumed=resumeRun(project,runRef);
+  if (path.resolve(resumed.run.projectDir ?? '')!==project ||
+      path.resolve(resumed.run.runDir ?? '')!==path.resolve(resumed.runDir))
+    return {ok:false,status:'BLOCKED_NATIVE_AGENT_RUN_LOCATION_MISMATCH',
+      detail:'Run location differs from the requested checkout; use verified run relocation'};
   if (resumed.run.pipeline!=='production-art')
     return {ok:false,status:'BLOCKED_NATIVE_AGENT_PIPELINE_MISMATCH',
       detail:'Native producer route requires a production-art run'};
