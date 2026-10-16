@@ -224,6 +224,14 @@ export function readRunCapabilityAttestation(projectDir, runRef = 'latest', {
     return { valid: false, reason: 'challenge consumption/freshness mismatch', file, attestation: null };
   }
 
+  const issuedAt=Date.parse(challenge.createdAt ?? '');
+  const expiredAt=Date.parse(challenge.expiresAt ?? '');
+  const observedAt=Date.parse(attestation.observedAt ?? '');
+  if (!Number.isFinite(issuedAt) || !Number.isFinite(expiredAt) ||
+      !Number.isFinite(observedAt) || observedAt < issuedAt ||
+      observedAt > expiredAt) {
+    return { valid: false, reason: 'challenge timestamp mismatch', file, attestation: null };
+  }
   const age = Date.now() - Date.parse(attestation.observedAt ?? '');
   if (!Number.isFinite(age) || age < 0 || age > MAX_ATTESTATION_AGE_MS) {
     return { valid: false, reason: 'capability attestation expired', file, attestation: null };
