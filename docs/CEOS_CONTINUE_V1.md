@@ -13,10 +13,14 @@ nor a substitute for the existing run/checkpoint/verdict engine.
 ## Commands
 
 - ceos continue --mode inspect --json
-  - Read-only, default mode. Inspect only; does not create runs, lock, refresh,
+  - Read-only explicit inspection mode. Inspect only; does not create runs, lock, refresh,
     reopen, check out Git, generate assets or accept evidence.
+- ceos continue [RUN_ID] --json
+  - Guided default. Normally returns one bounded host action. For an eligible
+    stale production-art parent session at GENERATING, creates a linked new
+    run automatically, preserving the original run and binding a fresh parent.
 - ceos continue RUN_ID --mode guided --json
-  - One typed action to be completed by the current authorized Codex host.
+  - Equivalent explicit mode; any new work remains host-executed.
 - ceos continue RUN_ID --mode auto --json
   - Same action contract for an existing authorized task. The CLI does not
     perform host actions, and auto NEVER grants new permission to mutate
@@ -27,7 +31,7 @@ nor a substitute for the existing run/checkpoint/verdict engine.
   - Release only the matching lease. Always release in the host adapter's
     cleanup path, even on a failure.
 - ceos continue RUN_ID --dry-run --json
-  - Explicit no-write planning. --dry-run and --claim/--release cannot mix.
+  - Explicit no-write planning, including session recovery. --dry-run and --claim/--release cannot mix.
 
 The Codex-host adapter is the installed ceos-continue skill. It performs the
 actual work, persists real evidence and uses ceos checkpoint, routing-trace,
@@ -42,6 +46,12 @@ an explicit RUN_ID; if only terminal runs remain, the persisted latest run
 is inspected. Existing run checkpoints are not inferred from prompts.
 
 Expected statuses:
+- SESSION_RECOVERY_AVAILABLE: inspect/dry-run identified an eligible old
+  parent; no state changed. Guided/auto creates linked recovery and returns
+  READY_FOR_CODEX on the new run.
+- BLOCKED_SESSION_CONTEXT_UNVERIFIED / BLOCKED_RECOVERY_GIT_PREFLIGHT /
+  BLOCKED_RECOVERY_GUARD / BLOCKED_RECOVERY_ALREADY_IN_PROGRESS:
+  fail-closed recovery diagnostics; no fallback to reusing the old parent.
 - READY_FOR_CODEX: a current stage with one actionable, **unexecuted** unit.
 - BLOCKED_AMBIGUOUS_RUNS / BLOCKED_NO_RUN / BLOCKED_RUN_UNREADABLE.
 - BLOCKED_INTEGRITY / BLOCKED_GIT_PREFLIGHT / BLOCKED_DIRTY_WORKTREE.
@@ -57,6 +67,33 @@ Plan IDs hash immutable scope hash, run ID, current Git HEAD, cycle,
 checkpoint count, stage and action kind. Claim uses an atomic exclusive file
 per run under .ceos-runs/.continue-claims; do not remove someone else's
 claim or silently seize a stale one. Normal inspection never writes it.
+
+## Session-only linked recovery
+
+Automatic recovery is narrow: narrative production-art in its first cycle,
+waiting at GENERATING, with a mismatched parent SessionStart marker and a
+fresh same-session UserPromptSubmit marker for the exact project worktree.
+A terminal BLOCKED run qualifies only if it specifically stopped for
+BLOCKED_NATIVE_AGENT_PARENT_MISMATCH at GENERATING. Missing generated PNGs,
+art output gate failures, unrelated terminal errors and arbitrary checkpoints
+are not eligible.
+
+The source run stays unchanged. Before linking, CEOS verifies its integrity,
+a clean Git worktree, HEAD matching the accepted CANON_READY checkpoint,
+unchanged scope, and valid parent/turn context. A new run keeps source/canon
+hashes in LINKED_SESSION_RECOVERY and inherits only the pre-generation
+CANON_READY milestone; no PNG, acceptance, tool invocation or generation PASS
+is inferred. It is bound to the fresh parent session. Native capability
+presence, trust and service availability are reset and must be re-attested
+through the new run's current-turn challenge. The original run, its scope and
+accepted source artifacts are pinned; changing them invalidates the link.
+
+Only one recovery may proceed for a source run. The index/lock is stored
+under .ceos-runs/.continue-recoveries, and surviving conflicting locks require
+explicit repair; CEOS never steals them. Subsequent continue calls select the
+linked run and do not create a second fork. The Codex adapter must still
+perform current Git remote preflight, stage work, pixel checks and independent
+Web High review under the original permissions.
 
 ## Permission boundary
 
