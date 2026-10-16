@@ -295,6 +295,14 @@ test('linked recovery rejects missing locked evidence hash even when source scop
   const hash=await import('node:crypto');
   old.scopeSha256=hash.createHash('sha256').update(JSON.stringify(scope)).digest('hex');
   fs.writeFileSync(runPath,JSON.stringify(old,null,2)+'\n');
+  // Model a well-formed historical checkpoint created before the hash field
+  // was mandatory. A partial scope edit without updating this checkpoint
+  // would correctly fail the existing integrity gate earlier.
+  const cp=path.join(base,'checkpoints','001-scope-locked.json');
+  const checkpoint=JSON.parse(fs.readFileSync(cp,'utf8'));
+  checkpoint.artifacts[0].sha256=hash.createHash('sha256').update(fs.readFileSync(scopePath)).digest('hex');
+  checkpoint.artifacts[0].size=fs.statSync(scopePath).size;
+  fs.writeFileSync(cp,JSON.stringify(checkpoint,null,2)+'\n');
   x.writeContext('parent-new');
   const result=recoverContinuation(x.project,{mode:'guided'});
   assert.equal(result.status,'BLOCKED_RECOVERY_GUARD');
