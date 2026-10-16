@@ -173,6 +173,13 @@ test('generation refuses old capability after session or turn changes even with 
   }),/BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED/);
   fs.writeFileSync(sessionFile,priorSession);
   fs.writeFileSync(turnFile,priorTurn);
+  // Live challenge alone cannot authorize a child from another parent.
+  x.write({parentId:'unrelated-parent'});
+  assert.throws(()=>recordCheckpoint(x.game,x.runId,{
+    stage:'GENERATING',artifacts:['evidence.json'],
+    metadata:{...outputs,producerTraceFile:x.trace}
+  }),/BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/);
+  x.write();
   const success=recordCheckpoint(x.game,x.runId,{
     stage:'GENERATING',artifacts:['evidence.json'],
     metadata:{...outputs,producerTraceFile:x.trace}
