@@ -219,3 +219,35 @@ test('root capability attestation remains valid after a child UserPromptSubmit h
   assert.equal(stale.valid,false);
   assert.equal(stale.reason,'session mismatch');
 });
+
+test('expired bounded session capability requires a fresh challenge even when parent session matches',()=>{
+  const project=tempProject(),codexHome=path.join(project,'.codex');
+  writeRuntime(codexHome,project);
+  const run=createRun(project,'production-art',{scope:scope(),capabilities:caps(project)});
+  reachGeneration(project,run.run.runId);
+  const challenge=beginCapabilityChallenge(project,run.run.runId,{codexHome});
+  respondCapabilityChallenge(project,run.run.runId,{
+    codexHome,challengeId:challenge.challengeId,nonce:challenge.nonce,
+    presence:'PRESENT'
+  });
+  const attestationFile=path.join(run.runDir,'capability-attestation','image-generation.json');
+  const stored=JSON.parse(fs.readFileSync(attestationFile,'utf8'));
+  stored.observedAt=new Date(Date.now()-31*60*1000).toISOString();
+  fs.writeFileSync(attestationFile,JSON.stringify(stored,null,2)+'\n');
+  const observed=readRunCapabilityAttestation(project,run.run.runId,{codexHome});
+  assert.equal(observed.valid,false);
+  assert.equal(observed.reason,'capability attestation expired');
+});
+
+test('a challenge cannot be consumed after a turn switch even within the same session',()=>{
+  const project=tempProject(),codexHome=path.join(project,'.codex');
+  writeRuntime(codexHome,project);
+  const run=createRun(project,'production-art',{scope:scope(),capabilities:caps(project)});
+  reachGeneration(project,run.run.runId);
+  const challenge=beginCapabilityChallenge(project,run.run.runId,{codexHome});
+  writeRuntime(codexHome,project,'session-1','later-turn');
+  assert.throws(()=>respondCapabilityChallenge(project,run.run.runId,{
+    codexHome,challengeId:challenge.challengeId,nonce:challenge.nonce,
+    presence:'PRESENT'
+  }),/different Codex session\/turn/);
+});
