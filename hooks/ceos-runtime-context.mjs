@@ -78,12 +78,27 @@ const sessionFile = path.join(runtimeRoot, 'current-session.json');
 const turnFile = path.join(runtimeRoot, 'current-turn.json');
 const legacyCapabilityFile = path.join(codexHome, 'ceos', 'native-capabilities.json');
 const observedAt = new Date().toISOString();
+function sessionScopedFiles(input) {
+  if (typeof input.cwd !== 'string' || !input.cwd.trim() ||
+      typeof input.session_id !== 'string' || !input.session_id.trim())
+    throw new Error('CEOS hook requires a real cwd and nonempty session_id');
+  const canonicalRoot=fs.realpathSync(path.resolve(input.cwd));
+  const worktreeKey=crypto.createHash('sha256').update(canonicalRoot).digest('hex');
+  const sessionKey=crypto.createHash('sha256').update(input.session_id).digest('hex');
+  const root=path.join(runtimeRoot,'worktrees',worktreeKey,sessionKey);
+  return {
+    root, sessionFile:path.join(root,'session.json'),
+    turnFile:path.join(root,'turn.json'), canonicalRoot
+  };
+}
+
 
 if (process.exitCode === 1) {
   process.stdout.write(JSON.stringify({ continue: false, suppressOutput: true }));
 } else {
 
 if (input.hook_event_name === 'SessionStart') {
+  const scoped=sessionScopedFiles(input);
   const prior = readJson(sessionFile);
   const changedSession = Boolean(prior?.sessionId && prior.sessionId !== input.session_id);
   const hardReset = ['startup', 'clear', 'fork'].includes(input.source);
@@ -92,14 +107,17 @@ if (input.hook_event_name === 'SessionStart') {
     const legacy = readJson(legacyCapabilityFile);
     if (!legacy?.sessionId || legacy.sessionId !== input.session_id) fs.rmSync(legacyCapabilityFile, { force: true });
   }
-  atomicWriteJson(sessionFile, {
-    schemaVersion: 1,
-    sessionId: input.session_id,
-    source: input.source,
-    model: input.model,
-    cwd: input.cwd,
-    observedAt
-  });
+  const marker={
+    schemaVersion: 1, sessionId: input.session_id,
+    source: input.source, model: input.model,
+    cwd: input.cwd, observedAt
+  };
+  atomicWriteJson(sessionFile, marker);
+  // Each Codex worktree/session gets independent trusted hook evidence.
+  // The legacy global markers remain for older CEOS installations, but
+  // project-bound readers must prefer these scoped files.
+  atomicWriteJson(scoped.sessionFile, marker);
+  fs.rmSync(scoped.turnFile,{force:true});
   process.stdout.write(JSON.stringify({
     continue: true,
     suppressOutput: true,
@@ -109,6 +127,7 @@ if (input.hook_event_name === 'SessionStart') {
     }
   }));
 } else if (input.hook_event_name === 'UserPromptSubmit') {
+  const scoped=sessionScopedFiles(input);
   const session = readJson(sessionFile);
   if (!session?.sessionId || session.sessionId !== input.session_id) {
     fs.rmSync(turnFile, { force: true });
@@ -122,16 +141,23 @@ if (input.hook_event_name === 'SessionStart') {
       observedAt
     });
   }
-  atomicWriteJson(turnFile, {
-    schemaVersion: 1,
-    sessionId: input.session_id,
-    turnId: input.turn_id,
-    model: input.model,
-    cwd: input.cwd,
-    observedAt
-  });
+  const scopedSession=readJson(scoped.sessionFile);
+  if (scopedSession?.sessionId!==input.session_id) {
+    atomicWriteJson(scoped.sessionFile, {
+      schemaVersion:1,sessionId:input.session_id,
+      source:'user-prompt-recovery',model:input.model,
+      cwd:input.cwd,observedAt
+    });
+  }
+  const turn={schemaVersion:1,sessionId:input.session_id,
+    turnId:input.turn_id,model:input.model,cwd:input.cwd,observedAt};
+  atomicWriteJson(turnFile,turn);
+  atomicWriteJson(scoped.turnFile,turn);
   process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }));
 } else if (input.hook_event_name === 'SessionEnd') {
+  const scoped=sessionScopedFiles(input);
+  // Never clear another active session's scoped files.
+  fs.rmSync(scoped.root,{recursive:true,force:true});
   const session = readJson(sessionFile);
   if (!session?.sessionId || session.sessionId === input.session_id) {
     fs.rmSync(turnFile, { force: true });
