@@ -358,6 +358,26 @@ test('explicit native parent mismatch stop code recovers without guessing other 
   assert.equal(recoverContinuation(x.project).status,'READY_FOR_CODEX');
 });
 
+test('generic generating stop reason with trusted parent-binding evidence recovers',t=>{
+  const x=novelRecoveryFixture(t);
+  const file=path.join(x.project,'.ceos-runs',x.original,'run.json');
+  const old=JSON.parse(fs.readFileSync(file,'utf8'));
+  old.state='BLOCKED';
+  old.verdict='BLOCKED';
+  old.nextStage=null;
+  old.stopReason={
+    code:'STAGE_BLOCKED',
+    stage:'GENERATING',
+    reason:'BLOCKED: native producer route failed trusted parent binding; no Image Gen, PNG or receipt was created.'
+  };
+  fs.writeFileSync(file,JSON.stringify(old,null,2)+'\n');
+  x.writeContext('parent-new');
+  const result=recoverContinuation(x.project);
+  assert.equal(result.status,'READY_FOR_CODEX',JSON.stringify(result));
+  assert.equal(result.recovery.status,'LINKED_SESSION_RECOVERY_CREATED');
+  assert.equal(resumeRun(x.project,result.runId).run.producerParentSessionId,'parent-new');
+});
+
 test('changed Git source, missing canon or damaged recovery provenance block',t=>{
   const x=novelRecoveryFixture(t);
   x.writeContext('parent-new');
