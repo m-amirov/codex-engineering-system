@@ -12,6 +12,7 @@ import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapability
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
 import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
+import { importArtOutput } from '../src/art-output-transport.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
 import { inspectArtProgress } from '../src/art-progress.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
@@ -127,6 +128,7 @@ Usage:
   ceos session-diagnostics [--project dir] [--codex-home dir] [--json]
   ceos web-preflight [--codex-home dir] [--url http://127.0.0.1:17841/healthz] [--timeout-ms 1200] [--json]
   ceos art-brief-verify --file <source-bound-art-brief.json> [--project dir] [--json]
+  ceos art-output-import --source <native-local.png> --target <project-relative.png> --sha256 <64 hex> --kind background|sprite|prop [--width N --height N] [--json]
   ceos art-output-verify --file <generated.png> --kind sprite|prop|background [--width N --height N] [--receipt <new.json>] [--json]
   ceos art-output-batch --manifest <assets.json> [--receipt <new.json>] [--json]
   ceos art-progress --index <project-relative-evidence-index.json|source-bound-ledger.json> [--project dir] [--json] (read-only; never invents acceptance)
@@ -365,6 +367,19 @@ try {
       const result = validateArtProducerBrief(project, brief, {briefPath:String(args.file)});
       print(result, true);
       process.exitCode = result.status === 'READY_TO_GENERATE' ? 0 : 2;
+      break;
+    }
+    case 'art-output-import': {
+      const result=importArtOutput(project,{
+        sourceFile:args.source,
+        targetFile:args.target,
+        expectSha256:args.sha256,
+        kind:args.kind,
+        width:args.width === undefined ? undefined : Number(args.width),
+        height:args.height === undefined ? undefined : Number(args.height)
+      });
+      print(result,true);
+      process.exitCode=result.status==='PASS_ART_OUTPUT_TRANSPORT' ? 0 : 2;
       break;
     }
     case 'art-output-verify': {
