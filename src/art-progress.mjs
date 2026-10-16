@@ -186,14 +186,18 @@ export function inspectArtProgress(projectDir, indexPath) {
     batches.push({ id: batch.id, status, pairs, issues });
   }
   if (Number.isInteger(total) && claimed.size > total) problems.push('ACCEPTANCE_EXCEEDS_PLAN');
+  // A stale/invalid plan cannot provide any trustworthy accepted count.
+  // Keep all derived numeric fields consistent in this case.
+  const planValid=!problems.some(x=>x.startsWith('PLAN_') || x==='ACCEPTANCE_EXCEEDS_PLAN');
+  const count=planValid ? accepted.size : 0;
   return {
     schemaVersion:1,
     status: problems.length ? 'BLOCKED_ART_PROGRESS' : 'PASS_ART_PROGRESS_REVALIDATED',
     plannedPairs: Number.isInteger(total)?total:null,
-    acceptedPairs: problems.length && problems.some(x=>x.startsWith('PLAN_')) ? 0 : accepted.size,
-    remainingPairs: Number.isInteger(total) ? total - accepted.size : null,
-    acceptedPng: accepted.size * 2,
-    remainingPng: Number.isInteger(total) ? (total - accepted.size) * 2 : null,
+    acceptedPairs: count,
+    remainingPairs: Number.isInteger(total) ? total - count : null,
+    acceptedPng: count * 2,
+    remainingPng: Number.isInteger(total) ? (total - count) * 2 : null,
     batches,problems:[...new Set(problems)],
     finalEpisodeAcceptance:'NOT_VERIFIED',
     releaseReady:false
