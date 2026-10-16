@@ -1,6 +1,36 @@
-# Codex Engineering OS (CEOS) 0.5.30
+# Codex Engineering OS (CEOS) 0.5.31
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Native Image Gen PNG materialization (0.5.31)
+
+Image Gen tools may render and display an image without saving an accessible
+PNG inside the game's worktree. `art-output-verify` intentionally checks
+the **real target file**; a displayed image, dimensions or reported hash
+without bytes must return `ART_FILE_NOT_FOUND`.
+
+When Codex receives a **real local PNG file path** from the Image Gen tool,
+materialize it in the project before the output gate:
+
+```powershell
+ceos art-output-import --project "<game-worktree>" --source "<accessible-native-original.png>" --target "assets/production/S24-portrait.png" --sha256 "<full actual SHA256>" --kind background --width 1024 --height 1536 --json
+ceos art-output-verify --project "<game-worktree>" --file "assets/production/S24-portrait.png" --kind background --width 1024 --height 1536 --receipt "artifacts/production-art/S24-portrait-verified.json" --json
+```
+
+Import never invokes Image Gen, reads remote chat content or guesses image
+bytes. It verifies the source SHA-256, actual PNG format/dimensions/kind,
+copies into a project-only path without overwriting existing assets, hashes
+the copied bytes and returns `PASS_ART_OUTPUT_TRANSPORT` only on success.
+A repeated import with identical bytes is safe. Provider provenance and
+visual acceptance remain unverified by mechanical checks.
+
+If no accessible source file or documented binary-save channel exists,
+**stop before any additional Image Gen calls**; do not fake a PNG, manually
+mark gates PASS, or automatically recreate the previous image. Search
+original host-produced attachments/temporary files for a SHA-matching
+original. A terminal blocked run remains terminal unless a separately
+supported, explicitly authorized recovery is available. Do not edit
+`run.json`, accepted scene assets or immutable checkpoints manually.
 
 ## Terra producer deferred parent binding (0.5.30)
 
