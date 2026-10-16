@@ -112,15 +112,21 @@ test('parallel worktree hooks cannot overwrite each other’s scoped native trus
   assert.equal(readRuntimeContext({codexHome:x.home,projectDir:x.a}).session.sessionId,'session-A');
 });
 
-test('two simultaneous sessions in the same worktree are blocked until one ends',t=>{
+test('same-worktree old active lifecycle is history, current host-bound turn can execute',t=>{
   const x=setupWorktrees(t);
   x.send('SessionStart','session-A',x.a);
   x.send('UserPromptSubmit','session-A',x.a,'turn-A');
   x.send('SessionStart','session-B',x.a);
   x.send('UserPromptSubmit','session-B',x.a,'turn-B');
-  assert.equal(readRuntimeContext({codexHome:x.home,projectDir:x.a}).selectionError,
-    'BLOCKED_ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND');
-  assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),null);
+  const current=readRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(current.selectionError,null);
+  assert.equal(current.session.sessionId,'session-B');
+  assert.equal(current.turn.turnId,'turn-B');
+  assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),'session-B');
+  const diagnostic=diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(diagnostic.status,'PASS');
+  assert.equal(diagnostic.candidates.find(c=>c.sessionId==='session-A').classification,
+    'HISTORICAL_ACTIVE_NOT_CURRENT');
   x.send('SessionEnd','session-A',x.a);
   const ended=JSON.parse(fs.readFileSync(path.join(x.home,'ceos','runtime','lifecycle',
     key(fs.realpathSync(path.resolve(x.a))),`${key('session-A')}.json`)));
@@ -195,7 +201,7 @@ test('missing UserPromptSubmit leaves a new SessionStart blocked even with one a
   assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),null);
 });
 
-test('legacy rollout without SessionEnd remains blocked and diagnostics remain read-only',t=>{
+test('legacy rollout without SessionEnd is diagnostic history with a current trusted host turn',t=>{
   const x=setupWorktrees(t);
   x.send('SessionStart','current-session',x.a);
   x.send('UserPromptSubmit','current-session',x.a,'current-turn');
@@ -208,17 +214,18 @@ test('legacy rollout without SessionEnd remains blocked and diagnostics remain r
   const before=fs.readFileSync(path.join(x.home,'ceos','runtime','worktrees',
     key(fs.realpathSync(path.resolve(x.a))),key('completed-session'),'turn.json'),'utf8');
   const diagnostics=diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a});
-  assert.equal(diagnostics.status,'BLOCKED',JSON.stringify(diagnostics));
-  assert.equal(diagnostics.selectionError,'BLOCKED_AMBIGUOUS_WORKTREE_SESSIONS');
-  assert.equal(diagnostics.selectedSessionId,null);
+  assert.equal(diagnostics.status,'PASS',JSON.stringify(diagnostics));
+  assert.equal(diagnostics.selectionError,null);
+  assert.equal(diagnostics.selectedSessionId,'current-session');
   assert.equal(diagnostics.candidates.find(c=>c.sessionId==='completed-session').classification,
-    'MISSING_SESSION_END');
+    'HISTORICAL_UNBOUND_LEGACY');
   const after=fs.readFileSync(path.join(x.home,'ceos','runtime','worktrees',
     key(fs.realpathSync(path.resolve(x.a))),key('completed-session'),'turn.json'),'utf8');
   assert.equal(after,before);
-  const blocked=readRuntimeContext({codexHome:x.home,projectDir:x.a});
-  assert.equal(blocked.session,null);
-  assert.equal(blocked.selectionError,'BLOCKED_AMBIGUOUS_WORKTREE_SESSIONS');
+  const selected=readRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(selected.session.sessionId,'current-session');
+  assert.equal(selected.turn.turnId,'current-turn-2');
+  assert.equal(selected.selectionError,null);
 });
 
 test('scoped context never borrows a global marker from a different checkout',t=>{
@@ -241,4 +248,64 @@ test('stale scoped hook turn cannot fall back to a matching global marker',t=>{
   const observed=readRuntimeContext({codexHome:x.home,projectDir:x.a});
   assert.equal(observed.selectionError,'BLOCKED_SESSION_CONTEXT_UNVERIFIED');
   assert.equal(observed.session,null);
+});
+
+test('real-world old active lifecycle does not block freshly host-bound Codex turn',t=>{
+  const x=setupWorktrees(t);
+  const oldSession='01a145d1-0d8b-74a0-8ecd-c552581a8de7';
+  const currentSession='01a14601-674e-76d0-b0fe-37285946d264';
+  x.send('SessionStart',oldSession,x.a);
+  x.send('UserPromptSubmit',oldSession,x.a,'01a145ee-3672-7fa1-a6f5-23e5f338e9f4');
+  x.send('SessionStart',currentSession,x.a);
+  x.send('UserPromptSubmit',currentSession,x.a,'01a14601-6b7e-7681-b0e8-cc4bb0f288f0');
+  const before=JSON.stringify(diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a}).candidates);
+  const current=readRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(current.session.sessionId,currentSession);
+  assert.equal(current.turn.turnId,'01a14601-6b7e-7681-b0e8-cc4bb0f288f0');
+  assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),currentSession);
+  const diag=diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(diag.status,'PASS');
+  assert.equal(diag.trustedHost.sessionId,currentSession);
+  assert.equal(diag.candidates.length,2);
+  assert.equal(diag.candidates.find(v=>v.sessionId===oldSession).classification,
+    'HISTORICAL_ACTIVE_NOT_CURRENT');
+  assert.equal(JSON.stringify(diag.candidates),before,'read-only diagnostic cannot rewrite lifecycle history');
+});
+
+test('switch to SessionStart without UserPromptSubmit revokes old current-turn authority',t=>{
+  const x=setupWorktrees(t);
+  x.send('SessionStart','session-A',x.a);
+  x.send('UserPromptSubmit','session-A',x.a,'turn-A');
+  x.send('SessionStart','session-B',x.a);
+  const d=diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(d.status,'BLOCKED');
+  assert.equal(d.selectedSessionId,null);
+  assert.equal(d.trustedHost,null);
+  assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),null);
+});
+
+test('current scoped turn mismatch cannot borrow a valid host session or old scoped turn',t=>{
+  const x=setupWorktrees(t);
+  x.send('SessionStart','session-A',x.a);
+  x.send('UserPromptSubmit','session-A',x.a,'turn-A');
+  const scoped=path.join(x.home,'ceos','runtime','worktrees',
+    key(fs.realpathSync(path.resolve(x.a))),key('session-A'),'turn.json');
+  fs.writeFileSync(scoped,JSON.stringify({sessionId:'session-A',turnId:'different-turn',
+    cwd:x.a,observedAt:new Date().toISOString()}));
+  const diagnostic=diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(diagnostic.status,'BLOCKED');
+  assert.equal(readRuntimeContext({codexHome:x.home,projectDir:x.a}).session,null);
+  assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),null);
+});
+
+test('wrong worktree current host does not authorize a different checkout',t=>{
+  const x=setupWorktrees(t);
+  x.send('SessionStart','session-A',x.a);
+  x.send('UserPromptSubmit','session-A',x.a,'turn-A');
+  x.send('SessionStart','session-B',x.b);
+  x.send('UserPromptSubmit','session-B',x.b,'turn-B');
+  const ctx=readRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(ctx.session.sessionId,'session-A');
+  assert.equal(ctx.turn.turnId,'turn-A');
+  assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),'session-A');
 });
