@@ -1,6 +1,26 @@
-# Codex Engineering OS (CEOS) 0.5.28
+# Codex Engineering OS (CEOS) 0.5.29
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Bounded run/session Image Gen authority (0.5.29)
+
+`ceos capability-challenge` and `ceos capability-attest` still require a
+matching trusted parent session **and turn when the challenge is issued and
+answered**. The consumed Image Gen attestation is then reusable for at most
+30 minutes within the same verified parent session, run and worktree, even if
+Codex delivers another `UserPromptSubmit` turn. `ceos producer-route-check`
+and `GENERATING` share this verification. This prevents false `turn mismatch`
+blocks after valid generation setup; the stored original turn identity and
+single-use challenge remain auditable.
+
+A new Codex session or checkout, expired attestation, absent current host
+binding, changed run, mismatched challenge/receipt, missing real Terra Medium
+child rollout or Image Gen unavailability still block. Prior 0.5.28
+`run-session-turn` receipts are accepted **only** while matching the same
+run/session and the new freshness window; no indefinite upgrade of trust.
+No fake traces, assertion-based parent binding or bypass of output/visual gates.
+The producing native agent must separately possess callable Image Gen;
+parent-only tool presence does not establish child tool access.
 
 ## Parent/child Codex hook isolation (0.5.28)
 

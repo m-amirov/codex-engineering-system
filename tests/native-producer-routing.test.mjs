@@ -149,7 +149,7 @@ test('new narrative art run can reach CANON_READY without any trusted session at
   }),/BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED/);
 });
 
-test('generation refuses old capability after session or turn changes even with a valid Terra trace',t=>{
+test('generation permits same-session follow-up turn but refuses other session and child parent',t=>{
   const x=createNovel(t);
   const outputs=generatedOutput(x.game);
   const sessionFile=path.join(x.home,'ceos','runtime','current-session.json');
@@ -159,10 +159,8 @@ test('generation refuses old capability after session or turn changes even with 
   fs.writeFileSync(turnFile,JSON.stringify({
     sessionId:x.parent,turnId:'new-turn',cwd:x.game,observedAt:new Date().toISOString()
   }));
-  assert.throws(()=>recordCheckpoint(x.game,x.runId,{
-    stage:'GENERATING',artifacts:['evidence.json'],
-    metadata:{...outputs,producerTraceFile:x.trace}
-  }),/BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED/);
+  const followup=preflightNativeProducerRoute(x.game,x.runId,x.trace,{codexHome:x.home});
+  assert.equal(followup.status,'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED',JSON.stringify(followup));
   fs.writeFileSync(turnFile,priorTurn);
   fs.writeFileSync(sessionFile,JSON.stringify({
     sessionId:'unrelated-parent',cwd:x.game,observedAt:new Date().toISOString()
@@ -312,7 +310,7 @@ test('CURRENT_TURN producer CLI refuses absent or stale attestation without borr
     sessionId:x.parent,turnId:'another-turn',cwd:x.game,observedAt:new Date().toISOString()
   }));
   assert.equal(preflightNativeProducerRoute(x.game,x.runId,x.trace,{codexHome:x.home}).status,
-    'BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED');
+    'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED');
 });
 
 test('CURRENT_TURN producer CLI still rejects an unrelated Terra child parent',t=>{

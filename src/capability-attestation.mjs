@@ -11,6 +11,7 @@ const CAPABILITY = 'image-generation';
 export const IMAGE_GENERATION_TOOL = 'image_gen.imagegen';
 const MAX_RUNTIME_CONTEXT_AGE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_CHALLENGE_TTL_SECONDS = 30 * 60;
+const MAX_ATTESTATION_AGE_MS = 30 * 60 * 1000;
 
 function now() {
   return new Date().toISOString();
@@ -165,7 +166,7 @@ export function respondCapabilityChallenge(projectDir, runRef = 'latest', {
     turnId: context.turn.turnId,
     observedAt,
     source: 'in-session-agent-observation',
-    trustScope: 'run-session-turn',
+    trustScope: 'run-session-window',
     presence: normalizedPresence,
     serviceAvailability: normalizedService,
     observedTool: canonicalObservedTool,
@@ -203,7 +204,8 @@ export function readRunCapabilityAttestation(projectDir, runRef = 'latest', {
     [attestation.capability === CAPABILITY, 'capability mismatch'],
     [attestation.source === 'in-session-agent-observation', 'source mismatch'],
     [attestation.sessionId === context.session.sessionId, 'session mismatch'],
-    [attestation.turnId === context.turn.turnId, 'turn mismatch'],
+    [typeof attestation.turnId === 'string' && attestation.turnId.length > 0, 'missing attested turn'],
+    [['run-session-turn','run-session-window'].includes(attestation.trustScope), 'invalid trust scope'],
     [PRESENCE.has(attestation.presence), 'invalid presence'],
     [SERVICE.has(attestation.serviceAvailability), 'invalid serviceAvailability']
   ];
@@ -215,9 +217,24 @@ export function readRunCapabilityAttestation(projectDir, runRef = 'latest', {
   try { challenge = readJson(cfile); }
   catch { return { valid: false, reason: 'challenge evidence missing', file, attestation: null }; }
   if (challenge.status !== 'CONSUMED' || challenge.runId !== resolved.run.runId ||
-      challenge.sessionId !== attestation.sessionId || challenge.turnId !== attestation.turnId) {
+      challenge.capability !== CAPABILITY || challenge.challengeId !== attestation.challengeId ||
+      challenge.source !== 'ceos-in-session-challenge' ||
+      challenge.sessionId !== attestation.sessionId || challenge.turnId !== attestation.turnId ||
+      challenge.consumedAt !== attestation.observedAt) {
     return { valid: false, reason: 'challenge consumption/freshness mismatch', file, attestation: null };
   }
 
+  const issuedAt=Date.parse(challenge.createdAt ?? '');
+  const expiredAt=Date.parse(challenge.expiresAt ?? '');
+  const observedAt=Date.parse(attestation.observedAt ?? '');
+  if (!Number.isFinite(issuedAt) || !Number.isFinite(expiredAt) ||
+      !Number.isFinite(observedAt) || observedAt < issuedAt ||
+      observedAt > expiredAt) {
+    return { valid: false, reason: 'challenge timestamp mismatch', file, attestation: null };
+  }
+  const age = Date.now() - Date.parse(attestation.observedAt ?? '');
+  if (!Number.isFinite(age) || age < 0 || age > MAX_ATTESTATION_AGE_MS) {
+    return { valid: false, reason: 'capability attestation expired', file, attestation: null };
+  }
   return { valid: true, reason: null, file, attestation };
 }

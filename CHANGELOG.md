@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.29 — 2026-10-16
+
+- Replaced overly strict post-challenge turn equality with a bounded (30-minute) run/parent-session Image Gen capability window. Challenge issuance and response still require the exact original trusted session and turn, and the current worktree host must still be valid.
+- Same-session Codex follow-up turns no longer invalidate the consumed attestation before authentic Terra producer-route verification. Different sessions, expired attestations, invalid challenge identity/timestamps and missing active host are blocked.
+- New attestations carry `trustScope=run-session-window`; previous `run-session-turn` receipts remain compatible within the bounded window and verified parent session.
+- Regression tests cover session rollover, cross-session isolation, 30-minute expiry and challenge consumption after a turn switch; producer model/role/parent and PNG/visual gates remain strict.
+- Stage 9.4 run `f2c045`, S19–S23 accepted art, S24–S26 briefs and image outputs are not modified.
+
+
 ## 0.5.28 — 2026-10-16
 
 - Kept root `UserPromptSubmit` session/turn binding intact when a native child emits a hook with `subagent` metadata. Child hooks no longer overwrite the current worktree host or parent lifecycle, avoiding a spurious `turn mismatch` in fresh run-scoped Image Gen attestation.

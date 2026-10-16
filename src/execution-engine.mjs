@@ -380,7 +380,7 @@ function nextAction(run) {
   if (def.id === 'GENERATING' && run.nativeProducerRouteRequired) {
     requirements.push('metadata.producerTraceFile: actual Codex child rollout JSONL proving agent_role=ceos_asset_generator and effective model=gpt-5.6-terra/medium; a parent assertion is insufficient');
     if (run.producerBindingMode === 'CURRENT_TURN')
-      requirements.push('fresh run-scoped capability challenge from this exact live session + turn; generation parent is verified now, not borrowed from run creation');
+      requirements.push('consumed run-scoped Image Gen challenge from this parent session (original issuance/response turn verified, maximum 30 minutes old); a fresh current host turn, real Terra child and PNG gates are still required');
   }
   if (run.narrativeDualFormatRequired && (def.id === 'INTEGRATED' || def.id === 'REAUDITED'))
     requirements.push('metadata.dualFormatManifest: source-bound episode art mapping; both portrait 2:3 and desktop 16:9 real PNG assets required for every scene');
@@ -855,8 +855,9 @@ function assertFinalRouting(run, capabilities) {
 
 /**
  * Resolve native producer authority without writing a session binding to run.json.
- * CURRENT_TURN is authorized ONLY by the current run/session/turn capability
- * challenge and the matching persisted capability snapshot. Legacy pinned-parent
+ * CURRENT_TURN uses a challenge issued and consumed in the same trusted
+ * turn; its bounded authorization is valid for the same live parent session
+ * (up to 30 minutes), paired with the persisted capability snapshot. Legacy pinned-parent
  * runs preserve their historical contract.
  *
  * This function is shared by producer-route-check and GENERATING to prevent
@@ -876,7 +877,7 @@ function verifiedProducerParent(projectDir, run, capabilities, {codexHome} = {})
       image?.capabilityPresence!=='PRESENT' ||
       image?.generationAllowed!==true ||
       image?.attestationFile!==verified.file ||
-      image?.trustScope!=='run-session-turn') {
+      !['run-session-turn','run-session-window'].includes(image?.trustScope)) {
     return {ok:false,status:'BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED',
       detail:'Fresh matching run-scoped capability challenge and trusted capability snapshot required' +
         (verified.reason ? ': '+verified.reason : '')};
