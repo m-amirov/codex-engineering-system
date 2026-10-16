@@ -24,7 +24,7 @@ turn off trust checks or claim that the CLI can invoke native Image Gen.
 
 New `production-art` + `NEW_GENERATION` runs using the `narrative-game`
 profile store `producerBindingMode: CURRENT_TURN` and
-`producerParentSessionId: null`.
+`producerParentSessionId: null`. This null field is not the parent identity and must not be compared with the Terra child's actual `parent_thread_id`; use the official `ceos producer-route-check` output (`bindingMode=CURRENT_TURN`, resolved `parentSessionId`) instead.
 
 1. `INVENTORIED` and `CANON_READY` are project/source-scoped. No chat must
    remain open simply for those stages to be completed.
@@ -33,7 +33,7 @@ profile store `producerBindingMode: CURRENT_TURN` and
    *same session and turn*.
 3. Its attestation must match the refreshed capability snapshot. The true
    `ceos_asset_generator` Terra child's rollout `parent_thread_id` must
-   match that authenticated parent. The attestation and output are retained
+   match that authenticated parent. The parent orchestrator performs the official route check, and the child must not perform a second PINNED_PARENT check against null. The attestation and output are retained
    as immutable checkpoint evidence.
 4. If that binding is missing or stale, `GENERATING` is blocked with
    `BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED`. No fallback to choosing the
