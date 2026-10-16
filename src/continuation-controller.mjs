@@ -118,7 +118,7 @@ function inspectSessionRecovery(project, run, git) {
      /BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/.test(String(run.stopReason.reason ?? '')));
   if (!((run.verdict === null && run.nextStage === 'GENERATING') || parentMismatchBlocked))
     return null;
-  const ctx=readRuntimeContext();
+  const ctx=readRuntimeContext({projectDir:project});
   const timestamp=Date.parse(ctx.turn?.observedAt ?? '');
   const current=ctx.session?.sessionId;
   let valid=typeof current==='string' && current.length>0 &&
@@ -127,6 +127,7 @@ function inspectSessionRecovery(project, run, git) {
     Date.now()-timestamp<=30*60*1000;
   try { valid=valid && fs.realpathSync(ctx.turn.cwd)===fs.realpathSync(project); }
   catch { valid=false; }
+  if (ctx.selectionError) return {status:ctx.selectionError};
   if (!valid) return {status:'BLOCKED_SESSION_CONTEXT_UNVERIFIED'};
   if (run.producerParentSessionId===current) return null;
   if (git.status!=='READY' || git.dirty) return {status:'BLOCKED_RECOVERY_GIT_PREFLIGHT'};
