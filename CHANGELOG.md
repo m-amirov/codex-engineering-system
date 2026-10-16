@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.23 — 2026-10-16
+
+- Isolated CEOS SessionStart/UserPromptSubmit freshness markers by canonical Git worktree path and Codex session ID instead of relying on shared last-writer-wins global markers.
+- `ceos continue`, linked native parent creation, and Image Gen capability challenges now select the requested project's host-observed hook context, independent of other worktrees' sessions.
+- Fail closed on multiple fresh sessions for the same worktree, corrupt or stale markers, and cross-worktree borrowing. Legacy-global migration is allowed only when both cwd fields resolve to the requested project and no scoped records exist.
+- Added parallel-session and trust-boundary regression tests. No native Image Gen, Web High, or unattended generation is introduced.
+
+
 ## 0.5.22 — 2026-10-16
 
 - Fixed linked session recovery for historical scopes containing the source-bound `resolutionReceiptContract`. CEOS now revalidates the locked exact lines and evidence SHA-256 and reconstructs the contract through normal run creation without changing scope, evidence, or source run.

@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { resolveCodexHome } from './ceos.mjs';
 import { resolveRun } from './execution-engine.mjs';
+import { runtimeContextPaths, readRuntimeContext } from './runtime-context.mjs';
 
 const PRESENCE = new Set(['PRESENT', 'ABSENT']);
 const SERVICE = new Set(['UNKNOWN', 'AVAILABLE', 'UNAVAILABLE', 'RATE_LIMITED', 'USAGE_LIMIT_REACHED']);
@@ -31,35 +31,17 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
-export function runtimeContextPaths({ homeDir = os.homedir(), codexHome } = {}) {
-  const resolvedCodexHome = resolveCodexHome({ homeDir, codexHome });
-  const root = path.join(resolvedCodexHome, 'ceos', 'runtime');
-  return {
-    codexHome: resolvedCodexHome,
-    root,
-    sessionFile: path.join(root, 'current-session.json'),
-    turnFile: path.join(root, 'current-turn.json')
-  };
-}
+export { runtimeContextPaths, readRuntimeContext } from './runtime-context.mjs';
 
-export function readRuntimeContext(options = {}) {
-  const paths = runtimeContextPaths(options);
-  let session = null;
-  let turn = null;
-  try { session = readJson(paths.sessionFile); } catch {}
-  try { turn = readJson(paths.turnFile); } catch {}
-  return { ...paths, session, turn };
-}
-
-function currentContext(options = {}) {
-  const context = readRuntimeContext(options);
+function currentContext(options={}) {
+  const context=readRuntimeContext(options);
+  if(context.selectionError) throw new Error(context.selectionError);
   if (!context.session?.sessionId) throw new Error('CEOS SessionStart freshness marker is missing; ensure the CEOS Codex hooks are installed and trusted');
   if (!context.turn?.turnId) throw new Error('CEOS UserPromptSubmit freshness marker is missing; start the capability challenge from an active user turn');
   if (context.turn.sessionId !== context.session.sessionId) throw new Error('CEOS runtime session/turn markers disagree; refuse stale capability evidence');
   const age = Date.now() - Date.parse(context.turn.observedAt || 0);
-  if (!Number.isFinite(age) || age < 0 || age > MAX_RUNTIME_CONTEXT_AGE_MS) {
+  if (!Number.isFinite(age) || age < 0 || age > MAX_RUNTIME_CONTEXT_AGE_MS)
     throw new Error('CEOS runtime turn marker is stale; refuse capability attestation');
-  }
   return context;
 }
 
@@ -97,7 +79,7 @@ export function beginCapabilityChallenge(projectDir, runRef = 'latest', {
   const ttl = Number(ttlSeconds);
   if (!Number.isInteger(ttl) || ttl < 60 || ttl > 6 * 60 * 60) throw new Error('ttlSeconds must be an integer from 60 to 21600');
 
-  const context = currentContext({ homeDir, codexHome });
+  const context = currentContext({ homeDir, codexHome, projectDir });
   const resolved = resolveRun(projectDir, runRef);
   if (resolved.run.pipeline !== 'production-art') throw new Error('native image capability challenges are only valid for production-art runs');
   if (resolved.run.verdict) throw new Error(`run is already terminal: ${resolved.run.verdict}`);
@@ -152,7 +134,7 @@ export function respondCapabilityChallenge(projectDir, runRef = 'latest', {
     throw new Error('non-UNKNOWN serviceAvailability requires explicit serviceEvidence from a real capability invocation');
   }
 
-  const context = currentContext({ homeDir, codexHome });
+  const context = currentContext({ homeDir, codexHome, projectDir });
   const resolved = resolveRun(projectDir, runRef);
   const file = challengeFile(resolved.runDir, String(challengeId));
   if (!fs.existsSync(file)) throw new Error(`capability challenge not found: ${challengeId}`);
@@ -202,7 +184,7 @@ export function readRunCapabilityAttestation(projectDir, runRef = 'latest', {
   let context;
   let resolved;
   try {
-    context = currentContext({ homeDir, codexHome });
+    context = currentContext({ homeDir, codexHome, projectDir });
     resolved = resolveRun(projectDir, runRef);
   } catch (error) {
     return { valid: false, reason: error.message, file: null, attestation: null };

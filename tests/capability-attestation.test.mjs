@@ -48,11 +48,11 @@ function scope() {
   };
 }
 
-function writeRuntime(home, sessionId = 'session-1', turnId = 'turn-1') {
+function writeRuntime(home, project, sessionId = 'session-1', turnId = 'turn-1') {
   const root = path.join(home, 'ceos', 'runtime');
   fs.mkdirSync(root, { recursive: true });
-  fs.writeFileSync(path.join(root, 'current-session.json'), JSON.stringify({ sessionId, observedAt: new Date().toISOString() }));
-  fs.writeFileSync(path.join(root, 'current-turn.json'), JSON.stringify({ sessionId, turnId, observedAt: new Date().toISOString() }));
+  fs.writeFileSync(path.join(root, 'current-session.json'), JSON.stringify({ sessionId, cwd: project, observedAt: new Date().toISOString() }));
+  fs.writeFileSync(path.join(root, 'current-turn.json'), JSON.stringify({ sessionId, turnId, cwd: project, observedAt: new Date().toISOString() }));
 }
 
 function reachGeneration(project, id) {
@@ -67,7 +67,7 @@ function reachGeneration(project, id) {
 test('run-scoped challenge binds session, turn and single-use nonce', () => {
   const project = tempProject();
   const codexHome = path.join(project, '.codex');
-  writeRuntime(codexHome);
+  writeRuntime(codexHome, project);
   const run = createRun(project, 'production-art', { scope: scope(), capabilities: caps(project) });
   reachGeneration(project, run.run.runId);
 
@@ -106,7 +106,7 @@ test('run-scoped challenge binds session, turn and single-use nonce', () => {
 test('attestation fails closed after the Codex turn changes', () => {
   const project = tempProject();
   const codexHome = path.join(project, '.codex');
-  writeRuntime(codexHome);
+  writeRuntime(codexHome, project);
   const run = createRun(project, 'production-art', { scope: scope(), capabilities: caps(project) });
   reachGeneration(project, run.run.runId);
   const challenge = beginCapabilityChallenge(project, run.run.runId, { codexHome });
@@ -117,7 +117,7 @@ test('attestation fails closed after the Codex turn changes', () => {
     presence: 'PRESENT'
   });
 
-  writeRuntime(codexHome, 'session-1', 'turn-2');
+  writeRuntime(codexHome, project, 'session-1', 'turn-2');
   const observed = readRunCapabilityAttestation(project, run.run.runId, { codexHome });
   assert.equal(observed.valid, false);
   assert.match(observed.reason, /turn mismatch/);
@@ -126,7 +126,7 @@ test('attestation fails closed after the Codex turn changes', () => {
 test('service availability cannot be asserted without real-invocation evidence', () => {
   const project = tempProject();
   const codexHome = path.join(project, '.codex');
-  writeRuntime(codexHome);
+  writeRuntime(codexHome, project);
   const run = createRun(project, 'production-art', { scope: scope(), capabilities: caps(project) });
   reachGeneration(project, run.run.runId);
   const challenge = beginCapabilityChallenge(project, run.run.runId, { codexHome });

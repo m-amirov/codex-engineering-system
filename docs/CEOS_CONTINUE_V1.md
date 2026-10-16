@@ -127,3 +127,24 @@ normal installer, and start a fresh Codex session. From the intended project
 worktree ask: "Продолжи по CEOS." The host should follow ceos-continue,
 use one claim at a time, avoid repeating completed work, and report the next
 real blocker rather than requesting a multi-page prompt.
+
+## Worktree-scoped host hook markers (CEOS 0.5.23)
+
+SessionStart and UserPromptSubmit now persist additional worktree/session
+evidence under `~/.codex/ceos/runtime/worktrees/<SHA256(realpath(cwd))>/<SHA256(session_id)>/`.
+Project-bound continue and capability challenges read only the requested
+worktree's context; a turn in a separate checkout cannot evict it.
+The historical global `current-session.json` / `current-turn.json`
+files remain as a migration fallback only when **both** recorded cwd
+values match the requested project and there is no scoped state.
+
+A single eligible session is required. Two fresh same-worktree sessions
+are ambiguous and cause `BLOCKED_AMBIGUOUS_WORKTREE_SESSIONS` rather than
+automatically selecting the latest. Stale/corrupt evidence stays BLOCKED.
+SessionEnd only removes that session's scoped evidence.
+
+These are Codex-host-observed local hooks, NOT provider-signed model
+attestations or a cryptographic proof of which process issued a separate
+CLI command. Do not pass `--project` from another checkout to borrow
+a session. Generate from an authorized Codex session actually launched
+in the target worktree and retain capability/trace checks.

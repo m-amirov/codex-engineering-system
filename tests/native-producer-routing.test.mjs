@@ -36,6 +36,10 @@ function createNovel(t) {
   fs.writeFileSync(path.join(game,'narrative','graph.json'),JSON.stringify({scenes:[{id:'S01',episode:1}]}));
   const prev=process.env.CODEX_HOME;
   process.env.CODEX_HOME=x.home;
+  fs.writeFileSync(path.join(x.home,'ceos','runtime','current-session.json'),
+    JSON.stringify({sessionId:x.parent,cwd:game,observedAt:new Date().toISOString()}));
+  fs.writeFileSync(path.join(x.home,'ceos','runtime','current-turn.json'),
+    JSON.stringify({sessionId:x.parent,turnId:'turn-route',cwd:game,observedAt:new Date().toISOString()}));
   t.after(()=>{if(prev===undefined)delete process.env.CODEX_HOME; else process.env.CODEX_HOME=prev;});
   const caps={
     imageGeneration:{trustedForGeneration:true,capabilityPresence:'PRESENT',generationAllowed:true},

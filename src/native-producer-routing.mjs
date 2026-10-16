@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { resolveCodexHome } from './ceos.mjs';
+import { readRuntimeContext } from './runtime-context.mjs';
 
 const ROLE = 'ceos_asset_generator';
 const MODEL = 'gpt-5.6-terra';
@@ -14,12 +15,13 @@ const READ_CHUNK_BYTES = 64 * 1024;
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 
 /** Do not mistake a parent statement or a task_name for an actual custom subagent. */
-export function nativeProducerParentContext({codexHome} = {}) {
-  const home = resolveCodexHome({homeDir:os.homedir(),codexHome});
-  try {
-    const session = JSON.parse(fs.readFileSync(path.join(home,'ceos','runtime','current-session.json'),'utf8'));
-    return typeof session.sessionId === 'string' && session.sessionId.trim() ? session.sessionId : null;
-  } catch { return null; }
+export function nativeProducerParentContext({codexHome, projectDir}={}) {
+  const context=readRuntimeContext({codexHome,projectDir});
+  if (context.selectionError || !context.session?.sessionId || !context.turn?.turnId ||
+      context.session.sessionId!==context.turn.sessionId) return null;
+  const age=Date.now()-Date.parse(context.turn.observedAt??'');
+  if (!Number.isFinite(age) || age<0 || age>24*60*60*1000) return null;
+  return context.session.sessionId;
 }
 
 function reject(code, detail = '') {
