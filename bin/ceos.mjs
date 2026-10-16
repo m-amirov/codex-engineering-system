@@ -13,6 +13,7 @@ import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
 import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
+import { inspectArtProgress } from '../src/art-progress.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
 
@@ -127,6 +128,7 @@ Usage:
   ceos art-brief-verify --file <source-bound-art-brief.json> [--project dir] [--json]
   ceos art-output-verify --file <generated.png> --kind sprite|prop|background [--width N --height N] [--receipt <new.json>] [--json]
   ceos art-output-batch --manifest <assets.json> [--receipt <new.json>] [--json]
+  ceos art-progress --index <project-relative-evidence-index.json|source-bound-ledger.json> [--project dir] [--json] (read-only; never invents acceptance)
   ceos art-output-normalize --file <prop.png> --output <new.png> [--width 512 --height 512] [--json]
   ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--assurance strict|visual-content] [--json]
   ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--assurance strict|visual-content] [--json]
@@ -136,7 +138,7 @@ Usage:
   ceos producer-route-check [run-id|latest] --trace <actual-child-rollout.jsonl> [--codex-home dir] [--json]
   ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--art-mode NEW_GENERATION|VERIFIED_EXISTING_ART_REUSE] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--resolution-contract-file json] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
-  ceos continue [run-id|latest] [--project dir] [--mode inspect|guided|auto] [--dry-run] [--claim --action-id HASH | --release TOKEN] [--json] (guided default; inspect/dry-run read-only)
+  ceos continue [run-id|latest] [--project dir] [--progress-index path] [--mode inspect|guided|auto] [--dry-run] [--claim --action-id HASH | --release TOKEN] [--json] (guided default; inspect/dry-run read-only)
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
   ceos run-status [run-id|latest] [--json]
   ceos web-attachment-block [run-id|latest] --phase analysis|midpoint|acceptance --evidence <failed-turn-log.txt> [--project dir] [--json]
@@ -375,6 +377,13 @@ try {
       process.exitCode = result.status === 'PASS_ART_BATCH_MECHANICAL' ? 0 : 2;
       break;
     }
+    case 'art-progress': {
+      if (typeof args.index !== 'string') throw new Error('--index is required');
+      const result = inspectArtProgress(project,String(args.index));
+      print(result,true);
+      process.exitCode = result.status === 'PASS_ART_PROGRESS_REVALIDATED' ? 0 : 2;
+      break;
+    }
     case 'art-output-normalize': {
       if (typeof args.file !== 'string' || typeof args.output !== 'string')
         throw new Error('--file and --output are required');
@@ -478,10 +487,10 @@ try {
       const result = args.release
         ? releaseContinuation(project,{runRef,token:args.release === true ? null : args.release})
         : args.claim
-          ? claimContinuation(project,{runRef,mode,expectedActionId:args['action-id']})
+          ? claimContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null,expectedActionId:args['action-id']})
           : (args['dry-run'] || mode === 'inspect')
-            ? planContinuation(project,{runRef,mode})
-            : recoverContinuation(project,{runRef,mode});
+            ? planContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null})
+            : recoverContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null});
       if (args.json) print(result,true);
       else {
         console.log('CONTINUE: ' + result.status);

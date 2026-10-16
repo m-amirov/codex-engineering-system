@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRun, recordCheckpoint, resumeRun } from '../src/execution-engine.mjs';
@@ -15,6 +16,7 @@ const capabilities = {
   imageGeneration:{capabilityPresence:'ABSENT',serviceAvailability:'UNKNOWN',generationAllowed:false},
   filesystem:{exists:true,readable:true,writable:true}
 };
+const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
 function git(project, ...args) {
   const r = spawnSync('git',args,{cwd:project,encoding:'utf8'});
   assert.equal(r.status,0, (r.stderr || '')+' '+args.join(' '));
@@ -43,11 +45,136 @@ function cliRun(project, ...args) {
     {cwd:project,encoding:'utf8'});
 }
 
+
+function progressOnlyProject(t) {
+  const project=setup(t);
+  fs.appendFileSync(path.join(project,'.gitignore'),'artifacts/\n');
+  git(project,'add','.gitignore');
+  git(project,'commit','-m','ignore progress fixtures');
+  const depPath='narrative/graph.json',dep=Buffer.from('{"scene":"S24"}\n');
+  fs.mkdirSync(path.join(project,'narrative'),{recursive:true});
+  fs.writeFileSync(path.join(project,depPath),dep);
+  const planPath='artifacts/progress-plan.json';
+  fs.mkdirSync(path.join(project,'artifacts'),{recursive:true});
+  const plan=JSON.stringify({schemaVersion:1,summary:{
+    productionPairsPlanned:25,plannedPngFiles:50
+  },sourceHashes:{[depPath]:sha256(dep)}},null,2)+'\n';
+  fs.writeFileSync(path.join(project,planPath),plan);
+  const index='artifacts/art-progress-index.json';
+  fs.writeFileSync(path.join(project,index),JSON.stringify({
+    schemaVersion:1,plan:{path:planPath,sha256:sha256(plan)},batches:[]
+  },null,2)+'\n');
+  git(project,'add',depPath);
+  git(project,'commit','-m','lock art dependency');
+  return {project,index,depPath};
+}
+
+test('valid project progress without any runs requests ONE explicit scoped production-art run',t=>{
+  const {project}=progressOnlyProject(t);
+  const first=planContinuation(project,{mode:'inspect'});
+  const second=planContinuation(project,{mode:'guided'});
+  assert.equal(first.status,'NEEDS_SCOPED_PRODUCTION_RUN');
+  assert.equal(first.executable,false);
+  assert.equal(first.action.kind,'PREPARE_SCOPED_PRODUCTION_RUN');
+  assert.equal(first.progress.pipeline,'production-art');
+  assert.equal(first.progress.status,'PASS_ART_PROGRESS_REVALIDATED');
+  assert.equal(first.progress.remainingPairs,25);
+  assert.equal(second.status,first.status);
+  assert.equal(recoverContinuation(project,{mode:'guided'}).status,first.status);
+  assert.equal(fs.existsSync(path.join(project,'.ceos-runs')),false);
+});
+
+test('corrupt source-bound progress takes priority over no active run or unrelated run',t=>{
+  const {project,depPath}=progressOnlyProject(t);
+  fs.appendFileSync(path.join(project,depPath),'drift');
+  const before=planContinuation(project,{mode:'inspect'});
+  assert.equal(before.status,'BLOCKED_ART_PROGRESS');
+  assert.equal(before.action.kind,'RESTORE_SOURCE_BOUND_PROGRESS');
+  assert.equal(before.executable,false);
+  const unrelated=newRun(project);
+  const after=planContinuation(project,{mode:'auto'});
+  assert.equal(after.status,'BLOCKED_ART_PROGRESS');
+  assert.equal(after.action.kind,'RESTORE_SOURCE_BOUND_PROGRESS');
+  assert.equal(after.progress.pipeline,'production-art');
+  assert.equal(claimContinuation(project,{mode:'auto',expectedActionId:'anything'}).status,
+    'BLOCKED_ART_PROGRESS');
+  assert.equal(resumeRun(project,unrelated.runId).integrity.ok,true);
+  assert.equal(fs.existsSync(path.join(project,'.ceos-runs','.continue-claims')),false);
+});
+
+test('valid art progress cannot select unrelated active or historical terminal pipeline',t=>{
+  const {project}=progressOnlyProject(t);
+  const unrelated=newRun(project);
+  const plan=planContinuation(project,{mode:'guided'});
+  assert.equal(plan.status,'NEEDS_SCOPED_PRODUCTION_RUN');
+  assert.deepEqual(plan.candidates,[unrelated.runId]);
+  assert.equal(planContinuation(project,{runRef:unrelated.runId}).status,
+    'BLOCKED_PROGRESS_PIPELINE_MISMATCH');
+  const evidence=path.join(project,'evidence.txt');
+  fs.writeFileSync(evidence,'blocked evidence');
+  recordCheckpoint(project,unrelated.runId,{stage:'EVIDENCE_COLLECTED',
+    artifacts:['evidence.txt'],outcome:'BLOCKED',note:'external transport unavailable'});
+  assert.equal(planContinuation(project).status,'NEEDS_SCOPED_PRODUCTION_RUN');
+});
+
 test('empty project provides precise read-only status, never creates a run',t=>{
   const project=setup(t);
   const plan=planContinuation(project);
   assert.equal(plan.status,'BLOCKED_NO_RUN');
   assert.equal(fs.existsSync(path.join(project,'.ceos-runs')),false);
+});
+
+test('continue discovers source-bound art progress and keeps it across repeated inspection',t=>{
+  const project=setup(t);
+  fs.appendFileSync(path.join(project,'.gitignore'),'artifacts/\n');
+  git(project,'add','.gitignore');
+  git(project,'commit','-m','ignore evidence fixtures');
+  const dependency=Buffer.from('{"scene":"S24"}\n');
+  const dependencyPath=path.join(project,'narrative','graph.json');
+  fs.mkdirSync(path.dirname(dependencyPath),{recursive:true});
+  fs.writeFileSync(dependencyPath,dependency);
+  const plan=JSON.stringify({schemaVersion:1,summary:{productionPairsPlanned:25,plannedPngFiles:50},
+    sourceHashes:{'narrative/graph.json':sha256(dependency)}},null,2)+'\n';
+  fs.mkdirSync(path.join(project,'artifacts'),{recursive:true});
+  fs.writeFileSync(path.join(project,'artifacts','progress-plan.json'),plan);
+  fs.writeFileSync(path.join(project,'artifacts','art-progress-index.json'),JSON.stringify({
+    schemaVersion:1,
+    plan:{path:'artifacts/progress-plan.json',sha256:sha256(plan)},
+    batches:[]
+  },null,2)+'\n');
+  git(project,'add','narrative/graph.json');
+  git(project,'commit','-m','lock progress dependency');
+  const run=createRun(project,'production-art',{scope:{
+    target:'planned art',inScope:['S24'],outOfScope:['release'],
+    acceptanceContract:'art accepted',mutationBoundary:'assets only'
+  },capabilities}).run;
+  const first=planContinuation(project,{mode:'inspect'});
+  const second=planContinuation(project,{mode:'inspect'});
+  assert.equal(first.status,'READY_FOR_CODEX');
+  assert.equal(first.progress.status,'PASS_ART_PROGRESS_REVALIDATED');
+  assert.equal(first.progress.plannedPairs,25);
+  assert.equal(first.progress.acceptedPairs,0);
+  assert.equal(first.progress.remainingPairs,25);
+  assert.equal(first.progress.indexPath,'artifacts/art-progress-index.json');
+  assert.deepEqual(second.progress,first.progress);
+  assert.equal(first.runId,run.runId);
+});
+
+test('continue blocks a damaged source-bound ledger before it can be claimed',t=>{
+  const project=setup(t);
+  fs.appendFileSync(path.join(project,'.gitignore'),'artifacts/\n');
+  git(project,'add','.gitignore');
+  git(project,'commit','-m','ignore progress evidence fixtures');
+  fs.mkdirSync(path.join(project,'artifacts','production-art'),{recursive:true});
+  fs.writeFileSync(path.join(project,'artifacts','production-art','acceptance-ledger.json'),'{}\n');
+  const run=createRun(project,'production-art',{scope:{target:'art',inScope:['tracked.txt'],outOfScope:['release'],acceptanceContract:'accepted art',mutationBoundary:'tracked.txt'},capabilities});
+  const plan=planContinuation(project,{mode:'guided'});
+  assert.equal(plan.status,'BLOCKED_ART_PROGRESS');
+  assert.equal(plan.executable,false);
+  assert.equal(plan.progress.pipeline,'production-art');
+  assert.equal(resumeRun(project,run.run.runId).integrity.ok,true);
+  assert.equal(plan.action.kind,'RESTORE_SOURCE_BOUND_PROGRESS');
+  assert.equal(fs.existsSync(path.join(project,'.ceos-runs','.continue-claims')),false);
 });
 
 test('continue deterministically returns one next action without progressing the run',t=>{
@@ -164,7 +291,7 @@ test('explicit run reference cannot escape the project run directory',t=>{
   assert.equal(external.executable,false);
 });
 
-function novelRecoveryFixture(t,{receiptContract=false}={}) {
+function novelRecoveryFixture(t,{receiptContract=false,legacy=true}={}) {
   const project=setup(t);
   fs.mkdirSync(path.join(project,'config'));
   fs.mkdirSync(path.join(project,'narrative'));
@@ -209,11 +336,40 @@ function novelRecoveryFixture(t,{receiptContract=false}={}) {
       schemaVersion:1,requiredExactLines:historicalLines,sourceEvidence:'historical-receipt.txt'
     }}:{})
   });
+  // Historical fixture: pre-deferred-binding runs were irrevocably pinned to
+  // their parent at create time. Migration must not reinterpret them.
+  if (legacy) {
+    const originalRunFile=path.join(original.runDir,'run.json');
+    const historical=JSON.parse(fs.readFileSync(originalRunFile,'utf8'));
+    historical.producerBindingMode=null;
+    historical.producerParentSessionId='parent-old';
+    fs.writeFileSync(originalRunFile,JSON.stringify(historical,null,2)+'\n');
+  }
   recordCheckpoint(project,original.run.runId,{stage:'INVENTORIED',artifacts:['canon.json']});
   recordCheckpoint(project,original.run.runId,{stage:'CANON_READY',artifacts:['canon.json']});
   assert.equal(resumeRun(project,original.run.runId).run.nextStage,'GENERATING');
   return {project,original:original.run.runId,writeContext};
 }
+
+test('deferred-binding run survives Codex restart before generation without a recovery run',t=>{
+  const x=novelRecoveryFixture(t,{legacy:false});
+  x.writeContext('parent-new');
+  const result=recoverContinuation(x.project);
+  assert.equal(result.status,'READY_FOR_CODEX',JSON.stringify(result));
+  assert.equal(result.runId,x.original);
+  assert.equal(resumeRun(x.project,x.original).run.producerBindingMode,'CURRENT_TURN');
+  assert.equal(resumeRun(x.project,x.original).run.producerParentSessionId,null);
+  assert.equal(fs.existsSync(path.join(x.project,'.ceos-runs','.continue-recoveries')),false);
+});
+
+test('deferred-binding preparation remains inspectable without UserPromptSubmit',t=>{
+  const x=novelRecoveryFixture(t,{legacy:false});
+  fs.rmSync(path.join(process.env.CODEX_HOME,'ceos','runtime','current-turn.json'),{force:true});
+  const result=planContinuation(x.project,{mode:'inspect'});
+  assert.equal(result.status,'READY_FOR_CODEX',JSON.stringify(result));
+  assert.equal(result.stage,'GENERATING');
+  assert.equal(result.runId,x.original);
+});
 
 test('normal continue performs evidence-pinned linked recovery and never rewrites its source run',t=>{
   const x=novelRecoveryFixture(t);

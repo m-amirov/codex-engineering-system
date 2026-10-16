@@ -5,7 +5,8 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
-import { createRun,recordCheckpoint } from '../src/execution-engine.mjs';
+import { createRun, recordCheckpoint, refreshRunCapabilities } from '../src/execution-engine.mjs';
+import { beginCapabilityChallenge, respondCapabilityChallenge } from '../src/capability-attestation.mjs';
 import { encodeProductionPng } from '../src/art-output-gate.mjs';
 
 function setup(t) {
@@ -28,7 +29,7 @@ function setup(t) {
   write();
   return {root,home,parent,child,trace,write};
 }
-function createNovel(t) {
+function createNovel(t, { attest = true } = {}) {
   const x=setup(t), game=path.join(x.root,'game');
   fs.mkdirSync(path.join(game,'config'),{recursive:true});
   fs.mkdirSync(path.join(game,'narrative'),{recursive:true});
@@ -52,6 +53,17 @@ function createNovel(t) {
   fs.writeFileSync(path.join(game,'evidence.json'),'{}');
   recordCheckpoint(game,run.run.runId,{stage:'INVENTORIED',artifacts:['evidence.json']});
   recordCheckpoint(game,run.run.runId,{stage:'CANON_READY',artifacts:['evidence.json']});
+  if (attest) {
+    const challenge=beginCapabilityChallenge(game,run.run.runId,{codexHome:x.home});
+    const answer=respondCapabilityChallenge(game,run.run.runId,{
+      codexHome:x.home,challengeId:challenge.challengeId,nonce:challenge.nonce,
+      presence:'PRESENT',serviceAvailability:'UNKNOWN'
+    });
+    refreshRunCapabilities(game,run.run.runId,{
+      ...caps,imageGeneration:{...caps.imageGeneration,
+        attestationFile:answer.file,trustScope:'run-session-turn'}
+    });
+  }
   return {...x,game,runId:run.run.runId,run};
 }
 function generatedOutput(game) {
@@ -102,7 +114,8 @@ test('untrusted external files, missing or corrupt rollouts fail closed',t=>{
 test('new narrative production-art checkpoint refuses missing and generic child trace',t=>{
   const x=createNovel(t);
   assert.equal(x.run.run.nativeProducerRouteRequired,true);
-  assert.equal(x.run.run.producerParentSessionId,x.parent);
+  assert.equal(x.run.run.producerParentSessionId,null);
+  assert.equal(x.run.run.producerBindingMode,'CURRENT_TURN');
   const out=generatedOutput(x.game);
   assert.throws(()=>recordCheckpoint(x.game,x.runId,{
     stage:'GENERATING',artifacts:['evidence.json'],metadata:out
@@ -119,6 +132,63 @@ test('new narrative production-art checkpoint refuses missing and generic child 
   const dir=path.join(x.run.runDir,'checkpoints');
   const cp=JSON.parse(fs.readFileSync(path.join(dir,fs.readdirSync(dir).find(x=>x.endsWith('-generating.json'))),'utf8'));
   assert.equal(cp.metadata.producerRouteGate.status,'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED');
+});
+
+
+test('new narrative art run can reach CANON_READY without any trusted session at creation',t=>{
+  const x=createNovel(t,{attest:false});
+  assert.equal(x.run.run.producerParentSessionId,null);
+  assert.equal(x.run.run.producerBindingMode,'CURRENT_TURN');
+  const outputs=generatedOutput(x.game);
+  assert.throws(()=>recordCheckpoint(x.game,x.runId,{
+    stage:'GENERATING',artifacts:['evidence.json'],
+    metadata:{...outputs,producerTraceFile:x.trace}
+  }),/BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED/);
+});
+
+test('generation refuses old capability after session or turn changes even with a valid Terra trace',t=>{
+  const x=createNovel(t);
+  const outputs=generatedOutput(x.game);
+  const sessionFile=path.join(x.home,'ceos','runtime','current-session.json');
+  const turnFile=path.join(x.home,'ceos','runtime','current-turn.json');
+  const priorSession=fs.readFileSync(sessionFile,'utf8');
+  const priorTurn=fs.readFileSync(turnFile,'utf8');
+  fs.writeFileSync(turnFile,JSON.stringify({
+    sessionId:x.parent,turnId:'new-turn',cwd:x.game,observedAt:new Date().toISOString()
+  }));
+  assert.throws(()=>recordCheckpoint(x.game,x.runId,{
+    stage:'GENERATING',artifacts:['evidence.json'],
+    metadata:{...outputs,producerTraceFile:x.trace}
+  }),/BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED/);
+  fs.writeFileSync(turnFile,priorTurn);
+  fs.writeFileSync(sessionFile,JSON.stringify({
+    sessionId:'unrelated-parent',cwd:x.game,observedAt:new Date().toISOString()
+  }));
+  fs.writeFileSync(turnFile,JSON.stringify({
+    sessionId:'unrelated-parent',turnId:'unrelated-turn',cwd:x.game,observedAt:new Date().toISOString()
+  }));
+  assert.throws(()=>recordCheckpoint(x.game,x.runId,{
+    stage:'GENERATING',artifacts:['evidence.json'],
+    metadata:{...outputs,producerTraceFile:x.trace}
+  }),/BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED/);
+  fs.writeFileSync(sessionFile,priorSession);
+  fs.writeFileSync(turnFile,priorTurn);
+  // Live challenge alone cannot authorize a child from another parent.
+  x.write({parentId:'unrelated-parent'});
+  assert.throws(()=>recordCheckpoint(x.game,x.runId,{
+    stage:'GENERATING',artifacts:['evidence.json'],
+    metadata:{...outputs,producerTraceFile:x.trace}
+  }),/BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/);
+  x.write();
+  const success=recordCheckpoint(x.game,x.runId,{
+    stage:'GENERATING',artifacts:['evidence.json'],
+    metadata:{...outputs,producerTraceFile:x.trace}
+  });
+  assert.equal(success.integrity.ok,true);
+  const checkpointDir=path.join(x.run.runDir,'checkpoints');
+  const generatingFile=fs.readdirSync(checkpointDir).find(name=>name.endsWith('-generating.json'));
+  const evidence=JSON.parse(fs.readFileSync(path.join(checkpointDir,generatingFile),'utf8'));
+  assert.ok(evidence.artifacts.some(a=>a.path.endsWith('image-generation.json')));
 });
 
 test('generic production-art runs are unaffected by novel-only routing gate',t=>{

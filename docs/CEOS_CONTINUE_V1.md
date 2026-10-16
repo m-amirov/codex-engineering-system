@@ -15,10 +15,14 @@ nor a substitute for the existing run/checkpoint/verdict engine.
 - ceos continue --mode inspect --json
   - Read-only explicit inspection mode. Inspect only; does not create runs, lock, refresh,
     reopen, check out Git, generate assets or accept evidence.
+- ceos continue --progress-index <path> --mode inspect --json
+  - Optional explicit locator for a project-owned source-bound art-progress index or
+    acceptance ledger. The default `continue` discovers one under `artifacts/`.
 - ceos continue [RUN_ID] --json
-  - Guided default. Normally returns one bounded host action. For an eligible
-    stale production-art parent session at GENERATING, creates a linked new
-    run automatically, preserving the original run and binding a fresh parent.
+  - Guided default. Normally returns one bounded host action plus the current
+    source-bound project progress. An eligible legacy pinned-parent production-art
+    run may create a linked recovery; a new `CURRENT_TURN` run never does so just
+    because the Codex session changed.
 - ceos continue RUN_ID --mode guided --json
   - Equivalent explicit mode; any new work remains host-executed.
 - ceos continue RUN_ID --mode auto --json
@@ -41,9 +45,12 @@ from Node alone, and the CLI never pretends to.
 
 ## Deterministic behavior
 
-A single active run is selected automatically. Multiple active runs require
-an explicit RUN_ID; if only terminal runs remain, the persisted latest run
-is inspected. Existing run checkpoints are not inferred from prompts.
+A single active run is selected automatically. If a source-bound production-art
+ledger is present, unrelated active pipelines are not silently selected; CEOS
+returns `BLOCKED_NO_ACTIVE_PIPELINE_RUN` with the project progress and the
+concrete missing action. Multiple matching active runs require an explicit
+RUN_ID; if only terminal runs remain, the persisted latest run is inspected.
+Existing run checkpoints are not inferred from prompts.
 
 Expected statuses:
 - SESSION_RECOVERY_AVAILABLE: inspect/dry-run identified an eligible old
@@ -54,6 +61,12 @@ Expected statuses:
   fail-closed recovery diagnostics; no fallback to reusing the old parent.
 - READY_FOR_CODEX: a current stage with one actionable, **unexecuted** unit.
 - BLOCKED_AMBIGUOUS_RUNS / BLOCKED_NO_RUN / BLOCKED_RUN_UNREADABLE.
+- BLOCKED_AMBIGUOUS_PROGRESS / BLOCKED_NO_ACTIVE_PIPELINE_RUN: the project
+  progress locator or its execution cursor needs a concrete repair/selection;
+  accepted evidence is not regenerated.
+- BLOCKED_ART_PROGRESS: a selected progress ledger was found but its
+  source-bound evidence no longer revalidates. Continue is non-claimable until
+  the named files are restored or the explicit evidence path is repaired.
 - BLOCKED_INTEGRITY / BLOCKED_GIT_PREFLIGHT / BLOCKED_DIRTY_WORKTREE.
 - BLOCKED_ALREADY_CLAIMED / BLOCKED_STALE_ACTION.
 - RECOVERY_CHECK_REQUIRED: existing execution engine allows a type of
@@ -70,7 +83,7 @@ claim or silently seize a stale one. Normal inspection never writes it.
 
 ## Session-only linked recovery
 
-Automatic recovery is narrow: narrative production-art in its first cycle,
+Automatic recovery is narrow and legacy-only: narrative production-art in its first cycle,
 waiting at GENERATING, with a mismatched parent SessionStart marker and a
 fresh same-session UserPromptSubmit marker for the exact project worktree.
 A terminal BLOCKED run qualifies only if it specifically stopped for

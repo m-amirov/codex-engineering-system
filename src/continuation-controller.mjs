@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { resumeRun, inspectBlockedRunRecovery, createLinkedSessionRecoveryRun, EXECUTION_PIPELINES } from './execution-engine.mjs';
 import { readRuntimeContext } from './capability-attestation.mjs';
+import { discoverArtProgress, inspectArtProgress } from './art-progress.mjs';
 
 const MODES = new Set(['inspect', 'guided', 'auto']);
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -55,13 +56,13 @@ function availableRuns(projectDir) {
     try {
       if (!fs.statSync(file).isFile()) continue;
       const run = read(file);
-      if (run.runId === name) runs.push({id:name, verdict:run.verdict ?? null, state:run.state, updatedAt:run.updatedAt ?? '', linkedFrom:run.linkedRecovery?.sourceRunId ?? null});
+      if (run.runId === name) runs.push({id:name, pipeline:run.pipeline, verdict:run.verdict ?? null, state:run.state, updatedAt:run.updatedAt ?? '', linkedFrom:run.linkedRecovery?.sourceRunId ?? null});
     } catch { /* damaged runs are not silently selected */ }
   }
   return runs.sort((a,b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }
 
-function resolveSelection(projectDir, runRef) {
+function resolveSelection(projectDir, runRef, {preferredPipeline = null} = {}) {
   if (runRef && runRef !== 'latest') {
     if (typeof runRef !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(runRef) || runRef.includes('..'))
       return {status:'BLOCKED_RUN_REF_INVALID'};
@@ -72,7 +73,13 @@ function resolveSelection(projectDir, runRef) {
   const runs = availableRuns(projectDir);
   if (!runs.length) return {status:'BLOCKED_NO_RUN'};
   const superseded = new Set(runs.map(x=>x.linkedFrom).filter(Boolean));
-  const active = runs.filter(x => !TERMINAL.has(x.verdict ?? x.state) && !superseded.has(x.id));
+  const allActive = runs.filter(x => !TERMINAL.has(x.verdict ?? x.state) && !superseded.has(x.id));
+  // A project-specific progress view must never fall back to an unrelated
+  // audit run or to a terminal historical run. Starting a fresh scoped run
+  // is a separate, authorized action.
+  if (preferredPipeline && !allActive.some(x => x.pipeline === preferredPipeline))
+    return {status:'BLOCKED_NO_ACTIVE_PIPELINE_RUN',pipeline:preferredPipeline,candidates:allActive.map(x=>x.id)};
+  const active = preferredPipeline ? allActive.filter(x => x.pipeline === preferredPipeline) : allActive;
   if (active.length > 1) return {status:'BLOCKED_AMBIGUOUS_RUNS', candidates:active.map(x=>x.id)};
   if (active.length === 1) return {id:active[0].id};
   const latestPath = path.join(currentRoot(projectDir),'latest.json');
@@ -81,6 +88,34 @@ function resolveSelection(projectDir, runRef) {
     if (runs.some(x => x.id === latest.runId) && !superseded.has(latest.runId)) return {id:latest.runId};
   } catch { /* select newest real run */ }
   return {id:runs[0].id};
+}
+
+function projectProgress(projectDir, requestedPath) {
+  let discovered;
+  try { discovered = discoverArtProgress(projectDir, requestedPath); }
+  catch (error) { return {status:'BLOCKED_PROGRESS_DISCOVERY',problems:[error.message]}; }
+  if (discovered.candidates.length > 1 && !discovered.indexPath)
+    return {status:'BLOCKED_AMBIGUOUS_PROGRESS',candidates:discovered.candidates};
+  if (!discovered.indexPath) return null;
+  const result=inspectArtProgress(projectDir,discovered.indexPath);
+  return {
+    indexPath:discovered.indexPath,
+    // Every file handled by inspectArtProgress is production-art evidence.
+    // Its basename is not a reliable classifier (art-progress-index.json).
+    pipeline:'production-art',
+    status:result.status,
+    plannedPairs:result.plannedPairs,
+    acceptedPairs:result.acceptedPairs,
+    remainingPairs:result.remainingPairs,
+    acceptedPng:result.acceptedPng,
+    remainingPng:result.remainingPng,
+    declaredAcceptedPairs:result.declaredAcceptedPairs ?? null,
+    declaredAcceptedPng:result.declaredAcceptedPng ?? null,
+    finalEpisodeAcceptance:result.finalEpisodeAcceptance,
+    releaseReady:result.releaseReady,
+    problems:(result.problems ?? []).slice(0,20),
+    acceptanceSource:result.acceptanceSource ?? null
+  };
 }
 
 function taskFor(run) {
@@ -144,19 +179,39 @@ function makeBlocked(status, extra = {}) {
  * Determine exactly one next admissible work unit. Does not perform host-only
  * semantic steps, advance checkpoints, mutate Git or replay Image Gen calls.
  */
-export function planContinuation(projectDir, {runRef, mode='inspect'}={}) {
+export function planContinuation(projectDir, {runRef, mode='inspect', progressIndex=null}={}) {
   if (!MODES.has(mode)) throw new Error('Invalid continue mode');
   const project = path.resolve(projectDir);
-  const selection = resolveSelection(project,runRef);
-  if (selection.status) return makeBlocked(selection.status, {project, mode, ...(selection.candidates ? {candidates:selection.candidates} : {})});
+  const progress=projectProgress(project,progressIndex);
+  if (progress && ['BLOCKED_PROGRESS_DISCOVERY','BLOCKED_AMBIGUOUS_PROGRESS'].includes(progress.status))
+    return makeBlocked(progress.status,{project,mode,progress});
+  // Evidence repair is the first actionable step even if no production-art
+  // run exists. Inspecting never creates a run or pretends the old PASS is
+  // fresh; the host restores actual files and retries this same command.
+  if (progress?.status === 'BLOCKED_ART_PROGRESS')
+    return makeBlocked('BLOCKED_ART_PROGRESS',{project,mode,progress,
+      action:{kind:'RESTORE_SOURCE_BOUND_PROGRESS',risk:'R0',
+        instruction:'Restore missing or mismatched source-bound artifacts identified by progress.problems, then revalidate. Do not claim, regenerate accepted scenes or create recovery runs.'}});
+  const selection = resolveSelection(project,runRef,{preferredPipeline:progress?.pipeline ?? null});
+  if (['BLOCKED_NO_ACTIVE_PIPELINE_RUN','BLOCKED_NO_RUN'].includes(selection.status) && progress?.status === 'PASS_ART_PROGRESS_REVALIDATED' &&
+      (!runRef || runRef === 'latest'))
+    return makeBlocked('NEEDS_SCOPED_PRODUCTION_RUN',{project,mode,progress,
+      pipeline:'production-art',candidates:selection.candidates ?? [],
+      action:{kind:'PREPARE_SCOPED_PRODUCTION_RUN',risk:'R0',
+        instruction:'Source-bound progress is valid, but no active production-art run exists. Define the remaining bounded scope and obtain normal authorization to create ONE new production-art run; preserve all accepted batches. No automatic run creation or Image Gen invocation.'}});
+  if (selection.status) return makeBlocked(selection.status, {project, mode, ...(selection.candidates ? {candidates:selection.candidates} : {}), ...(selection.pipeline ? {pipeline:selection.pipeline} : {}), ...(progress ? {progress} : {})});
   let resumed;
   try { resumed = resumeRun(project, selection.id); }
   catch (error) { return makeBlocked('BLOCKED_RUN_UNREADABLE', {project, mode, runId:selection.id, detail:error.message}); }
   const run=resumed.run, git=gitReadOnly(project);
   const summary={project,runId:run.runId,pipeline:run.pipeline,stage:run.nextStage,verdict:run.verdict,
     scopeSha256:run.scopeSha256,cycle:run.cycle,checkpointCount:run.checkpointCount,
-    maxCycles:run.maxCycles,git,mode};
+    maxCycles:run.maxCycles,git,mode,...(progress ? {progress} : {})};
   if (!resumed.integrity?.ok) return makeBlocked('BLOCKED_INTEGRITY',{...summary,integrity:resumed.integrity});
+  if (progress?.pipeline && run.pipeline !== progress.pipeline)
+    return makeBlocked('BLOCKED_PROGRESS_PIPELINE_MISMATCH',{...summary,
+      action:{kind:'SELECT_MATCHING_PIPELINE',risk:'R0',
+        instruction:'The selected run belongs to a different pipeline than this project art-progress view. Select an active production-art run explicitly or prepare a new authorized scoped run.'}});
   const sessionRecovery=inspectSessionRecovery(project,run,git);
   if (sessionRecovery) {
     const base={...summary,integrity:resumed.integrity,executable:false,
@@ -169,9 +224,15 @@ export function planContinuation(projectDir, {runRef, mode='inspect'}={}) {
         sourceScopeSha256:run.scopeSha256,sourceCheckpointCount:run.checkpointCount},
       hostExecutionRequired:false};
   }
+  if (progress?.status === 'BLOCKED_ART_PROGRESS')
+    return makeBlocked('BLOCKED_ART_PROGRESS',{...summary,
+      action:{kind:'RESTORE_SOURCE_BOUND_PROGRESS',risk:'R0',
+        instruction:'Restore the referenced source-bound files and re-run continue; do not claim acceptance or release from a blocked ledger.'}});
   const action=taskFor(run);
+  if (progress?.status === 'PASS_ART_PROGRESS_REVALIDATED')
+    action.instruction += ` Existing accepted progress: ${progress.acceptedPairs}/${progress.plannedPairs} pairs (${progress.acceptedPng} PNGs); continue with the remaining scope without regenerating accepted pairs.`;
   const actionId=digest(JSON.stringify({runId:run.runId,scope:run.scopeSha256,head:git.head,
-    cycle:run.cycle,checkpointCount:run.checkpointCount,nextStage:run.nextStage,kind:action.kind}));
+    cycle:run.cycle,checkpointCount:run.checkpointCount,nextStage:run.nextStage,kind:action.kind,progress}));
   const status=action.kind === 'RUN_COMPLETE' ? 'DONE'
     : action.kind === 'STOP_TERMINAL' ? 'STOP_TERMINAL'
     : action.kind === 'BLOCKED_UNKNOWN_STAGE' ? 'BLOCKED_UNKNOWN_STAGE'
@@ -193,9 +254,9 @@ function leasePath(projectDir,runId) {
 }
 
 /** An atomic single-work-unit claim. Never executes a task or advances CEOS state. */
-export function claimContinuation(projectDir, {runRef,mode='guided',expectedActionId}={}) {
+export function claimContinuation(projectDir, {runRef,mode='guided',expectedActionId,progressIndex=null}={}) {
   if (mode === 'inspect') throw new Error('Inspect cannot claim work');
-  const plan=planContinuation(projectDir,{runRef,mode});
+  const plan=planContinuation(projectDir,{runRef,mode,progressIndex});
   if (!plan.executable) return plan;
   if (!expectedActionId || plan.action.id !== expectedActionId)
     return makeBlocked('BLOCKED_STALE_ACTION',{expectedActionId,actualActionId:plan.action.id});
@@ -208,7 +269,7 @@ export function claimContinuation(projectDir, {runRef,mode='guided',expectedActi
     if (error.code !== 'EEXIST') throw error;
     return makeBlocked('BLOCKED_ALREADY_CLAIMED',{runId:plan.runId,actionId:plan.action.id});
   }
-  const refreshed=planContinuation(projectDir,{runRef:plan.runId,mode});
+  const refreshed=planContinuation(projectDir,{runRef:plan.runId,mode,progressIndex});
   if (refreshed.action?.id !== plan.action.id || !refreshed.executable) {
     try { fs.unlinkSync(file); } catch {}
     return makeBlocked('BLOCKED_ACTION_CHANGED_DURING_CLAIM',{runId:plan.runId});
@@ -234,9 +295,9 @@ export function releaseContinuation(projectDir,{runRef,token}={}) {
  * Guided/auto entrypoint. Only a fresh matching Codex hook context permits a
  * session-only recovery; inspect and dry-run must call planContinuation instead.
  */
-export function recoverContinuation(projectDir,{runRef,mode='guided'}={}) {
-  if (!['guided','auto'].includes(mode)) return planContinuation(projectDir,{runRef,mode});
-  const plan=planContinuation(projectDir,{runRef,mode});
+export function recoverContinuation(projectDir,{runRef,mode='guided',progressIndex=null}={}) {
+  if (!['guided','auto'].includes(mode)) return planContinuation(projectDir,{runRef,mode,progressIndex});
+  const plan=planContinuation(projectDir,{runRef,mode,progressIndex});
   if (plan.status!=='SESSION_RECOVERY_AVAILABLE') return plan;
   const base=currentRoot(projectDir);
   const folder=path.join(base,'.continue-recoveries');
@@ -254,11 +315,11 @@ export function recoverContinuation(projectDir,{runRef,mode='guided'}={}) {
       const existing=read(record);
       if(existing.sourceRunId!==plan.runId || !existing.recoveryRunId)
         return makeBlocked('BLOCKED_RECOVERY_INDEX_CORRUPT',{runId:plan.runId});
-      return planContinuation(projectDir,{runRef:existing.recoveryRunId,mode});
+      return planContinuation(projectDir,{runRef:existing.recoveryRunId,mode,progressIndex});
     }
     // Re-evaluate under the exclusive recovery lock; old action or Git HEAD
     // must not change between planning and creation.
-    const current=planContinuation(projectDir,{runRef:plan.runId,mode});
+    const current=planContinuation(projectDir,{runRef:plan.runId,mode,progressIndex});
     if(current.status!==plan.status ||
         current.recovery?.currentParentSessionId!==plan.recovery.currentParentSessionId ||
         current.checkpointCount!==plan.checkpointCount ||
@@ -277,7 +338,7 @@ export function recoverContinuation(projectDir,{runRef,mode='guided'}={}) {
       recoveryRunId:linked.run.runId,sourceHead:plan.git.head,
       sourceScopeSha256:plan.scopeSha256,recordedAt:new Date().toISOString()};
     fs.writeFileSync(record,JSON.stringify(index,null,2)+'\n',{flag:'wx',mode:0o600});
-    const resumed=planContinuation(projectDir,{runRef:linked.run.runId,mode});
+    const resumed=planContinuation(projectDir,{runRef:linked.run.runId,mode,progressIndex});
     return {...resumed,recovery:{...index,status:'LINKED_SESSION_RECOVERY_CREATED',
       requiresFreshCapabilityChallenge:true}};
   } finally {
