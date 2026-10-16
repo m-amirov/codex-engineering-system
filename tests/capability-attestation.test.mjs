@@ -230,13 +230,14 @@ test('expired bounded session capability requires a fresh challenge even when pa
     codexHome,challengeId:challenge.challengeId,nonce:challenge.nonce,
     presence:'PRESENT'
   });
-  const attestationFile=path.join(run.runDir,'capability-attestation','image-generation.json');
-  const stored=JSON.parse(fs.readFileSync(attestationFile,'utf8'));
-  stored.observedAt=new Date(Date.now()-31*60*1000).toISOString();
-  fs.writeFileSync(attestationFile,JSON.stringify(stored,null,2)+'\n');
-  const observed=readRunCapabilityAttestation(project,run.run.runId,{codexHome});
-  assert.equal(observed.valid,false);
-  assert.equal(observed.reason,'capability attestation expired');
+  const realtime=Date.now;
+  try {
+    const future=realtime()+31*60*1000;
+    Date.now=()=>future;
+    const observed=readRunCapabilityAttestation(project,run.run.runId,{codexHome});
+    assert.equal(observed.valid,false);
+    assert.equal(observed.reason,'capability attestation expired');
+  } finally { Date.now=realtime; }
 });
 
 test('a challenge cannot be consumed after a turn switch even within the same session',()=>{
