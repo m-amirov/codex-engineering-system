@@ -277,6 +277,18 @@ test('parent mismatch terminal block is eligible, missing art output is not',t=>
   assert.equal(recoverContinuation(y.project).status,'NEEDS_RECOVERY_DECISION');
 });
 
+test('explicit native parent mismatch stop code recovers without guessing other blocked stages',t=>{
+  const x=novelRecoveryFixture(t);
+  recordCheckpoint(x.project,x.original,{stage:'GENERATING',artifacts:['canon.json'],
+    outcome:'BLOCKED',note:'Native agent parent mismatch'});
+  const file=path.join(x.project,'.ceos-runs',x.original,'run.json');
+  const old=JSON.parse(fs.readFileSync(file,'utf8'));
+  old.stopReason={code:'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH',reason:'Native agent parent mismatch'};
+  fs.writeFileSync(file,JSON.stringify(old,null,2)+'\\n');
+  x.writeContext('parent-new');
+  assert.equal(recoverContinuation(x.project).status,'READY_FOR_CODEX');
+});
+
 test('changed Git source, missing canon or damaged recovery provenance block',t=>{
   const x=novelRecoveryFixture(t);
   x.writeContext('parent-new');
