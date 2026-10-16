@@ -59,6 +59,21 @@ visual acceptance. Inspect and approve portrait and desktop runtime pixels
 **separately**, checking character identity, action, props and crop. Read
 `docs/NARRATIVE_DUAL_FORMAT_ART.md` before preparing future episode batches.
 
+## Native Image Gen output delivery
+
+Before spending a candidate, confirm that the native host can provide actual
+locally accessible PNG bytes or a documented binary-save route. The tool
+returning a rendered image in chat does **not** establish a workspace file.
+If the host supplies a real local PNG, copy it safely into the game with
+`ceos art-output-import --project ROOT --source ABSOLUTE_LOCAL_PNG --target PROJECT_RELATIVE_PNG --sha256 FULL_SHA256 --kind background --width W --height H --json`.
+Require `PASS_ART_OUTPUT_TRANSPORT` and verified target bytes, **then** invoke
+`art-output-verify`. Import does not generate, repair or accept an image.
+If no original local PNG/bytes are accessible, stop with a genuine transport
+block and preserve the native output reference/attempt record for recovery;
+do not synthesize a file or regenerate merely because copying failed.
+A missing output file is not a semantic REWORK and is not evidence to
+automatically reopen a terminal production-art run.
+
 ## Mandatory source-image output gate (0.5.12)
 
 **Immediately after EACH native Image Gen output, before requesting the next image**, save the actual PNG to the project and run:
