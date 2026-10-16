@@ -193,7 +193,7 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
       action:{kind:'RESTORE_SOURCE_BOUND_PROGRESS',risk:'R0',
         instruction:'Restore missing or mismatched source-bound artifacts identified by progress.problems, then revalidate. Do not claim, regenerate accepted scenes or create recovery runs.'}});
   const selection = resolveSelection(project,runRef,{preferredPipeline:progress?.pipeline ?? null});
-  if (selection.status === 'BLOCKED_NO_ACTIVE_PIPELINE_RUN' && progress?.status === 'PASS_ART_PROGRESS_REVALIDATED' &&
+  if (['BLOCKED_NO_ACTIVE_PIPELINE_RUN','BLOCKED_NO_RUN'].includes(selection.status) && progress?.status === 'PASS_ART_PROGRESS_REVALIDATED' &&
       (!runRef || runRef === 'latest'))
     return makeBlocked('NEEDS_SCOPED_PRODUCTION_RUN',{project,mode,progress,
       pipeline:'production-art',candidates:selection.candidates ?? [],
