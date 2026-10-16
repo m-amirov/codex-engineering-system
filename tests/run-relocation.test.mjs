@@ -48,7 +48,7 @@ function setup(t) {
   originalRun.producerBindingMode='CURRENT_TURN';
   originalRun.nativeProducerRouteRequired=true;
   fs.writeFileSync(originalRunFile,JSON.stringify(originalRun,null,2)+'\n');
-  git(from,'worktree','add','--detach',to,'HEAD');
+  git(from,'worktree','add','-b','stage9-test',to,'HEAD');
   fs.cpSync(path.join(from,'.ceos-runs'),path.join(to,'.ceos-runs'),{recursive:true});
   const moved=path.join(to,'.ceos-runs',run.runId,'run.json');
   return {from,to,id:run.runId,originalRunFile,moved,originalSha:sha(moved)};
