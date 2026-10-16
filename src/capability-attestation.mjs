@@ -220,5 +220,9 @@ export function readRunCapabilityAttestation(projectDir, runRef = 'latest', {
     return { valid: false, reason: 'challenge consumption/freshness mismatch', file, attestation: null };
   }
 
+  const age = Date.now() - Date.parse(attestation.observedAt ?? '');
+  if (!Number.isFinite(age) || age < 0 || age > MAX_ATTESTATION_AGE_MS) {
+    return { valid: false, reason: 'capability attestation expired', file, attestation: null };
+  }
   return { valid: true, reason: null, file, attestation };
 }
