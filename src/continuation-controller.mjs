@@ -208,6 +208,10 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
     scopeSha256:run.scopeSha256,cycle:run.cycle,checkpointCount:run.checkpointCount,
     maxCycles:run.maxCycles,git,mode,...(progress ? {progress} : {})};
   if (!resumed.integrity?.ok) return makeBlocked('BLOCKED_INTEGRITY',{...summary,integrity:resumed.integrity});
+  if (progress?.pipeline && run.pipeline !== progress.pipeline)
+    return makeBlocked('BLOCKED_PROGRESS_PIPELINE_MISMATCH',{...summary,
+      action:{kind:'SELECT_MATCHING_PIPELINE',risk:'R0',
+        instruction:'The selected run belongs to a different pipeline than this project art-progress view. Select an active production-art run explicitly or prepare a new authorized scoped run.'}});
   const sessionRecovery=inspectSessionRecovery(project,run,git);
   if (sessionRecovery) {
     const base={...summary,integrity:resumed.integrity,executable:false,
