@@ -112,8 +112,10 @@ function inspectSessionRecovery(project, run, git) {
       run.artMode !== 'NEW_GENERATION' || run.cycle !== 1 ||
       typeof run.producerParentSessionId !== 'string') return null;
   const parentMismatchBlocked = run.verdict === 'BLOCKED' &&
-    run.stopReason?.stage === 'GENERATING' &&
-    /BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/.test(String(run.stopReason.reason ?? ''));
+    (run.stopReason?.stage === 'GENERATING' ||
+     (!run.stopReason?.stage && run.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH')) &&
+    (run.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH' ||
+     /BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/.test(String(run.stopReason.reason ?? '')));
   if (!((run.verdict === null && run.nextStage === 'GENERATING') || parentMismatchBlocked))
     return null;
   const ctx=readRuntimeContext();
