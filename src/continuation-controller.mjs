@@ -212,21 +212,20 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
   const summary={project,runId:run.runId,pipeline:run.pipeline,stage:run.nextStage,verdict:run.verdict,
     scopeSha256:run.scopeSha256,cycle:run.cycle,checkpointCount:run.checkpointCount,
     maxCycles:run.maxCycles,git,mode,...(progress ? {progress} : {})};
-  if (!resumed.integrity?.ok) {
-    // A copied worktree may contain genuine checkpoints whose absolute paths
-    // still name the original checkout. Never rebind implicitly on inspect.
-    if (run.projectDir && path.resolve(run.projectDir)!==project) {
-      const relocation=inspectRunRelocation(project,run.runId);
-      if (relocation.status==='READY_FOR_EXPLICIT_RELOCATION')
-        return makeBlocked('NEEDS_EXPLICIT_RUN_RELOCATION',{...summary,
-          integrity:resumed.integrity,relocation,
-          action:{kind:'VERIFY_AND_RELOCATE_RUN',risk:'R1',
-            instruction:relocation.action}});
-      return makeBlocked('BLOCKED_RUN_RELOCATION',{...summary,
-        integrity:resumed.integrity,relocation});
-    }
-    return makeBlocked('BLOCKED_INTEGRITY',{...summary,integrity:resumed.integrity});
+  // A relocated run is not valid merely because its old absolute evidence
+  // paths still exist. Require explicit rebinding in all cases, even on a
+  // misleading integrity.ok=true from the original checkout.
+  if (run.projectDir && path.resolve(run.projectDir)!==project) {
+    const relocation=inspectRunRelocation(project,run.runId);
+    if (relocation.status==='READY_FOR_EXPLICIT_RELOCATION')
+      return makeBlocked('NEEDS_EXPLICIT_RUN_RELOCATION',{...summary,
+        integrity:resumed.integrity,relocation,
+        action:{kind:'VERIFY_AND_RELOCATE_RUN',risk:'R1',
+          instruction:relocation.action}});
+    return makeBlocked('BLOCKED_RUN_RELOCATION',{...summary,
+      integrity:resumed.integrity,relocation});
   }
+  if (!resumed.integrity?.ok) return makeBlocked('BLOCKED_INTEGRITY',{...summary,integrity:resumed.integrity});
   if (progress?.pipeline && run.pipeline !== progress.pipeline)
     return makeBlocked('BLOCKED_PROGRESS_PIPELINE_MISMATCH',{...summary,
       action:{kind:'SELECT_MATCHING_PIPELINE',risk:'R0',
