@@ -14,6 +14,9 @@ is a **Codex-host execution adapter**, not a separate model host or daemon.
 ## One action at a time
 
 1. In the project root, run: ceos continue --mode inspect --json
+   This is strictly read-only; if it reports SESSION_RECOVERY_AVAILABLE,
+   use a normal ceos continue --mode guided --json to link safely. Ordinary
+   ceos continue defaults to guided.
    If several active runs exist, select the correct run ID from the user's
    established task, not by guessing. For work run:
    ceos continue RUN_ID --mode guided --json
@@ -24,8 +27,10 @@ is a **Codex-host execution adapter**, not a separate model host or daemon.
    diverged, dirty or behind state unless a safe fast-forward is explicitly
    permitted. Preserve parallel worktrees.
 3. Respect BLOCKED, NEEDS_RECOVERY_DECISION, RECOVERY_CHECK_REQUIRED,
-   STOP_TERMINAL and DONE results. Planning does not reopen, create runs,
-   generate art or mark review PASS.
+   STOP_TERMINAL and DONE results. Inspect never creates runs. Guided/auto
+   may automatically create a linked session recovery only for verified
+   production-art stale-parent GENERATING, with pinned source/canon state.
+   Never try to evade the corresponding fail-closed recovery blocker.
 4. If READY_FOR_CODEX, claim the exact returned action:
    ceos continue RUN_ID --mode guided --claim --action-id ACTION_ID --json
    auto enables only already authorized host work, not new side effects.
@@ -46,6 +51,21 @@ is a **Codex-host execution adapter**, not a separate model host or daemon.
    transport/capability block or user-approval boundary.
 
 ## Recovery
+
+- SESSION_RECOVERY_AVAILABLE (inspect): the current trusted hook session
+  differs from the parent bound to an eligible production-art run. Run
+  ceos continue --mode guided --json; this creates one linked run with
+  immutable source evidence, then returns the next action. Do not manually
+  edit parent IDs, sessions, checkpoints or provenance. Confirm its new
+  run ID and linked source, then issue a fresh run/session/turn capability
+  challenge BEFORE generation. The old challenge and Terra trace do not
+  carry across runs. No host generator is invoked by the CLI.
+- BLOCKED_RECOVERY_* or BLOCKED_SESSION_CONTEXT_UNVERIFIED: stop and
+  diagnose stale hook markers, source HEAD drift, dirty worktree or lock.
+  Never bypass the gate to retry generation.
+- BLOCKED_ART_OUTPUT / ART_FILE_NOT_FOUND are NOT session recovery;
+  inspect the real producer output transport/persistence problem.
+
 
 - RECOVERY_CHECK_REQUIRED: verify that the external blocker truly changed
   (installed CEOS version, Web availability, producer route, capabilities
