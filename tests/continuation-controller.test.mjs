@@ -48,22 +48,22 @@ function cliRun(project, ...args) {
 
 function progressOnlyProject(t) {
   const project=setup(t);
-  fs.appendFileSync(path.join(project,'.gitignore'),'artifacts/\\n');
+  fs.appendFileSync(path.join(project,'.gitignore'),'artifacts/\n');
   git(project,'add','.gitignore');
   git(project,'commit','-m','ignore progress fixtures');
-  const depPath='narrative/graph.json',dep=Buffer.from('{"scene":"S24"}\\n');
+  const depPath='narrative/graph.json',dep=Buffer.from('{"scene":"S24"}\n');
   fs.mkdirSync(path.join(project,'narrative'),{recursive:true});
   fs.writeFileSync(path.join(project,depPath),dep);
   const planPath='artifacts/progress-plan.json';
   fs.mkdirSync(path.join(project,'artifacts'),{recursive:true});
   const plan=JSON.stringify({schemaVersion:1,summary:{
     productionPairsPlanned:25,plannedPngFiles:50
-  },sourceHashes:{[depPath]:sha256(dep)}},null,2)+'\\n';
+  },sourceHashes:{[depPath]:sha256(dep)}},null,2)+'\n';
   fs.writeFileSync(path.join(project,planPath),plan);
   const index='artifacts/art-progress-index.json';
   fs.writeFileSync(path.join(project,index),JSON.stringify({
     schemaVersion:1,plan:{path:planPath,sha256:sha256(plan)},batches:[]
-  },null,2)+'\\n');
+  },null,2)+'\n');
   git(project,'add',depPath);
   git(project,'commit','-m','lock art dependency');
   return {project,index,depPath};
@@ -144,7 +144,10 @@ test('continue discovers source-bound art progress and keeps it across repeated 
   },null,2)+'\n');
   git(project,'add','narrative/graph.json');
   git(project,'commit','-m','lock progress dependency');
-  const run=newRun(project);
+  const run=createRun(project,'production-art',{scope:{
+    target:'planned art',inScope:['S24'],outOfScope:['release'],
+    acceptanceContract:'art accepted',mutationBoundary:'assets only'
+  },capabilities}).run;
   const first=planContinuation(project,{mode:'inspect'});
   const second=planContinuation(project,{mode:'inspect'});
   assert.equal(first.status,'READY_FOR_CODEX');
@@ -168,7 +171,8 @@ test('continue blocks a damaged source-bound ledger before it can be claimed',t=
   const plan=planContinuation(project,{mode:'guided'});
   assert.equal(plan.status,'BLOCKED_ART_PROGRESS');
   assert.equal(plan.executable,false);
-  assert.equal(plan.runId,run.run.runId);
+  assert.equal(plan.progress.pipeline,'production-art');
+  assert.equal(resumeRun(project,run.run.runId).integrity.ok,true);
   assert.equal(plan.action.kind,'RESTORE_SOURCE_BOUND_PROGRESS');
   assert.equal(fs.existsSync(path.join(project,'.ceos-runs','.continue-claims')),false);
 });
