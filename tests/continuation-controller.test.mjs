@@ -45,6 +45,78 @@ function cliRun(project, ...args) {
     {cwd:project,encoding:'utf8'});
 }
 
+
+function progressOnlyProject(t) {
+  const project=setup(t);
+  fs.appendFileSync(path.join(project,'.gitignore'),'artifacts/\\n');
+  git(project,'add','.gitignore');
+  git(project,'commit','-m','ignore progress fixtures');
+  const depPath='narrative/graph.json',dep=Buffer.from('{"scene":"S24"}\\n');
+  fs.mkdirSync(path.join(project,'narrative'),{recursive:true});
+  fs.writeFileSync(path.join(project,depPath),dep);
+  const planPath='artifacts/progress-plan.json';
+  fs.mkdirSync(path.join(project,'artifacts'),{recursive:true});
+  const plan=JSON.stringify({schemaVersion:1,summary:{
+    productionPairsPlanned:25,plannedPngFiles:50
+  },sourceHashes:{[depPath]:sha256(dep)}},null,2)+'\\n';
+  fs.writeFileSync(path.join(project,planPath),plan);
+  const index='artifacts/art-progress-index.json';
+  fs.writeFileSync(path.join(project,index),JSON.stringify({
+    schemaVersion:1,plan:{path:planPath,sha256:sha256(plan)},batches:[]
+  },null,2)+'\\n');
+  git(project,'add',depPath);
+  git(project,'commit','-m','lock art dependency');
+  return {project,index,depPath};
+}
+
+test('valid project progress without any runs requests ONE explicit scoped production-art run',t=>{
+  const {project}=progressOnlyProject(t);
+  const first=planContinuation(project,{mode:'inspect'});
+  const second=planContinuation(project,{mode:'guided'});
+  assert.equal(first.status,'NEEDS_SCOPED_PRODUCTION_RUN');
+  assert.equal(first.executable,false);
+  assert.equal(first.action.kind,'PREPARE_SCOPED_PRODUCTION_RUN');
+  assert.equal(first.progress.pipeline,'production-art');
+  assert.equal(first.progress.status,'PASS_ART_PROGRESS_REVALIDATED');
+  assert.equal(first.progress.remainingPairs,25);
+  assert.equal(second.status,first.status);
+  assert.equal(recoverContinuation(project,{mode:'guided'}).status,first.status);
+  assert.equal(fs.existsSync(path.join(project,'.ceos-runs')),false);
+});
+
+test('corrupt source-bound progress takes priority over no active run or unrelated run',t=>{
+  const {project,depPath}=progressOnlyProject(t);
+  fs.appendFileSync(path.join(project,depPath),'drift');
+  const before=planContinuation(project,{mode:'inspect'});
+  assert.equal(before.status,'BLOCKED_ART_PROGRESS');
+  assert.equal(before.action.kind,'RESTORE_SOURCE_BOUND_PROGRESS');
+  assert.equal(before.executable,false);
+  const unrelated=newRun(project);
+  const after=planContinuation(project,{mode:'auto'});
+  assert.equal(after.status,'BLOCKED_ART_PROGRESS');
+  assert.equal(after.action.kind,'RESTORE_SOURCE_BOUND_PROGRESS');
+  assert.equal(after.progress.pipeline,'production-art');
+  assert.equal(claimContinuation(project,{mode:'auto',expectedActionId:'anything'}).status,
+    'BLOCKED_ART_PROGRESS');
+  assert.equal(resumeRun(project,unrelated.runId).integrity.ok,true);
+  assert.equal(fs.existsSync(path.join(project,'.ceos-runs','.continue-claims')),false);
+});
+
+test('valid art progress cannot select unrelated active or historical terminal pipeline',t=>{
+  const {project}=progressOnlyProject(t);
+  const unrelated=newRun(project);
+  const plan=planContinuation(project,{mode:'guided'});
+  assert.equal(plan.status,'NEEDS_SCOPED_PRODUCTION_RUN');
+  assert.deepEqual(plan.candidates,[unrelated.runId]);
+  assert.equal(planContinuation(project,{runRef:unrelated.runId}).status,
+    'BLOCKED_PROGRESS_PIPELINE_MISMATCH');
+  const evidence=path.join(project,'evidence.txt');
+  fs.writeFileSync(evidence,'blocked evidence');
+  recordCheckpoint(project,unrelated.runId,{stage:'EVIDENCE_COLLECTED',
+    artifacts:['evidence.txt'],outcome:'BLOCKED',note:'external transport unavailable'});
+  assert.equal(planContinuation(project).status,'NEEDS_SCOPED_PRODUCTION_RUN');
+});
+
 test('empty project provides precise read-only status, never creates a run',t=>{
   const project=setup(t);
   const plan=planContinuation(project);
