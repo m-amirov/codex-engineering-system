@@ -28,6 +28,10 @@ function setup(t) {
   git(from,'init');
   git(from,'config','user.name','CEOS Test');
   git(from,'config','user.email','ceos-test@example.org');
+  // Relocation validates exact bytes. Prevent Git for Windows autocrlf from
+  // changing the test JSON evidence during its worktree checkout.
+  git(from,'config','core.autocrlf','false');
+  fs.writeFileSync(path.join(from,'.gitattributes'),'*.json text eol=lf\n');
   fs.writeFileSync(path.join(from,'.gitignore'),'.ceos-runs/\n');
   fs.writeFileSync(path.join(from,'inventory.json'),'{"scene":"S24"}\n');
   fs.writeFileSync(path.join(from,'canon.json'),'{"scene":"S24","locked":true}\n');
