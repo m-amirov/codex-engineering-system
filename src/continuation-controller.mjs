@@ -74,7 +74,10 @@ function resolveSelection(projectDir, runRef, {preferredPipeline = null} = {}) {
   if (!runs.length) return {status:'BLOCKED_NO_RUN'};
   const superseded = new Set(runs.map(x=>x.linkedFrom).filter(Boolean));
   const allActive = runs.filter(x => !TERMINAL.has(x.verdict ?? x.state) && !superseded.has(x.id));
-  if (preferredPipeline && allActive.length && !allActive.some(x => x.pipeline === preferredPipeline))
+  // A project-specific progress view must never fall back to an unrelated
+  // audit run or to a terminal historical run. Starting a fresh scoped run
+  // is a separate, authorized action.
+  if (preferredPipeline && !allActive.some(x => x.pipeline === preferredPipeline))
     return {status:'BLOCKED_NO_ACTIVE_PIPELINE_RUN',pipeline:preferredPipeline,candidates:allActive.map(x=>x.id)};
   const active = preferredPipeline ? allActive.filter(x => x.pipeline === preferredPipeline) : allActive;
   if (active.length > 1) return {status:'BLOCKED_AMBIGUOUS_RUNS', candidates:active.map(x=>x.id)};
@@ -97,7 +100,9 @@ function projectProgress(projectDir, requestedPath) {
   const result=inspectArtProgress(projectDir,discovered.indexPath);
   return {
     indexPath:discovered.indexPath,
-    pipeline:(result.acceptanceSource || /production-art/i.test(discovered.indexPath)) ? 'production-art' : null,
+    // Every file handled by inspectArtProgress is production-art evidence.
+    // Its basename is not a reliable classifier (art-progress-index.json).
+    pipeline:'production-art',
     status:result.status,
     plannedPairs:result.plannedPairs,
     acceptedPairs:result.acceptedPairs,
@@ -180,7 +185,20 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
   const progress=projectProgress(project,progressIndex);
   if (progress && ['BLOCKED_PROGRESS_DISCOVERY','BLOCKED_AMBIGUOUS_PROGRESS'].includes(progress.status))
     return makeBlocked(progress.status,{project,mode,progress});
+  // Evidence repair is the first actionable step even if no production-art
+  // run exists. Inspecting never creates a run or pretends the old PASS is
+  // fresh; the host restores actual files and retries this same command.
+  if (progress?.status === 'BLOCKED_ART_PROGRESS')
+    return makeBlocked('BLOCKED_ART_PROGRESS',{project,mode,progress,
+      action:{kind:'RESTORE_SOURCE_BOUND_PROGRESS',risk:'R0',
+        instruction:'Restore missing or mismatched source-bound artifacts identified by progress.problems, then revalidate. Do not claim, regenerate accepted scenes or create recovery runs.'}});
   const selection = resolveSelection(project,runRef,{preferredPipeline:progress?.pipeline ?? null});
+  if (selection.status === 'BLOCKED_NO_ACTIVE_PIPELINE_RUN' && progress?.status === 'PASS_ART_PROGRESS_REVALIDATED' &&
+      (!runRef || runRef === 'latest'))
+    return makeBlocked('NEEDS_SCOPED_PRODUCTION_RUN',{project,mode,progress,
+      pipeline:'production-art',candidates:selection.candidates ?? [],
+      action:{kind:'PREPARE_SCOPED_PRODUCTION_RUN',risk:'R0',
+        instruction:'Source-bound progress is valid, but no active production-art run exists. Define the remaining bounded scope and obtain normal authorization to create ONE new production-art run; preserve all accepted batches. No automatic run creation or Image Gen invocation.'}});
   if (selection.status) return makeBlocked(selection.status, {project, mode, ...(selection.candidates ? {candidates:selection.candidates} : {}), ...(selection.pipeline ? {pipeline:selection.pipeline} : {}), ...(progress ? {progress} : {})});
   let resumed;
   try { resumed = resumeRun(project, selection.id); }
