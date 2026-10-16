@@ -1,6 +1,31 @@
-# Codex Engineering OS (CEOS) 0.5.26
+# Codex Engineering OS (CEOS) 0.5.27
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Execution-bound host trust (0.5.27)
+
+CEOS selects the **currently host-bound** `UserPromptSubmit` session/turn in
+the **exact canonical worktree** for native capability challenges and producer
+parent resolution. A historical `active` lifecycle without a matching current
+host turn remains visible in `ceos session-diagnostics` as
+`HISTORICAL_ACTIVE_NOT_CURRENT`; it does not veto a fresh trusted turn merely
+because a prior Codex session closed without `SessionEnd`. No lifecycle files
+are deleted, rewritten, or falsely marked ended.
+
+Still fail-closed: absent `UserPromptSubmit` / wrong cwd; corrupt or stale
+current scoped marker; mismatched host session or turn; missing attestation;
+reused challenge from another turn; forged/unrelated Terra child rollout.
+The run-scoped capability challenge and producer trace continue to prove
+the **current execution**, not the complete history of Codex sessions.
+Run-level parallel work uses the existing exclusive `ceos continue --claim`
+lease; hosts must claim and release on failure rather than circumventing it.
+Neither a stale lifecycle nor an attestation alone authorizes generation or
+a checkpoint. Real PNG + mechanical and artistic gates remain mandatory.
+
+For an existing run, reopen Codex in the correct worktree, submit a new
+prompt, then run `ceos session-diagnostics --project <worktree> --json`.
+`PASS` allows a *fresh* run-scoped Image Gen challenge. No historical
+run/brief migration, manual lifecycle cleanup, or new run is required.
 
 ## Source-bound art briefs without self-referential Git HEAD (0.5.26)
 

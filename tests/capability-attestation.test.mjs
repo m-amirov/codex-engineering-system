@@ -10,6 +10,8 @@ import {
   readRunCapabilityAttestation
 } from '../src/capability-attestation.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 function tempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'ceos-cap-attest-'));
@@ -137,4 +139,44 @@ test('service availability cannot be asserted without real-invocation evidence',
     presence: 'PRESENT',
     serviceAvailability: 'AVAILABLE'
   }), /requires explicit serviceEvidence/);
+});
+
+test('current trusted host may attest after an older active lifecycle lacks SessionEnd',t=>{
+  const project=tempProject();
+  t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
+  const codexHome=path.join(project,'.codex');
+  const hook=fileURLToPath(new URL('../hooks/ceos-runtime-context.mjs',import.meta.url));
+  function send(event,sessionId,turnId) {
+    const eventData={hook_event_name:event,session_id:sessionId,
+      ...(turnId ? {turn_id:turnId} : {source:'startup'}),
+      cwd:project,model:'gpt-6'};
+    const res=spawnSync(process.execPath,[hook,'--codex-home',codexHome],{
+      input:JSON.stringify(eventData),encoding:'utf8'
+    });
+    assert.equal(res.status,0,res.stderr);
+  }
+  const old='01a145d1-0d8b-74a0-8ecd-c552581a8de7';
+  const current='01a14601-674e-76d0-b0fe-37285946d264';
+  const turn='01a14601-6b7e-7681-b0e8-cc4bb0f288f0';
+  send('SessionStart',old);
+  send('UserPromptSubmit',old,'old-turn');
+  send('SessionStart',current);
+  send('UserPromptSubmit',current,turn);
+  const run=createRun(project,'production-art',{scope:scope(),capabilities:caps(project)});
+  reachGeneration(project,run.run.runId);
+  const challenge=beginCapabilityChallenge(project,run.run.runId,{codexHome});
+  assert.equal(challenge.sessionId,current);
+  assert.equal(challenge.turnId,turn);
+  const answer=respondCapabilityChallenge(project,run.run.runId,{
+    codexHome,challengeId:challenge.challengeId,nonce:challenge.nonce,
+    presence:'PRESENT',serviceAvailability:'UNKNOWN'
+  });
+  assert.equal(answer.attestation.sessionId,current);
+  assert.equal(readRunCapabilityAttestation(project,run.run.runId,{codexHome}).valid,true);
+  // A fresh UserPromptSubmit for the older session changes the live host:
+  // it cannot borrow the attestation for the previous turn.
+  send('UserPromptSubmit',old,'new-old-turn');
+  const reused=readRunCapabilityAttestation(project,run.run.runId,{codexHome});
+  assert.equal(reused.valid,false);
+  assert.match(reused.reason,/session mismatch/);
 });
