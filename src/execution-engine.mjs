@@ -512,8 +512,10 @@ export function createLinkedSessionRecoveryRun(projectDir, sourceRunRef, {expect
         old.artMode !== ART_MODES.NEW_GENERATION || old.cycle !== 1)
       throw new Error('BLOCKED_RECOVERY_UNSUPPORTED_PIPELINE');
     const terminalMismatch = old.verdict === 'BLOCKED' &&
-      old.stopReason?.stage === 'GENERATING' &&
-      /BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/.test(String(old.stopReason.reason ?? ''));
+      (old.stopReason?.stage === 'GENERATING' ||
+       (!old.stopReason?.stage && old.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH')) &&
+      (old.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH' ||
+       /BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/.test(String(old.stopReason.reason ?? '')));
     if (!(old.verdict === null && old.nextStage === 'GENERATING') && !terminalMismatch)
       throw new Error('BLOCKED_RECOVERY_NOT_AT_GENERATING');
     if (typeof expectedParentSessionId !== 'string' || !expectedParentSessionId.trim() ||
