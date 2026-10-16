@@ -110,6 +110,9 @@ test('source dependencies changing invalidate historical acceptance',t=>{
   const r=inspectArtProgress(x.project,x.indexPath);
   assert.equal(r.status,'BLOCKED_ART_PROGRESS');
   assert.equal(r.acceptedPairs,0);
+  assert.equal(r.acceptedPng,0);
+  assert.equal(r.remainingPairs,25);
+  assert.equal(r.remainingPng,50);
   assert.ok(r.problems.some(x=>x.startsWith('PLAN_DEPENDENCY_')));
 });
 
@@ -143,6 +146,15 @@ test('runtime screenshot tampering is caught without rewriting the original rece
   assert.equal(r.status,'BLOCKED_ART_PROGRESS');
   assert.equal(r.acceptedPairs,0);
   assert.ok(r.problems.some(x=>x.includes('SCREENSHOT')));
+});
+
+test('old runtime or missing reviewed runtime pixel cannot count as accepted',t=>{
+  const x=fixture(t);
+  x.updateReceipt(receipt=>({...receipt,
+    reviewedItems:receipt.reviewedItems.filter(item=>item.id!=='S22-mobile-runtime')}));
+  const r=inspectArtProgress(x.project,x.indexPath);
+  assert.equal(r.acceptedPairs,0);
+  assert.ok(r.problems.some(code=>code.includes('RUNTIME_REVIEW_MISSING')));
 });
 
 test('CLI art-progress is read-only and fails closed for unsafe index paths',t=>{
