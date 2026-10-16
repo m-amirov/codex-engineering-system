@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.27 — 2026-10-16
+
+- Introduced execution-bound host trust for native producer selection: CEOS selects the current matched worktree-scoped UserPromptSubmit session/turn, treating prior active lifecycles lacking SessionEnd as read-only diagnostic history instead of a blanket execution blocker.
+- Old lifecycle files remain untouched; current host and session+turn markers must agree, current cwd/age must match, and stale or corrupted current contexts fail closed.
+- Run-scoped image generation challenge remains single-use and bound to this exact execution. Terra child JSONL, model/role/parent identity, output checks and exclusive continuation claim are unchanged.
+- Added regression coverage for the S24–S26 two-lifecycle scenario, new SessionStart lacking turn, tampered current turn, cross-worktree isolation, and end-to-end challenge/attestation without trusting the previous lifecycle.
+- No actual Image Gen invocation, automatic asset acceptance or game run modification.
+
+
 ## 0.5.26 — 2026-10-16
 
 - Fixed the self-referential Git HEAD cycle for committed S24–S26 production-art briefs: `sourceHead` may be the source ancestor when all intervening changes consist exclusively of newly committed Stage 9.4 brief JSONs pinned to that same source.
