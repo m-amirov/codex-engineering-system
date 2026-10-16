@@ -197,8 +197,8 @@ function novelRecoveryFixture(t) {
       mutationBoundary:'production-art/S22'},
     capabilities:{
       web:{status:'NOT_CONFIGURED'},
-      imageGeneration:{capabilityPresence:'PRESENT',trustedForGeneration:true,
-        generationAllowed:true,serviceAvailability:'UNKNOWN'},
+      imageGeneration:{status:'available',capabilityPresence:'PRESENT',trustedForGeneration:true,
+        generationAllowed:true,serviceAvailability:'UNKNOWN',attestationFile:'stale-attestation',observedTool:'image_gen.imagegen',trustScope:'run-session-turn'},
       filesystem:{exists:true,readable:true,writable:true}
     }
   });
@@ -237,6 +237,10 @@ test('normal continue performs evidence-pinned linked recovery and never rewrite
   assert.equal(caps.imageGeneration.trustedForGeneration,false);
   assert.equal(caps.imageGeneration.generationAllowed,false);
   assert.equal(caps.imageGeneration.capabilityPresence,'UNKNOWN');
+  assert.equal(caps.imageGeneration.status,'unknown');
+  assert.equal(caps.imageGeneration.attestationFile,null);
+  assert.equal(caps.imageGeneration.observedTool,null);
+  assert.equal(caps.imageGeneration.trustScope,null);
   assert.equal(planContinuation(x.project).runId,created.runId);
   assert.equal(planContinuation(x.project,{runRef:x.original}).runId,created.runId);
   assert.equal(recoverContinuation(x.project,{mode:'guided'}).runId,created.runId);
