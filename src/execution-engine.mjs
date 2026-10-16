@@ -596,6 +596,10 @@ export function createLinkedSessionRecoveryRun(projectDir, sourceRunRef, {expect
     });
     return withRunLock(linked.runDir, () => {
       const next = readJson(path.join(linked.runDir, 'run.json'));
+      // A linked recovery of an historical pinned-parent run keeps its original
+      // authority model. Do not silently migrate that run to deferred binding.
+      next.producerBindingMode = null;
+      next.producerParentSessionId = expectedParentSessionId;
       if (next.verdict !== null || next.nativeProducerRouteRequired !== true ||
           next.producerParentSessionId !== expectedParentSessionId ||
           next.scopeSha256 !== old.scopeSha256)
