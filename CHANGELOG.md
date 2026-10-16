@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.31 — 2026-10-16
+
+- Added `ceos art-output-import` to safely materialize an existing local native Image Gen PNG into a project path before `art-output-verify`, with mandatory complete SHA-256, decoded image/dimension gate, byte-exact verification, atomic no-clobber destination and idempotent matching-file recheck.
+- Producer instructions now require an actual local binary delivery path before image generation, never confuse visual chat output with a saved asset and stop after transport failure rather than re-spending the generation budget.
+- Added negative regression tests for missing source, truncated/wrong hash, non-PNG bytes, wrong dimensions, escaping output paths and overwrite of existing art.
+- Does not extract bytes from chat-only images, invoke native Image Gen, restore the missing S24 portrait or automatically reopen terminal Stage 9.4 run `f2c045`. Existing accepted S19–S23 remain immutable.
+
+
 ## 0.5.30 — 2026-10-16
 
 - Fixed contradictory producer-side guidance for CURRENT_TURN runs: null `producerParentSessionId` is an intentional deferred binding, not a mismatch after authoritative `ceos producer-route-check` PASS.

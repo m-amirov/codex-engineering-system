@@ -1,6 +1,6 @@
 {
   "name": "codex-engineering-os",
-  "version": "0.5.30",
+  "version": "0.5.31",
   "description": "A global-first Codex engineering operating layer with deterministic execution state, hybrid routing, skills, gates and evidence.",
   "type": "module",
   "private": true,
@@ -11,7 +11,7 @@
     "test": "node --test",
     "self-test": "node ./bin/ceos.mjs self-test",
     "doctor": "node ./bin/ceos.mjs doctor",
-    "lint": "node --check ./bin/ceos.mjs && node --check ./src/ceos.mjs && node --check ./src/git-preflight.mjs && node --check ./src/adoption.mjs && node --check ./src/yaml-lite.mjs && node --check ./src/web-preflight.mjs && node --check ./src/art-producer-brief.mjs && node --check ./src/art-output-gate.mjs && node --check ./src/art-progress.mjs && node --check ./src/web-transport-failure.mjs && node --check ./src/capabilities.mjs && node --check ./src/capability-attestation.mjs && node --check ./src/runtime-context.mjs && node --check ./src/run-relocation.mjs && node --check ./src/native-producer-routing.mjs && node --check ./src/narrative-art-acceptance.mjs && node --check ./src/existing-art-reuse.mjs && node --check ./src/continuation-controller.mjs && node --check ./src/execution-engine.mjs && node --check ./src/resolution-receipt.mjs && node --check ./src/evidence-contract.mjs && node --check ./src/web-delegation.mjs && node --check ./hooks/ceos-runtime-context.mjs"
+    "lint": "node --check ./bin/ceos.mjs && node --check ./src/ceos.mjs && node --check ./src/git-preflight.mjs && node --check ./src/adoption.mjs && node --check ./src/yaml-lite.mjs && node --check ./src/web-preflight.mjs && node --check ./src/art-producer-brief.mjs && node --check ./src/art-output-transport.mjs && node --check ./src/art-output-gate.mjs && node --check ./src/art-progress.mjs && node --check ./src/web-transport-failure.mjs && node --check ./src/capabilities.mjs && node --check ./src/capability-attestation.mjs && node --check ./src/runtime-context.mjs && node --check ./src/run-relocation.mjs && node --check ./src/native-producer-routing.mjs && node --check ./src/narrative-art-acceptance.mjs && node --check ./src/existing-art-reuse.mjs && node --check ./src/continuation-controller.mjs && node --check ./src/execution-engine.mjs && node --check ./src/resolution-receipt.mjs && node --check ./src/evidence-contract.mjs && node --check ./src/web-delegation.mjs && node --check ./hooks/ceos-runtime-context.mjs"
   },
   "engines": {
     "node": ">=22"
