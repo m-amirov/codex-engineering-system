@@ -154,7 +154,11 @@ function gitSourceSnapshot(projectDir) {
   if (headResult.status !== 0) {
     return { available: false, head: null, clean: null, worktreeSha256: null };
   }
-  const statusResult = run(['status', '--porcelain=v1', '--untracked-files=all']);
+  // Run state is owned by CEOS and can be tracked by historical projects.
+  // Exclude it from the product source snapshot without excluding any
+  // user-authored source, manifests or acceptance evidence under artifacts/.
+  const statusResult = run(['status', '--porcelain=v1', '--untracked-files=all',
+    '--', '.', ':(exclude).ceos-runs']);
   const statusText = statusResult.status === 0 ? String(statusResult.stdout ?? '') : '';
   return {
     available: true,
