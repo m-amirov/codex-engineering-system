@@ -2,7 +2,7 @@
 name: ceos-continue
 description: Continue an existing CEOS project workflow from persisted runs and checkpoints with a bounded next action, safe claim, verified execution, and evidence-based checkpointing.
 metadata:
-  ceos-version: "0.5.22"
+  ceos-version: "0.5.23"
 ---
 
 # Skill: ceos-continue
