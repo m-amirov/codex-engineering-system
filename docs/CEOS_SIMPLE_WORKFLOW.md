@@ -78,3 +78,52 @@ fails to deliver a trusted UserPromptSubmit; those require separate evidence
 and cannot be replaced by fabricated events. Do not create repeated runs to
 work around an untrusted host. Use the existing accepted evidence and report
 the actual blocker.
+
+## Read-only cumulative production-art progress
+
+CEOS does **not** invent a new acceptance database. The optional
+\`ceos art-progress --index artifacts/art-progress-index.json --json\` command
+projects the current state from an existing immutable Web High receipt, actual
+PNG bytes, actual runtime screenshots and source dependencies.
+
+The index is only a locator. A representative schema:
+
+\`\`\`json
+{
+  "schemaVersion": 1,
+  "plan": {"path":"artifacts/production-art/stage9.4/ART_REUSE_MATRIX.json",
+           "sha256":"<actual SHA-256 of plan bytes>"},
+  "batches": [{
+    "id":"ep2-s22-s23",
+    "pairs":["S22","S23"],
+    "receipt":{"path":"artifacts/production-art/stage9.4/STAGE9_4_S22_S23_WEB_HIGH_ACCEPTANCE_20261016.json",
+               "sha256":"<actual SHA-256 of receipt bytes>"},
+    "runtimeSha256":"<actual SHA-256 of runtime receipt bytes>"
+  }]
+}
+\`\`\`
+
+Each reference is constrained to the project and compared with the current
+SHA-256. The plan's locked \`sourceHashes\` are also checked. A batch only
+counts if its receipt explicitly scopes exactly those pairs; each portrait
+and landscape PNG exists with the accepted hash, dimensions/aspect ratio,
+Web High pixels PASS, runtime captures/screenshots PASS and no unresolved
+blocking observations. A missing format, source drift, duplicated pair,
+unsafe path, unsupported receipt schema, absent runtime capture or modified
+PNG returns \`BLOCKED_ART_PROGRESS\`, not fictional accepted coverage.
+
+The report counts only verified batches and always states
+\`finalEpisodeAcceptance: NOT_VERIFIED\` and \`releaseReady: false\`. The
+command is read-only and does not create CEOS runs, access the current Codex
+session, invoke an Image Gen tool, write a new PASS receipt, or modify
+existing evidence.
+
+Historical acceptance formats differ. An older sampling-style Web High
+receipt that lacks explicit scene scope or complete portrait/landscape
+acceptance **remains historical evidence** but cannot be promoted to a
+fully revalidated pair by this command. The operator must use the original
+independent acceptance + runtime provenance; do not synthesize missing
+records or regenerate accepted images solely to satisfy this view.
+
+This is a second incremental simplification, not a new required release gate.
+Existing acceptance and release policies remain authoritative.
