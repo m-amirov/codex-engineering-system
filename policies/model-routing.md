@@ -53,7 +53,7 @@ The gate reads Codex-owned `session_meta` and `turn_context`: child
 `agent_role=ceos_asset_generator`, parent session match, effective
 `model=gpt-5.6-terra` and `effort=medium`. A generic child, inherited
 parent model, missing rollout or wrong session **BLOCKS** the checkpoint.
-Supply the path as `metadata.producerTraceFile` on `GENERATING`.
+For `CURRENT_TURN` runs, `producerParentSessionId=null` is normal. The **parent host** runs `ceos producer-route-check`, which resolves the actual parent from consumed run-scoped capability evidence; the child must not independently compare its rollout to this nullable legacy field or declare `PARENT_MISMATCH` merely because it is null. A real mismatch in the official gate still blocks. Supply the path as `metadata.producerTraceFile` on `GENERATING`.
 This evidence is **host-observed local JSONL**, not a provider-signed model
 attestation or proof that native Image Gen is available. It does not
 start the agent itself or override the host tool schema. Old runs retain
