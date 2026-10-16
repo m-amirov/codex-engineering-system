@@ -167,15 +167,27 @@ function inspectRuntimeContext(options={}) {
         invalid=true;
         continue;
       }
-      const hostMatch=host?.session.sessionId === session.sessionId &&
-        host.turn.turnId === (scopedTurn?.turnId ?? host.turn.turnId) &&
-        canonical(session.cwd)===paths.project;
-      const turn=scopedTurn ?? (hostMatch ? host.turn : null);
+      // Execution-bound selection: only a real UserPromptSubmit marker for
+      // the currently host-bound session/turn is eligible. SessionStart alone
+      // cannot grant native generation. Previous active lifecycle records are
+      // diagnostic history, not competing authorizations.
+      const hostMatch=Boolean(host &&
+        typeof host.turn.turnId==='string' && host.turn.turnId &&
+        host.session.sessionId===session.sessionId &&
+        scopedTurn?.sessionId===session.sessionId &&
+        scopedTurn?.turnId===host.turn.turnId &&
+        canonical(session.cwd)===paths.project &&
+        canonical(scopedTurn.cwd)===paths.project);
+      const turn=scopedTurn;
       if (lifecycle?.state === 'active' && !hostMatch) {
         diagnostics.candidates.push(candidateRecord(paths,entry,session,scopedTurn,lifecycle,null,
-          'ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND',
-          'active lifecycle record has no matching current host session and turn binding'));
-        unboundActiveLifecycle=true;
+          host ? 'HISTORICAL_ACTIVE_NOT_CURRENT' : 'ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND',
+          host
+            ? 'Active lifecycle is not bound to the current trusted host turn; retained for diagnostics, not selected'
+            : 'No trusted host UserPromptSubmit turn; active lifecycle cannot authorize generation'));
+        // When a current host turn exists, a previous active lifecycle
+        // must not block progress merely because SessionEnd was lost.
+        if (!host) unboundActiveLifecycle=true;
         continue;
       }
       if (!turn) {
@@ -215,9 +227,13 @@ function inspectRuntimeContext(options={}) {
           reason='legacy scoped marker has no lifecycle receipt and no trusted completion evidence';
         }
       }
-      const record=candidateRecord(paths,entry,session,turn,lifecycle,rollout,classification,reason);
+      const record=candidateRecord(paths,entry,session,turn,lifecycle,rollout,
+        !hostMatch ? 'HISTORICAL_UNBOUND_LEGACY' : classification,
+        !hostMatch ? 'Unbound legacy marker is diagnostics only; no current trusted host turn' : reason);
       diagnostics.candidates.push(record);
-      eligible.push({entry,session,turn,lifecycle,classification,root});
+      // Do not allow an old marker, rollout completion or timestamp to
+      // become a second executable parent alongside the current host turn.
+      if (hostMatch) eligible.push({entry,session,turn,lifecycle,classification,root});
     }
     if (invalid) diagnostics.selectionError='BLOCKED_SESSION_CONTEXT_CORRUPT';
     else if (unboundActiveLifecycle) diagnostics.selectionError='BLOCKED_ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND';
@@ -248,8 +264,11 @@ export function diagnoseRuntimeContext(options={}) {
 }
 
 /**
- * Active lifecycle receipts and trusted host binding decide selection. A
- * timestamp never wins a same-worktree race; parallel active sessions block.
+ * Current host-observed UserPromptSubmit and same-worktree session/turn
+ * markers decide selection. Older active lifecycle receipts remain visible
+ * as diagnostics and cannot authorize execution or veto the current turn.
+ * Parallel work on one run is controlled by an exclusive continuation claim;
+ * native producer routes and Image Gen attestations remain session-bound.
  */
 export function readRuntimeContext(options={}) {
   return inspectRuntimeContext(options).context;
