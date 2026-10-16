@@ -176,7 +176,7 @@ function novelRecoveryFixture(t,{receiptContract=false}={}) {
   const historicalLines=['The original generation used these source-bound pixels.',
     'The preserved receipt must repeat this exact second line.'];
   if(receiptContract)
-    fs.writeFileSync(path.join(project,'historical-receipt.txt'),historicalLines.join('\\n')+'\\n');
+    fs.writeFileSync(path.join(project,'historical-receipt.txt'),historicalLines.join('\n')+'\n');
   git(project,'add','config','narrative','canon.json',...(receiptContract?['historical-receipt.txt']:[]));
   git(project,'commit','-m','canonical assets and source');
   const home=fs.mkdtempSync(path.join(os.tmpdir(),'ceos-recovery-home-'));
@@ -274,7 +274,7 @@ test('linked session recovery preserves locked resolution receipt source and has
 test('linked recovery rejects drifted receipt source without creating a new run',t=>{
   const x=novelRecoveryFixture(t,{receiptContract:true});
   x.writeContext('parent-new');
-  fs.appendFileSync(path.join(x.project,'historical-receipt.txt'),'source changed\\n');
+  fs.appendFileSync(path.join(x.project,'historical-receipt.txt'),'source changed\n');
   git(x.project,'add','historical-receipt.txt');
   git(x.project,'commit','-m','change locked evidence');
   const result=recoverContinuation(x.project,{mode:'guided'});
@@ -290,11 +290,11 @@ test('linked recovery rejects missing locked evidence hash even when source scop
   const scopePath=path.join(base,'scope.json'),runPath=path.join(base,'run.json');
   const scope=JSON.parse(fs.readFileSync(scopePath,'utf8'));
   delete scope.resolutionReceiptContract.sourceEvidenceSha256;
-  fs.writeFileSync(scopePath,JSON.stringify(scope,null,2)+'\\n');
+  fs.writeFileSync(scopePath,JSON.stringify(scope,null,2)+'\n');
   const old=JSON.parse(fs.readFileSync(runPath,'utf8'));
   const hash=await import('node:crypto');
   old.scopeSha256=hash.createHash('sha256').update(JSON.stringify(scope)).digest('hex');
-  fs.writeFileSync(runPath,JSON.stringify(old,null,2)+'\\n');
+  fs.writeFileSync(runPath,JSON.stringify(old,null,2)+'\n');
   x.writeContext('parent-new');
   const result=recoverContinuation(x.project,{mode:'guided'});
   assert.equal(result.status,'BLOCKED_RECOVERY_GUARD');
