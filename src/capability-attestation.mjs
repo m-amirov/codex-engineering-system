@@ -166,7 +166,7 @@ export function respondCapabilityChallenge(projectDir, runRef = 'latest', {
     turnId: context.turn.turnId,
     observedAt,
     source: 'in-session-agent-observation',
-    trustScope: 'run-session-turn',
+    trustScope: 'run-session-window',
     presence: normalizedPresence,
     serviceAvailability: normalizedService,
     observedTool: canonicalObservedTool,
