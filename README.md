@@ -1,6 +1,27 @@
-# Codex Engineering OS (CEOS) 0.5.29
+# Codex Engineering OS (CEOS) 0.5.30
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Terra producer deferred parent binding (0.5.30)
+
+For a narrative production-art run with `producerBindingMode=CURRENT_TURN`,
+`run.producerParentSessionId=null` is **intentional**. An official
+`ceos producer-route-check RUN_ID --project ROOT --trace TRACE --json`
+that returns `PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED` resolves the
+effective parent from live, consumed run-scoped Image Gen attestation
+and verifies the actual Terra Medium child rollout. This check is owned
+by the parent Codex orchestrator and is independently repeated when
+recording the GENERATING checkpoint. The Terra child must not do a
+second legacy pinned-parent comparison against the nullable field.
+
+The child still needs real callable Image Gen access in its execution
+context. A PASS from the parent route does not grant the child Image Gen
+or certify output, provider availability, quality or acceptance. An
+actual incorrect child parent, role/model mismatch or changed trace
+remains BLOCKED; run metadata cannot be hand-edited to bypass it.
+The shipped agent and production-art instructions now explicitly
+state this contract, and the low-level missing-parent diagnostic
+points callers to the official resolver.
 
 ## Bounded run/session Image Gen authority (0.5.29)
 

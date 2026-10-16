@@ -80,7 +80,7 @@ When the user asks to create, replace, or integrate production image assets, act
 
 Freeze scope/canon → Sol Web analysis → verify a **real** Terra child route → `ceos art-brief-verify` → Terra Medium native Image Gen (max 2 per cue/variant; own trusted tool access) → actual assets → desktop/mobile runtime QA → independent Sol Web acceptance. See `policies/art-producer.md`.
 
-For `narrative-game` production art, never substitute the parent for Terra. Require an actual `spawn_agent` custom `agent_type=ceos_asset_generator`; `task_name` alone is not role selection. If unavailable, report `BLOCKED_NATIVE_AGENT_ROUTING_UNAVAILABLE` before generating. Validate the child role, effective Terra Medium model, and parent binding with `ceos producer-route-check latest --trace <host-rollout.jsonl>`. New `GENERATING` checkpoints require `metadata.producerTraceFile`. This does not attest Image Gen. Details: `docs/NATIVE_TERRA_ROUTING.md`.
+For `narrative-game`, require native `spawn_agent agent_type=ceos_asset_generator` (not `task_name`). Parent runs official `ceos producer-route-check` on real Terra Medium child rollout. In `CURRENT_TURN`, `run.producerParentSessionId=null` is normal: child must not flag it as a mismatch. Real route failures block. `GENERATING` needs `metadata.producerTraceFile`; tool access is checked separately. See `docs/NATIVE_TERRA_ROUTING.md`.
 
 See `policies/art-producer.md`: model ≠ rendering tool; Web Sol does not persist images. Claim only actual workspace files. After each generated PNG run `ceos art-output-verify`; on failure stop the batch before another Image Gen call. New GENERATING checkpoints require verified output records.
 

@@ -18,6 +18,28 @@ The independent `ceos_art_director_web` on **GPT-6 Sol High** is **reasoning-onl
    `READY_TO_GENERATE` verifies the local source HEAD, structural contract and SHA-256 of referenced files **only**. It is not a quality PASS, authorization, native tool attestation, or proof of remote Image Gen access. `BLOCKED_ART_BRIEF` forbids proceeding under this CEOS workflow.
 5. At the `GENERATING` stage run the existing run-scoped CEOS Image Gen capability challenge and make sure the **actual producer's execution context** has the callable native Image Gen tool. A tool available only to the parent does not imply subagent access. If a subagent cannot meet the trusted current-session/turn attestation contract, report `BLOCKED` instead of borrowing a parent's attestation. Host-specific API names/available image models must be observed; do not guess that a particular GPT Image model can be selected.
 
+## Generation parent identity: official route owns CURRENT_TURN
+
+For new narrative production-art runs with
+`producerBindingMode=CURRENT_TURN`, `run.producerParentSessionId=null`
+is intentional. **The parent Codex orchestrator**, not the Terra child,
+runs `ceos producer-route-check RUN_ID --project ROOT --trace TRACE --json`.
+The official `PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED` proves that the
+actual Terra child rollout names the parent resolved from a fresh, consumed
+run-scoped Image Gen attestation and the matching capability snapshot.
+Do not independently compare a child trace to the nullable run field,
+fabricate a persistent binding, or return
+`BLOCKED_NATIVE_AGENT_PARENT_MISMATCH` merely because that field is null.
+
+The orchestrator passes the actual route status, resolved parent session,
+run ID and trace path to the producer, then revalidates them at GENERATING.
+The producer independently checks callable Image Gen inside its own
+execution context. **A successful route alone does not prove a tool exists
+inside the child**. Actual missing/mismatched child-parent identity,
+different session, wrong Terra role/model, expired capability, and missing
+producer tool still BLOCK before any generation. No rewriting run.json
+or manual trust injection.
+
 ## Dual-format delivery for illustrated narrative games
 
 If the project opts in to `narrative-game`, a scene brief with desktop and portrait

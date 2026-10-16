@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.30 — 2026-10-16
+
+- Fixed contradictory producer-side guidance for CURRENT_TURN runs: null `producerParentSessionId` is an intentional deferred binding, not a mismatch after authoritative `ceos producer-route-check` PASS.
+- Updated installed Terra agent TOML, global instructions, production-art skill, model/art policies and routing docs to make the parent orchestrator the sole owner of run-scoped producer route verification. The child checks its own callable Image Gen separately and must not use the legacy pinned-parent field.
+- Clarified low-level `inspectNativeProducerRoute` error for callers omitting an effective parent. Added regression coverage: CURRENT_TURN with null persisted parent passes authentic Terra route, while a genuinely unrelated child still returns `BLOCKED_NATIVE_AGENT_PARENT_MISMATCH`.
+- No changes to the Stage 9.4 run, accepted art S19–S23 or S24–S26 PNGs. Route PASS does not imply Image Gen invocation or artistic acceptance.
+
+
 ## 0.5.29 — 2026-10-16
 
 - Replaced overly strict post-challenge turn equality with a bounded (30-minute) run/parent-session Image Gen capability window. Challenge issuance and response still require the exact original trusted session and turn, and the current worktree host must still be valid.
