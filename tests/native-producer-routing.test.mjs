@@ -320,6 +320,31 @@ test('CURRENT_TURN producer CLI still rejects an unrelated Terra child parent',t
   assert.equal(route.status,'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH',JSON.stringify(route));
 });
 
+test('CURRENT_TURN null stored parent does not cause a second producer parent mismatch',t=>{
+  const x=createNovel(t);
+  const persisted=JSON.parse(fs.readFileSync(path.join(x.run.runDir,'run.json'),'utf8'));
+  assert.equal(persisted.producerBindingMode,'CURRENT_TURN');
+  assert.equal(persisted.producerParentSessionId,null);
+  // A legacy low-level attempt cannot authorize a route from null.
+  const low=inspectNativeProducerRoute(x.trace,{
+    codexHome:x.home,parentSessionId:persisted.producerParentSessionId
+  });
+  assert.equal(low.status,'BLOCKED_NATIVE_AGENT_PARENT_UNVERIFIED');
+  assert.match(low.detail,/producer-route-check/);
+  // The authoritative parent-aware preflight verifies a true Terra child.
+  const checked=preflightNativeProducerRoute(x.game,x.runId,x.trace,{codexHome:x.home});
+  assert.equal(checked.status,'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED',JSON.stringify(checked));
+  assert.equal(checked.bindingMode,'CURRENT_TURN');
+  assert.equal(checked.parentSessionId,x.parent);
+  assert.equal(checked.agentRole,'ceos_asset_generator');
+  assert.equal(checked.actualModel,'gpt-5.6-terra');
+  assert.equal(checked.actualEffort,'medium');
+  // Same official gate still rejects a truly unrelated parent.
+  x.write({parentId:'different-parent'});
+  const bad=preflightNativeProducerRoute(x.game,x.runId,x.trace,{codexHome:x.home});
+  assert.equal(bad.status,'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH');
+});
+
 test('historical pinned-parent producer route remains supported without new attestation',t=>{
   const x=createNovel(t,{attest:false});
   const runFile=path.join(x.run.runDir,'run.json');
