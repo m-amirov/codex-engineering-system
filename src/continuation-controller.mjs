@@ -37,7 +37,11 @@ function gitReadOnly(projectDir) {
   if (expected !== actual) return {status:'BLOCKED_WRONG_ROOT', head:null, branch:null, dirty:null};
   const head = git('rev-parse','HEAD');
   const branch = git('symbolic-ref','--quiet','--short','HEAD');
-  const dirty = git('status','--porcelain=v1','--untracked-files=normal');
+  // CEOS writes run checkpoints and latest.json into .ceos-runs itself.
+  // Their mutation must not block the next product-work step. Keep all
+  // other tracked/untracked project changes visible to the Git preflight.
+  const dirty = git('status','--porcelain=v1','--untracked-files=normal',
+    '--','.',':(exclude).ceos-runs');
   if (head.status !== 0 || dirty.status !== 0 || branch.status !== 0)
     return {status:'BLOCKED_GIT', head:null, branch:null, dirty:null};
   return {status:'READY', head:head.stdout.trim(), branch:branch.stdout.trim(), dirty:Boolean(dirty.stdout.trim())};
