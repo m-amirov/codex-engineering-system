@@ -180,3 +180,35 @@ test('current trusted host may attest after an older active lifecycle lacks Sess
   assert.equal(reused.valid,false);
   assert.match(reused.reason,/session mismatch/);
 });
+
+test('root capability attestation remains valid after a child UserPromptSubmit hook',t=>{
+  const project=tempProject();
+  t.after(()=>fs.rmSync(project,{force:true,recursive:true}));
+  const codexHome=path.join(project,'.codex');
+  const hook=fileURLToPath(new URL('../hooks/ceos-runtime-context.mjs',import.meta.url));
+  const parent='parent-123',child='child-456';
+  function dispatch(payload) {
+    const result=spawnSync(process.execPath,[hook,'--codex-home',codexHome],{
+      input:JSON.stringify({cwd:project,model:'gpt-5.6-terra',...payload}),
+      encoding:'utf8'
+    });
+    assert.equal(result.status,0,result.stderr);
+  }
+  dispatch({hook_event_name:'SessionStart',session_id:parent,source:'startup'});
+  dispatch({hook_event_name:'UserPromptSubmit',session_id:parent,turn_id:'parent-turn'});
+  const run=createRun(project,'production-art',{scope:scope(),capabilities:caps(project)});
+  reachGeneration(project,run.run.runId);
+  const ch=beginCapabilityChallenge(project,run.run.runId,{codexHome});
+  respondCapabilityChallenge(project,run.run.runId,{
+    codexHome,challengeId:ch.challengeId,nonce:ch.nonce,presence:'PRESENT',
+    serviceAvailability:'UNKNOWN'
+  });
+  assert.equal(readRunCapabilityAttestation(project,run.run.runId,{codexHome}).valid,true);
+  dispatch({hook_event_name:'UserPromptSubmit',session_id:child,turn_id:'child-turn',
+    subagent:{agent_id:child,agent_type:'ceos_asset_generator',parent_session_id:parent}});
+  assert.equal(readRunCapabilityAttestation(project,run.run.runId,{codexHome}).valid,true);
+  dispatch({hook_event_name:'UserPromptSubmit',session_id:parent,turn_id:'new-parent-turn'});
+  const stale=readRunCapabilityAttestation(project,run.run.runId,{codexHome});
+  assert.equal(stale.valid,false);
+  assert.equal(stale.reason,'turn mismatch');
+});

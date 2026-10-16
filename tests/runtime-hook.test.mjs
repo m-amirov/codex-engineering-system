@@ -309,3 +309,68 @@ test('wrong worktree current host does not authorize a different checkout',t=>{
   assert.equal(ctx.turn.turnId,'turn-A');
   assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),'session-A');
 });
+
+test('subagent UserPromptSubmit cannot overwrite a root Codex session and turn',t=>{
+  const x=setupWorktrees(t);
+  const parent='01a14618-parent',child='01a14619-child';
+  x.send('SessionStart',parent,x.a);
+  x.send('UserPromptSubmit',parent,x.a,'turn-live-parent');
+  const ctx=readRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(ctx.session.sessionId,parent);
+  const paths=[
+    path.join(x.home,'ceos','runtime','current-session.json'),
+    path.join(x.home,'ceos','runtime','current-turn.json'),
+    path.join(x.home,'ceos','runtime','worktrees',key(fs.realpathSync(path.resolve(x.a))),'host.json'),
+    path.join(ctx.root,'session.json'),
+    path.join(ctx.root,'turn.json'),
+    path.join(x.home,'ceos','runtime','lifecycle',
+      key(fs.realpathSync(path.resolve(x.a))),key(parent)+'.json')
+  ];
+  const before=paths.map(p=>fs.readFileSync(p,'utf8'));
+  const childEvent=runHook(x.home,{hook_event_name:'UserPromptSubmit',
+    session_id:child,turn_id:'turn-child',model:'gpt-5.6-luna',cwd:x.a,
+    subagent:{agent_id:child,agent_type:'ceos_asset_generator',
+      parent_session_id:parent}});
+  assert.equal(childEvent.status,0,childEvent.stderr);
+  paths.forEach((p,i)=>assert.equal(fs.readFileSync(p,'utf8'),before[i],p));
+  const after=readRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(after.selectionError,null);
+  assert.equal(after.session.sessionId,parent);
+  assert.equal(after.turn.turnId,'turn-live-parent');
+  assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),parent);
+  const d=diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(d.status,'PASS');
+  assert.equal(d.selectedSessionId,parent);
+  assert.equal(d.candidates.length,1);
+});
+
+test('subagent UserPromptSubmit cannot invent trusted root context without a root prompt',t=>{
+  const x=setupWorktrees(t);
+  const childEvent=runHook(x.home,{hook_event_name:'UserPromptSubmit',
+    session_id:'child-abc',turn_id:'child-turn-abc',
+    model:'gpt-5.6-luna',cwd:x.a,
+    subagent:{agent_type:'ceos_asset_generator'}});
+  assert.equal(childEvent.status,0,childEvent.stderr);
+  const paths=[
+    path.join(x.home,'ceos','runtime','current-turn.json'),
+    path.join(x.home,'ceos','runtime','current-session.json')
+  ];
+  paths.forEach(p=>assert.equal(fs.existsSync(p),false,p));
+  const diagnostics=diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(diagnostics.status,'BLOCKED');
+  assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),null);
+});
+
+test('genuine next root UserPromptSubmit still advances the current turn',t=>{
+  const x=setupWorktrees(t);
+  x.send('SessionStart','root',x.a);
+  x.send('UserPromptSubmit','root',x.a,'root-turn-one');
+  assert.equal(readRuntimeContext({codexHome:x.home,projectDir:x.a}).turn.turnId,'root-turn-one');
+  const child=runHook(x.home,{hook_event_name:'UserPromptSubmit',
+    session_id:'child',turn_id:'child-turn',model:'gpt-5.6-luna',cwd:x.a,
+    subagent:{agent_type:'ceos_asset_generator'}});
+  assert.equal(child.status,0,child.stderr);
+  assert.equal(readRuntimeContext({codexHome:x.home,projectDir:x.a}).turn.turnId,'root-turn-one');
+  x.send('UserPromptSubmit','root',x.a,'root-turn-two');
+  assert.equal(readRuntimeContext({codexHome:x.home,projectDir:x.a}).turn.turnId,'root-turn-two');
+});

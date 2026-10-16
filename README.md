@@ -1,6 +1,27 @@
-# Codex Engineering OS (CEOS) 0.5.27
+# Codex Engineering OS (CEOS) 0.5.28
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Parent/child Codex hook isolation (0.5.28)
+
+Codex can emit `UserPromptSubmit` for a spawned native subagent.
+Those events include `subagent` metadata and must **not** replace the
+current worktree `host.json`, global freshness markers, parent turn,
+or parent lifecycle. CEOS now ignores a subagent's UserPromptSubmit for
+parent-session freshness. Native child provenance is verified separately
+via the genuine rollout JSONL (role, child-parent relationship, model
+and effort). A child hook does not create authority when a root turn
+does not exist. A new **root** UserPromptSubmit still invalidates the
+prior attestation; no across-turn capability grant is created.
+
+A `BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED (turn mismatch)` due to
+child hook takeover is therefore avoided. This fix **does not** resolve
+a genuine provider/model mismatch: a child that actually runs
+`gpt-5.6-luna` is not Terra Medium, even if the installed agent TOML
+requests Terra. CEOS keeps `BLOCKED_NATIVE_AGENT_MODEL_MISMATCH` until
+the effective child model/effort is correctly configured and observed.
+The route cannot be approved by changing the declared or asserted
+model without a fresh authentic child rollout.
 
 ## Execution-bound host trust (0.5.27)
 
