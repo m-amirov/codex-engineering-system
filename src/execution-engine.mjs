@@ -10,7 +10,7 @@ import { normalizeResolutionReceiptContract, validateResolutionReceipt } from '.
 import { classifyWebTransportFailure } from './web-transport-failure.mjs';
 import { inspectArtBatch } from './art-output-gate.mjs';
 import { narrativeDualFormatEnabled, verifyNarrativeDualFormatArt } from './narrative-dual-format-art.mjs';
-import { inspectNativeProducerRoute } from './native-producer-routing.mjs';
+import { inspectNativeProducerRoute, nativeProducerParentContext } from './native-producer-routing.mjs';
 import { readRunCapabilityAttestation } from './capability-attestation.mjs';
 import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
 import { VERIFIED_EXISTING_ART_REUSE, verifyExistingArtReuse } from './existing-art-reuse.mjs';
