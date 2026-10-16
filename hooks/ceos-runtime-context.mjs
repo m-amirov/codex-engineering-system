@@ -88,7 +88,25 @@ function sessionScopedFiles(input) {
   const root=path.join(runtimeRoot,'worktrees',worktreeKey,sessionKey);
   return {
     root, sessionFile:path.join(root,'session.json'),
-    turnFile:path.join(root,'turn.json'), canonicalRoot
+    turnFile:path.join(root,'turn.json'),
+    lifecycleFile:path.join(runtimeRoot,'lifecycle',worktreeKey,`${sessionKey}.json`),
+    canonicalRoot
+  };
+}
+
+function lifecycleMarker(scoped, input, state, event) {
+  const prior=readJson(scoped.lifecycleFile);
+  const sameSession=prior?.sessionId === input.session_id;
+  return {
+    schemaVersion: 1,
+    sessionId: input.session_id,
+    cwd: input.cwd,
+    model: input.model,
+    state,
+    lastEvent: event,
+    startedAt: sameSession ? prior.startedAt : observedAt,
+    observedAt,
+    endedAt: state === 'ended' ? observedAt : null
   };
 }
 
@@ -117,7 +135,10 @@ if (input.hook_event_name === 'SessionStart') {
   // The legacy global markers remain for older CEOS installations, but
   // project-bound readers must prefer these scoped files.
   atomicWriteJson(scoped.sessionFile, marker);
-  fs.rmSync(scoped.turnFile,{force:true});
+  // Codex emits SessionStart(source=compact) while continuing the same
+  // active turn. Do not erase its trusted scoped turn marker in that case.
+  if (!(input.source === 'compact' && !changedSession)) fs.rmSync(scoped.turnFile,{force:true});
+  atomicWriteJson(scoped.lifecycleFile,lifecycleMarker(scoped,input,'active','SessionStart'));
   process.stdout.write(JSON.stringify({
     continue: true,
     suppressOutput: true,
@@ -153,9 +174,13 @@ if (input.hook_event_name === 'SessionStart') {
     turnId:input.turn_id,model:input.model,cwd:input.cwd,observedAt};
   atomicWriteJson(turnFile,turn);
   atomicWriteJson(scoped.turnFile,turn);
+  atomicWriteJson(scoped.lifecycleFile,lifecycleMarker(scoped,input,'active','UserPromptSubmit'));
   process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }));
 } else if (input.hook_event_name === 'SessionEnd') {
   const scoped=sessionScopedFiles(input);
+  // Keep an immutable lifecycle receipt before removing the active scoped
+  // marker. The receipt is diagnostic evidence, not a selection override.
+  atomicWriteJson(scoped.lifecycleFile,lifecycleMarker(scoped,input,'ended','SessionEnd'));
   // Never clear another active session's scoped files.
   fs.rmSync(scoped.root,{recursive:true,force:true});
   const session = readJson(sessionFile);

@@ -14,6 +14,7 @@ import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
 import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
+import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -121,6 +122,7 @@ Usage:
   ceos failures [--path dir | --project dir] [--tail lines] [--json]
   ceos profile [--project dir]
   ceos context --skill <name> [--project dir]
+  ceos session-diagnostics [--project dir] [--codex-home dir] [--json]
   ceos web-preflight [--codex-home dir] [--url http://127.0.0.1:17841/healthz] [--timeout-ms 1200] [--json]
   ceos art-brief-verify --file <source-bound-art-brief.json> [--project dir] [--json]
   ceos art-output-verify --file <generated.png> --kind sprite|prop|background [--width N --height N] [--receipt <new.json>] [--json]
@@ -269,6 +271,15 @@ try {
     case 'context': {
       if (!args.skill) throw new Error('--skill is required');
       process.stdout.write(renderContext(project, args.skill)); break;
+    }
+    case 'session-diagnostics': {
+      const result=diagnoseRuntimeContext({
+        codexHome: args['codex-home'] || undefined,
+        projectDir: project
+      });
+      print(result, Boolean(args.json));
+      process.exitCode=result.status === 'PASS' ? 0 : 2;
+      break;
     }
     case 'web-preflight': {
       const result = await webPreflight({ codexHome: args['codex-home'] || undefined, healthUrl: args.url || undefined, timeoutMs: timeoutArg(args) });

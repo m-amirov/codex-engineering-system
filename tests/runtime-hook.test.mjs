@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const script = path.join(root, 'hooks', 'ceos-runtime-context.mjs');
-import { readRuntimeContext } from '../src/runtime-context.mjs';
+import { diagnoseRuntimeContext, readRuntimeContext } from '../src/runtime-context.mjs';
 import { nativeProducerParentContext } from '../src/native-producer-routing.mjs';
 
 function runHook(home, input) {
@@ -73,6 +74,23 @@ function setupWorktrees(t) {
   return {home,a,b,send};
 }
 
+function key(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function removeLifecycleRecord(home, cwd, sessionId) {
+  const worktreeKey=key(fs.realpathSync(path.resolve(cwd)));
+  const sessionKey=key(sessionId);
+  fs.rmSync(path.join(home,'ceos','runtime','lifecycle',worktreeKey,`${sessionKey}.json`),{force:true});
+}
+
+function writeCompletedRollout(home, sessionId) {
+  const dir=path.join(home,'sessions','2026','10','16');
+  fs.mkdirSync(dir,{recursive:true});
+  fs.writeFileSync(path.join(dir,`rollout-2026-10-16T09-34-58-${sessionId}.jsonl`),
+    JSON.stringify({timestamp:'2026-10-16T09:34:58.100Z',type:'event_msg',payload:{type:'task_complete'}})+'\n');
+}
+
 test('parallel worktree hooks cannot overwrite each other’s scoped native trust context',t=>{
   const x=setupWorktrees(t);
   x.send('SessionStart','session-A',x.a);
@@ -104,7 +122,49 @@ test('two simultaneous sessions in the same worktree are blocked until one ends'
     'BLOCKED_AMBIGUOUS_WORKTREE_SESSIONS');
   assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),null);
   x.send('SessionEnd','session-A',x.a);
+  const ended=JSON.parse(fs.readFileSync(path.join(x.home,'ceos','runtime','lifecycle',
+    key(fs.realpathSync(path.resolve(x.a))),`${key('session-A')}.json`)));
+  assert.equal(ended.state,'ended');
+  assert.equal(ended.lastEvent,'SessionEnd');
   assert.equal(readRuntimeContext({codexHome:x.home,projectDir:x.a}).session.sessionId,'session-B');
+});
+
+test('compact SessionStart preserves the trusted current turn',t=>{
+  const x=setupWorktrees(t);
+  x.send('SessionStart','session-A',x.a);
+  x.send('UserPromptSubmit','session-A',x.a,'turn-A');
+  const compact=runHook(x.home,{hook_event_name:'SessionStart',session_id:'session-A',
+    source:'compact',model:'m',cwd:x.a});
+  assert.equal(compact.status,0,compact.stderr);
+  const ctx=readRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(ctx.session.sessionId,'session-A');
+  assert.equal(ctx.turn.turnId,'turn-A');
+});
+
+test('legacy rollout without SessionEnd remains blocked and diagnostics remain read-only',t=>{
+  const x=setupWorktrees(t);
+  x.send('SessionStart','current-session',x.a);
+  x.send('UserPromptSubmit','current-session',x.a,'current-turn');
+  x.send('SessionStart','completed-session',x.a);
+  x.send('UserPromptSubmit','completed-session',x.a,'completed-turn');
+  removeLifecycleRecord(x.home,x.a,'completed-session');
+  writeCompletedRollout(x.home,'completed-session');
+  x.send('UserPromptSubmit','current-session',x.a,'current-turn-2');
+
+  const before=fs.readFileSync(path.join(x.home,'ceos','runtime','worktrees',
+    key(fs.realpathSync(path.resolve(x.a))),key('completed-session'),'turn.json'),'utf8');
+  const diagnostics=diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(diagnostics.status,'BLOCKED',JSON.stringify(diagnostics));
+  assert.equal(diagnostics.selectionError,'BLOCKED_AMBIGUOUS_WORKTREE_SESSIONS');
+  assert.equal(diagnostics.selectedSessionId,null);
+  assert.equal(diagnostics.candidates.find(c=>c.sessionId==='completed-session').classification,
+    'MISSING_SESSION_END');
+  const after=fs.readFileSync(path.join(x.home,'ceos','runtime','worktrees',
+    key(fs.realpathSync(path.resolve(x.a))),key('completed-session'),'turn.json'),'utf8');
+  assert.equal(after,before);
+  const blocked=readRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(blocked.session,null);
+  assert.equal(blocked.selectionError,'BLOCKED_AMBIGUOUS_WORKTREE_SESSIONS');
 });
 
 test('scoped context never borrows a global marker from a different checkout',t=>{
