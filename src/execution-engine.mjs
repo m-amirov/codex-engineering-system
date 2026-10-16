@@ -547,7 +547,7 @@ export function createLinkedSessionRecoveryRun(projectDir, sourceRunRef, {expect
       throw new Error('BLOCKED_RECOVERY_NOT_AT_GENERATING');
     if (typeof expectedParentSessionId !== 'string' || !expectedParentSessionId.trim() ||
         expectedParentSessionId === old.producerParentSessionId ||
-        nativeProducerParentContext() !== expectedParentSessionId)
+        nativeProducerParentContext({projectDir:project}) !== expectedParentSessionId)
       throw new Error('BLOCKED_RECOVERY_PARENT_UNVERIFIED');
 
     const source = gitSourceSnapshot(project);
@@ -686,7 +686,7 @@ export function createRun(projectDir, pipeline, {
     narrativeDualFormatRequired: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject),
     nativeProducerRouteRequired: pipeline === 'production-art' && normalizedArtMode !== ART_MODES.VERIFIED_EXISTING_ART_REUSE && narrativeDualFormatEnabled(resolvedProject),
     artAcceptanceProfile: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? NARRATIVE_ART_ACCEPTANCE_V2 : null,
-    producerParentSessionId: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? nativeProducerParentContext() : null,
+    producerParentSessionId: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? nativeProducerParentContext({projectDir:resolvedProject}) : null,
     projectDir: resolvedProject,
     runDir,
     createdAt,
