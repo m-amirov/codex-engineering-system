@@ -35,7 +35,12 @@ function gitReadOnly(projectDir) {
   let expected, actual;
   try { expected = fs.realpathSync(project); actual = fs.realpathSync(root.stdout.trim()); }
   catch { return {status:'BLOCKED_GIT', head:null, branch:null, dirty:null}; }
-  if (expected !== actual) return {status:'BLOCKED_WRONG_ROOT', head:null, branch:null, dirty:null};
+  // Windows Git can normalize 8.3-short paths differently from Node.
+  // Compare filesystem identity before refusing an otherwise correct worktree.
+  const left=fs.statSync(expected),right=fs.statSync(actual);
+  const sameRoot=(left.ino && right.ino && left.dev===right.dev && left.ino===right.ino) ||
+    (process.platform==='win32' ? expected.toLowerCase()===actual.toLowerCase() : expected===actual);
+  if (!sameRoot) return {status:'BLOCKED_WRONG_ROOT', head:null, branch:null, dirty:null};
   const head = git('rev-parse','HEAD');
   const branch = git('symbolic-ref','--quiet','--short','HEAD');
   // CEOS writes run checkpoints and latest.json into .ceos-runs itself.
