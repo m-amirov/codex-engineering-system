@@ -144,9 +144,12 @@ The historical global `current-session.json` / `current-turn.json`
 files remain as a migration fallback only when **both** recorded cwd
 values match the requested project and there is no scoped state.
 
-A single eligible session is required. Two fresh same-worktree sessions
-are ambiguous and cause `BLOCKED_AMBIGUOUS_WORKTREE_SESSIONS` rather than
-automatically selecting the latest. Stale/corrupt evidence stays BLOCKED.
+A single eligible session is required. Multiple fresh same-worktree sessions
+remain BLOCKED rather than automatically selecting the latest: an active
+lifecycle without a matching live host binding returns
+`BLOCKED_ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND`; otherwise the ambiguity
+code is `BLOCKED_AMBIGUOUS_WORKTREE_SESSIONS`. Stale/corrupt evidence stays
+BLOCKED.
 SessionEnd only removes that session's scoped evidence.
 
 These are Codex-host-observed local hooks, NOT provider-signed model
