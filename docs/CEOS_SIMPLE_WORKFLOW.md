@@ -57,6 +57,14 @@ There is no new CEOS acceptance database in this change. Existing receipt
 files and scoped manifests are the evidence sources; do not duplicate them
 as invented PASS markers.
 
+`ceos continue` discovers one project-owned JSON file under `artifacts/` whose
+name is `art-progress-index.json` or contains `acceptance-ledger`. It projects
+that evidence into the next-action response; it does not create a run, receipt,
+checkpoint or new acceptance marker. `--progress-index <path>` is available
+only when a project contains more than one intentionally scoped progress file.
+Multiple candidates are reported as a short `BLOCKED_AMBIGUOUS_PROGRESS`
+diagnostic instead of being guessed.
+
 ## Operator path
 
 Use the existing canonical game checkout; no second worktree is needed.
@@ -71,13 +79,13 @@ Use the existing canonical game checkout; no second worktree is needed.
 
 ## Deliberate limits
 
-This is the **first, backward-compatible architectural simplification**:
-the preliminary product stages are no longer coupled to a Codex chat.
-It does not yet merge the many legacy recovery receipts or solve a host that
-fails to deliver a trusted UserPromptSubmit; those require separate evidence
-and cannot be replaced by fabricated events. Do not create repeated runs to
-work around an untrusted host. Use the existing accepted evidence and report
-the actual blocker.
+This is a backward-compatible architectural simplification: preliminary
+product stages and accepted project progress are no longer coupled to a Codex
+chat. Legacy pinned-parent recovery remains only for historical runs that
+actually lack `producerBindingMode`; a new `CURRENT_TURN` run never creates a
+recovery run merely because Codex restarted. A host that fails to deliver a
+trusted UserPromptSubmit is reported at the generation boundary and cannot be
+replaced with a fabricated event.
 
 ## Read-only cumulative production-art progress
 
@@ -85,6 +93,12 @@ CEOS does **not** invent a new acceptance database. The optional
 `ceos art-progress --index artifacts/art-progress-index.json --json` command
 projects the current state from an existing immutable Web High receipt, actual
 PNG bytes, actual runtime screenshots and source dependencies.
+
+The same read-only projection accepts the existing
+`STAGE9_4_SOURCE_BOUND_ACCEPTANCE_LEDGER` shape. It verifies its dependency,
+mechanical, PNG, Web High and runtime references, while retaining the ledger's
+declared counts separately when a referenced receipt is missing. A blocked
+ledger never becomes accepted progress and never permits Release PASS.
 
 The index is only a locator. A representative schema:
 

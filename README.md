@@ -2,12 +2,27 @@
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
 
+## Continue and source-bound project progress (0.5.23)
+
+Ordinary `ceos continue` is project-oriented. It selects the next persisted
+run action and, when present, projects one source-bound art-progress index or
+acceptance ledger from `artifacts/`. Accepted evidence survives a Codex session
+change; the response reports remaining scope without regenerating accepted
+pairs. A blocked ledger remains blocked and cannot become Release PASS.
+
+New narrative production-art runs defer producer binding until the generation
+turn. Restarting Codex before generation does not create a recovery run. Fresh
+current-turn capability evidence and a real Terra child route are still
+mandatory at generation.
+
 ## Automatic linked session recovery (0.5.21)
 
 Ordinary `ceos continue` now uses guided mode. When a narrative
 `production-art` run is awaiting `GENERATING` but its parent Codex
 session has changed, CEOS can create a new source-bound run using an accepted
 CANON_READY checkpoint and a fresh SessionStart/UserPromptSubmit binding.
+This compatibility path applies only to historical pinned-parent runs without
+`producerBindingMode`; it is not used for new deferred-binding runs.
 The old run is not edited, and earlier art/review receipts are not re-attested
 as new output. Image generation requires fresh current-turn capability proof;
 `--mode inspect` and `--dry-run` remain strictly read-only. Invalid hooks,

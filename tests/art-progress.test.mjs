@@ -61,6 +61,9 @@ function fixture(t) {
     schemaVersion:1,status:'PASS',profile:'NARRATIVE_ART_ACCEPTANCE_V2',
     actualPixelsReceived:true,acceptanceScope:'BATCH_ONLY',
     releaseReady:false,episodeFinalAcceptance:false,requiredRegeneration:false,
+    webHighAcceptance:{status:'PASS',reviewTraceId:'fixture-web-high',
+      evidenceRefs:['fixture-pixels'],receivedEvidenceRefs:['fixture-pixels'],
+      actualPixelsReceived:true},
     sourceBase:sourceHead,scope:[{sceneId:'ep2_a',pair:'S22'},{sceneId:'ep2_b',pair:'S23'}],
     unresolvedFindings:[],reviewedItems:reviewed,pixels:{assets:images,runtimeEvidence:runtimePath}
   };
@@ -78,6 +81,76 @@ function fixture(t) {
   }
   return {project,indexPath,plan,dep,images,captures,receiptPath,updateReceipt,index,
     saveIndex:()=>json(project,indexPath,index)};
+}
+
+function addIndependentBatch(x,pairs,id) {
+  const replace = value => {
+    if (typeof value === 'string') return value.replaceAll('S22','S24').replaceAll('S23','S25');
+    if (Array.isArray(value)) return value.map(replace);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,replace(item)]));
+    return value;
+  };
+  const sourceReceipt=JSON.parse(fs.readFileSync(path.join(x.project,x.receiptPath),'utf8'));
+  const sourceRuntime=JSON.parse(fs.readFileSync(path.join(x.project,'artifacts/runtime.json'),'utf8'));
+  const receipt=replace(sourceReceipt);
+  receipt.scope=[{sceneId:'ep2_c',pair:pairs[0]},{sceneId:'ep2_d',pair:pairs[1]}];
+  receipt.webHighAcceptance={...receipt.webHighAcceptance,reviewTraceId:'fixture-web-high-2'};
+  const captures=[];
+  for (const [from,to] of [['S22',pairs[0]],['S23',pairs[1]]]) {
+    for (const format of ['portrait','landscape']) {
+      const source=`assets/${from}-${format}.png`,target=`assets/${to}-${format}.png`;
+      fs.copyFileSync(path.join(x.project,source),path.join(x.project,target));
+      const shot=`artifacts/screenshots/${to}-${format}.png`;
+      fs.copyFileSync(path.join(x.project,`artifacts/screenshots/${from}-${format}.png`),path.join(x.project,shot));
+      const asset=receipt.pixels.assets.find(item=>item.id===`${to}-${format}`);
+      asset.path=target; asset.sha256=sha(fs.readFileSync(path.join(x.project,target)));
+      const capture={tag:to,assetFormat:format,noHorizontalOverflow:true,noVerticalOverflow:true,
+        screenshot:shot,screenshotSha256:sha(fs.readFileSync(path.join(x.project,shot)))};
+      captures.push(capture);
+      receipt.reviewedItems.push({id:`${to}-${format}`,status:'PASS'});
+    }
+    for (const platform of ['desktop','mobile']) receipt.reviewedItems.push({id:`${to}-${platform}-runtime`,status:'PASS'});
+  }
+  receipt.pixels.runtimeEvidence='artifacts/runtime-2.json';
+  const runtimeHash=json(x.project,'artifacts/runtime-2.json',{...sourceRuntime,captures});
+  const receiptPath='artifacts/acceptance-2.json';
+  const receiptHash=json(x.project,receiptPath,receipt);
+  x.index.batches.push({id,pairs,receipt:{path:receiptPath,sha256:receiptHash},runtimeSha256:runtimeHash});
+  x.saveIndex();
+}
+
+function legacyLedgerFixture(t,{missingWeb=false}={}) {
+  const project=fs.mkdtempSync(path.join(os.tmpdir(),'ceos-stage9-ledger-'));
+  t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
+  const sourceHead='a'.repeat(40);
+  const dependency='narrative/graph.json';
+  const dependencyHash=write(project,dependency,Buffer.from('{"scene":"S19"}\n'));
+  const png=encodeProductionPng({width:16,height:16,pixels:Buffer.alloc(16*16*4,128)});
+  const portrait='assets/S19-portrait.png',landscape='assets/S19-landscape.png';
+  const portraitHash=write(project,portrait,png),landscapeHash=write(project,landscape,png);
+  const manifest='artifacts/manifest.json',mechanical='artifacts/mechanical.json';
+  const manifestHash=json(project,manifest,{schemaVersion:1,assets:[portrait,landscape]});
+  const mechanicalHash=json(project,mechanical,{status:'PASS_ART_BATCH_MECHANICAL'});
+  const web='artifacts/web-high.json',runtime='artifacts/runtime.json';
+  const webHash=missingWeb ? 'f'.repeat(64) : json(project,web,{
+    status:'PASS',reviewTraceId:'web-s19',sourceHead,reviewedItems:['S19'],
+    evidenceRefs:['S19-pixels'],receivedEvidenceRefs:['S19-pixels'],actualPixelsReceived:true
+  });
+  const runtimeHash=json(project,runtime,{status:'PASS_RUNTIME',sourceHead,captures:[]});
+  const ledgerPath='artifacts/STAGE9_4_ACCEPTANCE_LEDGER.json';
+  json(project,ledgerPath,{
+    schemaVersion:1,kind:'STAGE9_4_SOURCE_BOUND_ACCEPTANCE_LEDGER',currentHead:sourceHead,
+    currentness:{mode:'DEPENDENCY_BASED_REUSE',productInputsUnchanged:true},
+    progress:{plannedPairs:2,plannedPngs:4,acceptedPairs:1,acceptedPngs:2,acceptedPairIds:['S19']},
+    dependencyEvidence:[{path:dependency,sha256:dependencyHash}],
+    mechanicalRevalidation:{status:'PASS_ART_BATCH_MECHANICAL',manifest,manifestSha256:manifestHash,receipt:mechanical,receiptSha256:mechanicalHash},
+    groups:[{pairs:['S19'],webReceipt:{path:web,sha256:webHash},runtimeReceipt:{path:runtime,sha256:runtimeHash},pairsDetail:[{id:'S19',assets:[
+      {path:portrait,bytes:fs.statSync(path.join(project,portrait)).size,sha256:portraitHash,dimensions:'16x16'},
+      {path:landscape,bytes:fs.statSync(path.join(project,landscape)).size,sha256:landscapeHash,dimensions:'16x16'}
+    ]}]}],
+    boundary:{episodeFinalAcceptance:false,releaseReady:false}
+  });
+  return {project,ledgerPath};
 }
 
 test('accepted batches are projected without creating runs or writing evidence',t=>{
@@ -139,6 +212,17 @@ test('duplicate accepted pairs are not counted twice',t=>{
   assert.ok(r.problems.some(x=>x.includes('DUPLICATE_PAIR')||x.includes('RECEIPT_DUPLICATED')));
 });
 
+test('independent receipts accumulate project progress without repeating accepted pairs',t=>{
+  const x=fixture(t);
+  addIndependentBatch(x,['S24','S25'],'ep2-s24-s25');
+  const r=inspectArtProgress(x.project,x.indexPath);
+  assert.equal(r.status,'PASS_ART_PROGRESS_REVALIDATED',JSON.stringify(r));
+  assert.equal(r.acceptedPairs,4);
+  assert.equal(r.acceptedPng,8);
+  assert.equal(r.remainingPairs,21);
+  assert.equal(r.batches.length,2);
+});
+
 test('runtime screenshot tampering is caught without rewriting the original receipt',t=>{
   const x=fixture(t);
   fs.appendFileSync(path.join(x.project,x.captures[0].screenshot),'changed');
@@ -155,6 +239,51 @@ test('old runtime or missing reviewed runtime pixel cannot count as accepted',t=
   const r=inspectArtProgress(x.project,x.indexPath);
   assert.equal(r.acceptedPairs,0);
   assert.ok(r.problems.some(code=>code.includes('RUNTIME_REVIEW_MISSING')));
+});
+
+test('missing independent Web High acceptance cannot count a mechanically valid batch',t=>{
+  const x=fixture(t);
+  x.updateReceipt(receipt=>{
+    const next={...receipt};
+    delete next.webHighAcceptance;
+    return next;
+  });
+  const r=inspectArtProgress(x.project,x.indexPath);
+  assert.equal(r.status,'BLOCKED_ART_PROGRESS');
+  assert.equal(r.acceptedPairs,0);
+  assert.ok(r.problems.some(code=>code.includes('INDEPENDENT_WEB_HIGH_MISSING')));
+});
+
+test('legacy source-bound Stage 9 ledger accumulates accepted pairs only from revalidated receipts',t=>{
+  const x=legacyLedgerFixture(t);
+  const r=inspectArtProgress(x.project,x.ledgerPath);
+  assert.equal(r.status,'PASS_ART_PROGRESS_REVALIDATED',JSON.stringify(r));
+  assert.equal(r.acceptanceSource,'STAGE9_4_SOURCE_BOUND_ACCEPTANCE_LEDGER');
+  assert.equal(r.acceptedPairs,1);
+  assert.equal(r.acceptedPng,2);
+  assert.equal(r.remainingPairs,1);
+  assert.equal(r.releaseReady,false);
+});
+
+test('legacy source-bound Stage 9 ledger does not promote missing Web High evidence',t=>{
+  const x=legacyLedgerFixture(t,{missingWeb:true});
+  const r=inspectArtProgress(x.project,x.ledgerPath);
+  assert.equal(r.status,'BLOCKED_ART_PROGRESS');
+  assert.equal(r.declaredAcceptedPairs,1);
+  assert.equal(r.acceptedPairs,0);
+  assert.ok(r.problems.some(code=>code.includes('WEB_HIGH')));
+  assert.equal(r.releaseReady,false);
+});
+
+test('source-bound progress cannot self-promote to Release PASS',t=>{
+  const x=legacyLedgerFixture(t);
+  const ledger=JSON.parse(fs.readFileSync(path.join(x.project,x.ledgerPath),'utf8'));
+  ledger.boundary.releaseReady=true;
+  json(x.project,x.ledgerPath,ledger);
+  const r=inspectArtProgress(x.project,x.ledgerPath);
+  assert.equal(r.status,'BLOCKED_ART_PROGRESS');
+  assert.ok(r.problems.includes('RELEASE_PROMOTION_FORBIDDEN'));
+  assert.equal(r.releaseReady,false);
 });
 
 test('CLI art-progress is read-only and fails closed for unsafe index paths',t=>{
