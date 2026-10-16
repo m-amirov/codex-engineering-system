@@ -417,6 +417,27 @@ function assertRunIntegrity(runDir, run) {
     }
   }
 
+  if (run.linkedRecovery) {
+    const link = run.linkedRecovery;
+    const root = runRoot(path.resolve(run.projectDir));
+    const sourceDir = path.join(root, link.sourceRunId ?? '');
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(link.sourceRunId ?? '') ||
+        !isInside(root, sourceDir) || sourceDir === runDir) {
+      issues.push('linked recovery source run invalid');
+    } else {
+      for (const [file, expected, label] of [
+        [path.join(sourceDir, 'run.json'), link.sourceRunSha256, 'source run'],
+        [path.join(sourceDir, 'scope.json'), link.sourceScopeFileSha256, 'source scope'],
+        [path.join(sourceDir, 'checkpoints', link.canonCheckpointFile ?? ''), link.canonCheckpointSha256, 'source canon checkpoint']
+      ]) {
+        if (!expected || !fs.existsSync(file) || hashPath(file).sha256 !== expected)
+          issues.push('linked recovery ' + label + ' changed or missing');
+      }
+      if (link.scopeSha256 !== run.scopeSha256)
+        issues.push('linked recovery scope differs from source scope');
+    }
+  }
+
   for (const review of run.routingTrace?.webReviews ?? []) {
     for (const frame of review.localScreenshotArtifacts ?? []) {
       if (!frame?.path || !fs.existsSync(frame.path)) issues.push('Web visual evidence screenshot missing');
@@ -473,6 +494,113 @@ export function resolveRun(projectDir, runRef = 'latest') {
   const file = path.join(runDir, 'run.json');
   if (!fs.existsSync(file)) throw new Error(`Run not found: ${runRef}`);
   return { runDir, file, run: readJson(file) };
+}
+
+/**
+ * Session-only recovery of a previously accepted CANON_READY milestone.
+ * No generated pixels, attestation or native trace is inherited. The source
+ * run and canon checkpoint remain immutable, pinned by content hashes.
+ */
+export function createLinkedSessionRecoveryRun(projectDir, sourceRunRef, {expectedParentSessionId, expectedHead} = {}) {
+  const project = path.resolve(projectDir);
+  const original = resolveRun(project, sourceRunRef);
+  return withRunLock(original.runDir, () => {
+    const old = readJson(original.file);
+    const integrity = assertRunIntegrity(original.runDir, old);
+    if (!integrity.ok) throw new Error('BLOCKED_RECOVERY_SOURCE_INTEGRITY: ' + integrity.issues.join(', '));
+    if (old.pipeline !== 'production-art' || old.nativeProducerRouteRequired !== true ||
+        old.artMode !== ART_MODES.NEW_GENERATION || old.cycle !== 1)
+      throw new Error('BLOCKED_RECOVERY_UNSUPPORTED_PIPELINE');
+    const terminalMismatch = old.verdict === 'BLOCKED' &&
+      (old.stopReason?.stage === 'GENERATING' ||
+       (!old.stopReason?.stage && old.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH')) &&
+      (old.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH' ||
+       /BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/.test(String(old.stopReason.reason ?? '')));
+    if (!(old.verdict === null && old.nextStage === 'GENERATING') && !terminalMismatch)
+      throw new Error('BLOCKED_RECOVERY_NOT_AT_GENERATING');
+    if (typeof expectedParentSessionId !== 'string' || !expectedParentSessionId.trim() ||
+        expectedParentSessionId === old.producerParentSessionId ||
+        nativeProducerParentContext() !== expectedParentSessionId)
+      throw new Error('BLOCKED_RECOVERY_PARENT_UNVERIFIED');
+
+    const source = gitSourceSnapshot(project);
+    if (!source.available || source.head !== expectedHead)
+      throw new Error('BLOCKED_RECOVERY_SOURCE_HEAD_CHANGED');
+    const scope = readJson(path.join(original.runDir, 'scope.json'));
+    if (scopeHash(scope) !== old.scopeSha256 ||
+        Object.keys(scope).some(key => !['target','inScope','outOfScope','acceptanceContract','mutationBoundary'].includes(key)))
+      throw new Error('BLOCKED_RECOVERY_SCOPE_UNSUPPORTED');
+    const checkpointsDir = path.join(original.runDir, 'checkpoints');
+    const checkpoints = fs.readdirSync(checkpointsDir).filter(name=>name.endsWith('.json')).sort();
+    const acceptedCanon = checkpoints.filter(name=>name.endsWith('-canon-ready.json'))
+      .map(name=>({name, data:readJson(path.join(checkpointsDir,name))}))
+      .filter(x=>x.data.stage==='CANON_READY' && x.data.outcome==='CONTINUE');
+    const canon = acceptedCanon.at(-1);
+    if (!canon || canon.data.source?.head !== source.head ||
+        !checkpoints.some(name=>name.endsWith('-inventoried.json')))
+      throw new Error('BLOCKED_RECOVERY_CANON_NOT_CURRENT');
+    const caps = structuredClone(readJson(path.join(original.runDir, 'capabilities.json')));
+    caps.imageGeneration = {
+      ...caps.imageGeneration,
+      status:'unknown',
+      capabilityPresence:'UNKNOWN',
+      serviceAvailability:'UNKNOWN',
+      callable:false,
+      trustedForGeneration:false,
+      generationAllowed:false,
+      attestationFile:null,
+      observedTool:null,
+      trustScope:null,
+      serviceEvidence:null,
+      source:'linked-recovery-requires-fresh-run-session-turn-challenge'
+    };
+    const blocker = capabilityBlockers(caps,{pipeline:old.pipeline,webRequired:old.webRequired})
+      .find(x=>x.code!=='IMAGE_GENERATION_UNAVAILABLE');
+    if (blocker) throw new Error('BLOCKED_RECOVERY_CAPABILITY_PREFLIGHT: ' + blocker.code);
+
+    const linked = createRun(project, old.pipeline, {
+      scope, capabilities:caps, webRequired:old.webRequired,
+      maxCycles:old.maxCycles, webReviewMode:old.webReviewMode,
+      webReviewAssurance:old.webReviewAssurance, artMode:old.artMode
+    });
+    return withRunLock(linked.runDir, () => {
+      const next = readJson(path.join(linked.runDir, 'run.json'));
+      if (next.verdict !== null || next.nativeProducerRouteRequired !== true ||
+          next.producerParentSessionId !== expectedParentSessionId ||
+          next.scopeSha256 !== old.scopeSha256)
+        throw new Error('BLOCKED_RECOVERY_NEW_RUN_BINDING');
+      const canonFile = path.join(checkpointsDir, canon.name);
+      next.linkedRecovery = {
+        schemaVersion:1, reason:'PARENT_SESSION_CHANGED',
+        sourceRunId:old.runId, sourceRunSha256:hashPath(original.file).sha256,
+        sourceScopeFileSha256:hashPath(path.join(original.runDir,'scope.json')).sha256,
+        scopeSha256:old.scopeSha256,
+        sourceCheckpointCount:old.checkpointCount,
+        canonCheckpointFile:canon.name,
+        canonCheckpointSha256:hashPath(canonFile).sha256,
+        sourceHead:source.head,
+        oldParentSessionId:old.producerParentSessionId,
+        newParentSessionId:expectedParentSessionId,
+        sourceVerdict:old.verdict,
+        at:now()
+      };
+      writeCheckpoint(linked.runDir, next, {
+        stage:'LINKED_SESSION_RECOVERY',at:now(),auto:true,
+        outcome:'CONTINUE',metadata:next.linkedRecovery,
+        artifacts:[
+          {path:original.file,...hashPath(original.file)},
+          {path:canonFile,...hashPath(canonFile)}
+        ]
+      });
+      next.state='CANON_READY';
+      next.nextStage='GENERATING';
+      next.updatedAt=now();
+      atomicWriteJson(path.join(linked.runDir, 'run.json'),next);
+      atomicWriteJson(path.join(runRoot(project),'latest.json'),
+        {runId:next.runId,runDir:linked.runDir,updatedAt:next.updatedAt});
+      return {runDir:linked.runDir,run:next,integrity:assertRunIntegrity(linked.runDir,next),nextAction:nextAction(next)};
+    });
+  });
 }
 
 export function createRun(projectDir, pipeline, {

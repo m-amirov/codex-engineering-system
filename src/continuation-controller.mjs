@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { resumeRun, inspectBlockedRunRecovery, EXECUTION_PIPELINES } from './execution-engine.mjs';
+import { resumeRun, inspectBlockedRunRecovery, createLinkedSessionRecoveryRun, EXECUTION_PIPELINES } from './execution-engine.mjs';
+import { readRuntimeContext } from './capability-attestation.mjs';
 
 const MODES = new Set(['inspect', 'guided', 'auto']);
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -53,7 +54,7 @@ function availableRuns(projectDir) {
     try {
       if (!fs.statSync(file).isFile()) continue;
       const run = read(file);
-      if (run.runId === name) runs.push({id:name, verdict:run.verdict ?? null, state:run.state, updatedAt:run.updatedAt ?? ''});
+      if (run.runId === name) runs.push({id:name, verdict:run.verdict ?? null, state:run.state, updatedAt:run.updatedAt ?? '', linkedFrom:run.linkedRecovery?.sourceRunId ?? null});
     } catch { /* damaged runs are not silently selected */ }
   }
   return runs.sort((a,b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
@@ -63,17 +64,20 @@ function resolveSelection(projectDir, runRef) {
   if (runRef && runRef !== 'latest') {
     if (typeof runRef !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(runRef) || runRef.includes('..'))
       return {status:'BLOCKED_RUN_REF_INVALID'};
-    return {id:runRef};
+    const children=availableRuns(projectDir).filter(x=>x.linkedFrom===runRef);
+    if (children.length>1) return {status:'BLOCKED_AMBIGUOUS_RECOVERY',candidates:children.map(x=>x.id)};
+    return {id:children.length===1?children[0].id:runRef};
   }
   const runs = availableRuns(projectDir);
   if (!runs.length) return {status:'BLOCKED_NO_RUN'};
-  const active = runs.filter(x => !TERMINAL.has(x.verdict ?? x.state));
+  const superseded = new Set(runs.map(x=>x.linkedFrom).filter(Boolean));
+  const active = runs.filter(x => !TERMINAL.has(x.verdict ?? x.state) && !superseded.has(x.id));
   if (active.length > 1) return {status:'BLOCKED_AMBIGUOUS_RUNS', candidates:active.map(x=>x.id)};
   if (active.length === 1) return {id:active[0].id};
   const latestPath = path.join(currentRoot(projectDir),'latest.json');
   try {
     const latest = read(latestPath);
-    if (runs.some(x => x.id === latest.runId)) return {id:latest.runId};
+    if (runs.some(x => x.id === latest.runId) && !superseded.has(latest.runId)) return {id:latest.runId};
   } catch { /* select newest real run */ }
   return {id:runs[0].id};
 }
@@ -103,6 +107,32 @@ function taskFor(run) {
   };
 }
 
+function inspectSessionRecovery(project, run, git) {
+  if (run.pipeline !== 'production-art' || run.nativeProducerRouteRequired !== true ||
+      run.artMode !== 'NEW_GENERATION' || run.cycle !== 1 ||
+      typeof run.producerParentSessionId !== 'string') return null;
+  const parentMismatchBlocked = run.verdict === 'BLOCKED' &&
+    (run.stopReason?.stage === 'GENERATING' ||
+     (!run.stopReason?.stage && run.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH')) &&
+    (run.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH' ||
+     /BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/.test(String(run.stopReason.reason ?? '')));
+  if (!((run.verdict === null && run.nextStage === 'GENERATING') || parentMismatchBlocked))
+    return null;
+  const ctx=readRuntimeContext();
+  const timestamp=Date.parse(ctx.turn?.observedAt ?? '');
+  const current=ctx.session?.sessionId;
+  let valid=typeof current==='string' && current.length>0 &&
+    ctx.turn?.sessionId===current && typeof ctx.turn?.turnId==='string' &&
+    Number.isFinite(timestamp) && timestamp<=Date.now() &&
+    Date.now()-timestamp<=30*60*1000;
+  try { valid=valid && fs.realpathSync(ctx.turn.cwd)===fs.realpathSync(project); }
+  catch { valid=false; }
+  if (!valid) return {status:'BLOCKED_SESSION_CONTEXT_UNVERIFIED'};
+  if (run.producerParentSessionId===current) return null;
+  if (git.status!=='READY' || git.dirty) return {status:'BLOCKED_RECOVERY_GIT_PREFLIGHT'};
+  return {status:'SESSION_RECOVERY_AVAILABLE',parentSessionId:current};
+}
+
 function makeBlocked(status, extra = {}) {
   return {schemaVersion:1, status, executable:false, ...extra};
 }
@@ -124,6 +154,18 @@ export function planContinuation(projectDir, {runRef, mode='inspect'}={}) {
     scopeSha256:run.scopeSha256,cycle:run.cycle,checkpointCount:run.checkpointCount,
     maxCycles:run.maxCycles,git,mode};
   if (!resumed.integrity?.ok) return makeBlocked('BLOCKED_INTEGRITY',{...summary,integrity:resumed.integrity});
+  const sessionRecovery=inspectSessionRecovery(project,run,git);
+  if (sessionRecovery) {
+    const base={...summary,integrity:resumed.integrity,executable:false,
+      action:{kind:'CREATE_LINKED_SESSION_RECOVERY',risk:'R0',
+        instruction:'Create a source-bound new run with a fresh parent binding. Re-attest capabilities in the current turn. Do not reuse generation receipts.'}};
+    if (sessionRecovery.status!=='SESSION_RECOVERY_AVAILABLE')
+      return makeBlocked(sessionRecovery.status,base);
+    return {schemaVersion:1,status:sessionRecovery.status,...base,
+      recovery:{sourceRunId:run.runId,currentParentSessionId:sessionRecovery.parentSessionId,
+        sourceScopeSha256:run.scopeSha256,sourceCheckpointCount:run.checkpointCount},
+      hostExecutionRequired:false};
+  }
   const action=taskFor(run);
   const actionId=digest(JSON.stringify({runId:run.runId,scope:run.scopeSha256,head:git.head,
     cycle:run.cycle,checkpointCount:run.checkpointCount,nextStage:run.nextStage,kind:action.kind}));
@@ -183,4 +225,59 @@ export function releaseContinuation(projectDir,{runRef,token}={}) {
   if (current.token!==token) return makeBlocked('BLOCKED_LEASE_NOT_OWNED',{runId:selection.id});
   fs.unlinkSync(file);
   return {schemaVersion:1,status:'RELEASED',runId:selection.id,actionId:current.actionId};
+}
+
+/**
+ * Guided/auto entrypoint. Only a fresh matching Codex hook context permits a
+ * session-only recovery; inspect and dry-run must call planContinuation instead.
+ */
+export function recoverContinuation(projectDir,{runRef,mode='guided'}={}) {
+  if (!['guided','auto'].includes(mode)) return planContinuation(projectDir,{runRef,mode});
+  const plan=planContinuation(projectDir,{runRef,mode});
+  if (plan.status!=='SESSION_RECOVERY_AVAILABLE') return plan;
+  const base=currentRoot(projectDir);
+  const folder=path.join(base,'.continue-recoveries');
+  const key=digest(plan.runId);
+  fs.mkdirSync(folder,{recursive:true});
+  const lock=path.join(folder,key+'.lock');
+  const record=path.join(folder,key+'.json');
+  try { fs.writeFileSync(lock,JSON.stringify({runId:plan.runId,at:new Date().toISOString()}),{flag:'wx',mode:0o600}); }
+  catch(error) {
+    if(error.code==='EEXIST') return makeBlocked('BLOCKED_RECOVERY_ALREADY_IN_PROGRESS',{runId:plan.runId});
+    throw error;
+  }
+  try {
+    if(fs.existsSync(record)) {
+      const existing=read(record);
+      if(existing.sourceRunId!==plan.runId || !existing.recoveryRunId)
+        return makeBlocked('BLOCKED_RECOVERY_INDEX_CORRUPT',{runId:plan.runId});
+      return planContinuation(projectDir,{runRef:existing.recoveryRunId,mode});
+    }
+    // Re-evaluate under the exclusive recovery lock; old action or Git HEAD
+    // must not change between planning and creation.
+    const current=planContinuation(projectDir,{runRef:plan.runId,mode});
+    if(current.status!==plan.status ||
+        current.recovery?.currentParentSessionId!==plan.recovery.currentParentSessionId ||
+        current.checkpointCount!==plan.checkpointCount ||
+        current.git.head!==plan.git.head)
+      return makeBlocked('BLOCKED_RECOVERY_STATE_CHANGED',{runId:plan.runId});
+    let linked;
+    try {
+      linked=createLinkedSessionRecoveryRun(projectDir,plan.runId,{
+        expectedParentSessionId:plan.recovery.currentParentSessionId,
+        expectedHead:plan.git.head
+      });
+    } catch(error) {
+      return makeBlocked('BLOCKED_RECOVERY_GUARD',{runId:plan.runId,detail:error.message});
+    }
+    const index={schemaVersion:1,sourceRunId:plan.runId,
+      recoveryRunId:linked.run.runId,sourceHead:plan.git.head,
+      sourceScopeSha256:plan.scopeSha256,recordedAt:new Date().toISOString()};
+    fs.writeFileSync(record,JSON.stringify(index,null,2)+'\n',{flag:'wx',mode:0o600});
+    const resumed=planContinuation(projectDir,{runRef:linked.run.runId,mode});
+    return {...resumed,recovery:{...index,status:'LINKED_SESSION_RECOVERY_CREATED',
+      requiresFreshCapabilityChallenge:true}};
+  } finally {
+    fs.rmSync(lock,{force:true});
+  }
 }

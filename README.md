@@ -1,6 +1,19 @@
-# Codex Engineering OS (CEOS) 0.5.18
+# Codex Engineering OS (CEOS) 0.5.21
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Automatic linked session recovery (0.5.21)
+
+Ordinary `ceos continue` now uses guided mode. When a narrative
+`production-art` run is awaiting `GENERATING` but its parent Codex
+session has changed, CEOS can create a new source-bound run using an accepted
+CANON_READY checkpoint and a fresh SessionStart/UserPromptSubmit binding.
+The old run is not edited, and earlier art/review receipts are not re-attested
+as new output. Image generation requires fresh current-turn capability proof;
+`--mode inspect` and `--dry-run` remain strictly read-only. Invalid hooks,
+Git drift, stale canon, conflicting recovery, output-file transport failures
+and unrelated terminal blockers remain blocked. See
+[CEOS Continue V1](docs/CEOS_CONTINUE_V1.md) for safety constraints.
 
 ## Narrative Art Acceptance V2 (0.5.14)
 
