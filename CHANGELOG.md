@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.21 — 2026-10-16
+
+- Added automatic session-only linked recovery to ordinary `ceos continue` for eligible narrative production-art runs waiting at `GENERATING` after the Codex parent session changes.
+- Preserves the source run and accepted CANON_READY evidence, pins provenance hashes, creates a new session-bound run, and resets generation capability trust pending a fresh run/session/turn challenge.
+- Keeps inspect and dry-run read-only; blocks stale/untrusted hooks, dirty or changed Git source, invalid canon, conflicting recovery locks and unrelated art output failures. Adds idempotence and regression coverage.
+- No automatic image generation, Web High review, merge, or release execution.
+
+
 ## 0.5.20 — 2026-10-15
 
 - Added ceos continue: persisted one-step planning (inspect/guided/auto), read-only default, fail-closed run selection/integrity/Git checks, atomic per-run action claims and safe token release.
