@@ -284,7 +284,7 @@ test('explicit native parent mismatch stop code recovers without guessing other 
   const file=path.join(x.project,'.ceos-runs',x.original,'run.json');
   const old=JSON.parse(fs.readFileSync(file,'utf8'));
   old.stopReason={code:'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH',reason:'Native agent parent mismatch'};
-  fs.writeFileSync(file,JSON.stringify(old,null,2)+'\\n');
+  fs.writeFileSync(file,JSON.stringify(old,null,2)+'\n');
   x.writeContext('parent-new');
   assert.equal(recoverContinuation(x.project).status,'READY_FOR_CODEX');
 });
