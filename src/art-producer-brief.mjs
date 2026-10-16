@@ -61,8 +61,63 @@ function verifiedFile(projectDir, candidate, expectedHash, issues, field, image 
     issues.push(`${field} SHA-256 missing or does not match actual file bytes`);
 }
 
+/**
+ * A committed brief cannot contain its own eventual Git HEAD: that is a
+ * self-referential hash. Allow precisely the commit(s) which introduced this
+ * brief (and sibling Stage 9.4 briefs) after sourceHead, but no change to
+ * product code, narrative, references, manifests or other evidence.
+ *
+ * A sourceHead ancestor alone is insufficient: ALL intervening Git changes
+ * must be new, committed brief JSONs with exactly the same sourceHead.
+ * No dirty/uncommitted brief bytes can be silently substituted.
+ */
+function checkBriefOnlyCommitCurrentness(projectDir, brief, head, briefPath) {
+  if (typeof briefPath !== 'string' || !briefPath) return false;
+  const root = fs.realpathSync(projectDir);
+  const full = path.resolve(projectDir, briefPath);
+  const rel = path.relative(root, full).split(path.sep).join('/');
+  const allowed = /^artifacts\/production-art\/stage9\.4\/briefs\/[A-Za-z0-9._-]+\.json$/;
+  if (!allowed.test(rel)) return false;
+  try {
+    if (!fs.statSync(full).isFile() || fs.realpathSync(full) !== full ||
+        !fs.realpathSync(full).startsWith(root + path.sep)) return false;
+    if (JSON.stringify(JSON.parse(fs.readFileSync(full, 'utf8'))) !== JSON.stringify(brief))
+      return false;
+  } catch { return false; }
+  const git = (args, opts={}) => spawnSync('git',args,{
+    cwd:projectDir,encoding:opts.encoding ?? 'utf8',maxBuffer:8*1024*1024,
+    timeout:15000,windowsHide:true
+  });
+  if (git(['merge-base','--is-ancestor',brief.sourceHead,head]).status !== 0)
+    return false;
+  const changes = git(['diff','--no-renames','--name-status','-z',
+    brief.sourceHead,head,'--']);
+  if (changes.status !== 0 || !changes.stdout) return false;
+  const records = changes.stdout.split('\0').filter(Boolean);
+  if (!records.length || records.length % 2 !== 0) return false;
+  let selected = false;
+  for (let i=0;i<records.length;i+=2) {
+    const status=records[i],candidate=records[i+1];
+    if (status !== 'A' || !allowed.test(candidate)) return false;
+    const file=path.resolve(root,candidate);
+    try {
+      if (!fs.statSync(file).isFile() || !fs.realpathSync(file).startsWith(root+path.sep))
+        return false;
+      const disk=fs.readFileSync(file);
+      const committed=git(['show',head+':'+candidate],{encoding:'buffer'});
+      if (committed.status !== 0 || !Buffer.isBuffer(committed.stdout) ||
+          !disk.equals(committed.stdout)) return false;
+      const sibling=JSON.parse(disk.toString('utf8'));
+      if (sibling.schemaVersion!==1 || sibling.sourceHead!==brief.sourceHead ||
+          !ID.test(sibling.sceneId ?? '')) return false;
+    } catch { return false; }
+    if (candidate===rel) selected=true;
+  }
+  return selected;
+}
+
 /** Read-only source-bound planning guard. Not proof that a subagent has Image Gen. */
-export function validateArtProducerBrief(projectDir, brief) {
+export function validateArtProducerBrief(projectDir, brief, {briefPath=null}={}) {
   const issues = [];
   if (!brief || typeof brief !== 'object' || Array.isArray(brief))
     return { status: 'BLOCKED_ART_BRIEF', issues: ['brief must be a JSON object'] };
@@ -71,8 +126,13 @@ export function validateArtProducerBrief(projectDir, brief) {
   });
   const head = currentHead.status === 0 ? currentHead.stdout.trim() : null;
   if (!head || !HEAD.test(head)) issues.push('project does not expose a git HEAD');
-  if (typeof brief.sourceHead !== 'string' || !HEAD.test(brief.sourceHead) ||
-      head !== brief.sourceHead) issues.push('sourceHead must equal current exact git HEAD');
+  const exactHead=typeof brief.sourceHead==='string' && HEAD.test(brief.sourceHead) &&
+    head===brief.sourceHead;
+  const briefOnlyCommit=!exactHead && head && HEAD.test(head) &&
+    typeof brief.sourceHead==='string' && HEAD.test(brief.sourceHead) &&
+    checkBriefOnlyCommitCurrentness(projectDir,brief,head,briefPath);
+  if (!exactHead && !briefOnlyCommit)
+    issues.push('sourceHead must equal current exact git HEAD, or be an ancestor separated only by committed Stage 9.4 brief additions');
   if (brief.schemaVersion !== 1) issues.push('schemaVersion must be 1');
   if (typeof brief.sceneId !== 'string' || !ID.test(brief.sceneId))
     issues.push('sceneId must be an S-numbered scene');
@@ -138,6 +198,7 @@ export function validateArtProducerBrief(projectDir, brief) {
   return {
     status: issues.length ? 'BLOCKED_ART_BRIEF' : 'READY_TO_GENERATE',
     currentHead: head,
+    sourceCurrentness: exactHead ? 'EXACT_HEAD' : briefOnlyCommit ? 'BRIEF_ONLY_COMMIT' : 'UNVERIFIED',
     candidateNumber: brief.candidateNumber ?? null,
     maxCandidatesPerCueVariant: MAX_CANDIDATES,
     toolAvailability: 'NOT_ATTESTED', // Always separate: host capability challenge must pass.
