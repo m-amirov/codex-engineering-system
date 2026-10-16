@@ -13,6 +13,7 @@ import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
 import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
+import { inspectArtProgress } from '../src/art-progress.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
 
@@ -127,6 +128,7 @@ Usage:
   ceos art-brief-verify --file <source-bound-art-brief.json> [--project dir] [--json]
   ceos art-output-verify --file <generated.png> --kind sprite|prop|background [--width N --height N] [--receipt <new.json>] [--json]
   ceos art-output-batch --manifest <assets.json> [--receipt <new.json>] [--json]
+  ceos art-progress --index <project-relative-evidence-index.json> [--project dir] [--json] (read-only; never invents acceptance)
   ceos art-output-normalize --file <prop.png> --output <new.png> [--width 512 --height 512] [--json]
   ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--assurance strict|visual-content] [--json]
   ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--assurance strict|visual-content] [--json]
@@ -373,6 +375,13 @@ try {
       if (args.receipt) saveArtOutputReceipt(project, args.receipt, result);
       print(result, true);
       process.exitCode = result.status === 'PASS_ART_BATCH_MECHANICAL' ? 0 : 2;
+      break;
+    }
+    case 'art-progress': {
+      if (typeof args.index !== 'string') throw new Error('--index is required');
+      const result = inspectArtProgress(project,String(args.index));
+      print(result,true);
+      process.exitCode = result.status === 'PASS_ART_PROGRESS_REVALIDATED' ? 0 : 2;
       break;
     }
     case 'art-output-normalize': {
