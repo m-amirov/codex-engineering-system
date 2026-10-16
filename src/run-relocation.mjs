@@ -7,9 +7,24 @@ import { spawnSync } from 'node:child_process';
 import { resolveRun, resumeRun } from './execution-engine.mjs';
 
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
-const same = (a,b) => process.platform === 'win32'
-  ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
-  : path.resolve(a) === path.resolve(b);
+function same(a,b) {
+  // Git for Windows may report an expanded long path while Node receives an
+  // 8.3-short $RUNNER_TEMP path. Match the filesystem object before comparing
+  // textual paths; do not weaken the same-repository check.
+  try {
+    const left=fs.statSync(a),right=fs.statSync(b);
+    if (left.ino && right.ino && left.dev===right.dev && left.ino===right.ino)
+      return true;
+  } catch {}
+  const canonical=file=>{
+    try {return fs.realpathSync.native(path.resolve(file));}
+    catch {return path.resolve(file);}
+  };
+  const left=canonical(a),right=canonical(b);
+  return process.platform === 'win32'
+    ? left.toLowerCase()===right.toLowerCase()
+    : left===right;
+}
 const within = (base, candidate) => {
   const relative = path.relative(base,candidate);
   return relative && relative !== '..' && !relative.startsWith('..'+path.sep) &&
