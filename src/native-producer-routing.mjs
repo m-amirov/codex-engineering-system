@@ -120,7 +120,7 @@ function scanRollout(file, originalStat) {
 export function inspectNativeProducerRoute(traceFile, {codexHome, parentSessionId} = {}) {
   const home = resolveCodexHome({homeDir:os.homedir(),codexHome});
   if (typeof parentSessionId !== 'string' || !parentSessionId.trim())
-    return reject('BLOCKED_NATIVE_AGENT_PARENT_UNVERIFIED','No parent session was bound at CEOS run creation');
+    return reject('BLOCKED_NATIVE_AGENT_PARENT_UNVERIFIED','No verified effective parent session supplied. For CURRENT_TURN use ceos producer-route-check to resolve it from the active run-scoped attestation; do not read nullable run.producerParentSessionId as the parent');
   if (typeof traceFile !== 'string' || !traceFile.trim())
     return reject('BLOCKED_NATIVE_AGENT_TRACE_MISSING','Provide a genuine Codex subagent rollout JSONL path');
   let file, root, stat;
