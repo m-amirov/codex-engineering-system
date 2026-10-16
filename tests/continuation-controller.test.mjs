@@ -215,6 +215,44 @@ test('claim is atomic, action-bound and only releasable by its opaque token',t=>
     'BLOCKED_LEASE_MISSING');
 });
 
+test('CEOS-owned tracked latest.json and untracked checkpoints do not block continue',t=>{
+  const project=setup(t);
+  const run=newRun(project);
+  const latest=path.join(project,'.ceos-runs','latest.json');
+  git(project,'add','-f','.ceos-runs/latest.json');
+  git(project,'commit','-m','historical project tracks CEOS latest');
+  fs.writeFileSync(latest,JSON.stringify({runId:run.runId,updatedAt:'internal change'},null,2));
+  const scratch=path.join(project,'.ceos-runs','session-extra','checkpoint.json');
+  fs.mkdirSync(path.dirname(scratch),{recursive:true});
+  fs.writeFileSync(scratch,'{"status":"internal"}\\n');
+  assert.notEqual(spawnSync('git',['status','--porcelain=v1','--untracked-files=all'],
+    {cwd:project,encoding:'utf8'}).stdout.trim(),'');
+  const plan=planContinuation(project,{runRef:run.runId,mode:'inspect'});
+  assert.equal(plan.status,'READY_FOR_CODEX');
+  assert.equal(plan.git.dirty,false);
+  assert.equal(plan.action.kind,'COLLECT_EVIDENCE');
+  fs.writeFileSync(path.join(project,'user-evidence.json'),'{"note":"real user file"}\\n');
+  assert.equal(planContinuation(project,{runRef:run.runId}).status,'BLOCKED_DIRTY_WORKTREE');
+  fs.rmSync(path.join(project,'user-evidence.json'));
+  fs.appendFileSync(path.join(project,'tracked.txt'),'product change');
+  assert.equal(planContinuation(project,{runRef:run.runId}).status,'BLOCKED_DIRTY_WORKTREE');
+});
+
+test('creation of a new run snapshots source as clean when only CEOS runtime files are dirty',t=>{
+  const project=setup(t);
+  const old=newRun(project);
+  git(project,'add','-f','.ceos-runs/latest.json');
+  git(project,'commit','-m','legacy tracked run pointer');
+  const file=path.join(project,'.ceos-runs','latest.json');
+  fs.writeFileSync(file,JSON.stringify({runId:old.runId,updatedAt:'changed by CEOS'},null,2));
+  const next=newRun(project);
+  assert.equal(next.sourceAtStart.available,true);
+  assert.equal(next.sourceAtStart.clean,true);
+  fs.appendFileSync(path.join(project,'tracked.txt'),'real source drift');
+  const withDrift=newRun(project);
+  assert.equal(withDrift.sourceAtStart.clean,false);
+});
+
 test('a dirty worktree prevents agent mutation; inspect is still readable',t=>{
   const project=setup(t);newRun(project);
   fs.appendFileSync(path.join(project,'tracked.txt'),'dirty');
