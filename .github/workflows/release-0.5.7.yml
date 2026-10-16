@@ -63,6 +63,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Portable run relocation regression on Windows
+        shell: powershell
+        run: |
+          node --test .\tests\run-relocation.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Pre-install worktree must be clean
         shell: powershell
         run: |
