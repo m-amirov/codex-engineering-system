@@ -1,6 +1,26 @@
-# Codex Engineering OS (CEOS) 0.5.25
+# Codex Engineering OS (CEOS) 0.5.26
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Source-bound art briefs without self-referential Git HEAD (0.5.26)
+
+The existing Stage 9.4 `sourceHead` field points to the product-source
+commit *before* the brief itself was committed. Requiring it to equal the
+new HEAD makes any committed brief stale by definition.
+
+`ceos art-brief-verify --file <project-relative-brief.json>` now accepts
+either an exact current HEAD or a verified, ancestor-pinned **brief-only
+commit**. For the second case every intervening changed Git entry must be
+a new committed JSON brief under
+`artifacts/production-art/stage9.4/briefs/`, with the same sourceHead,
+a valid scene ID and exact byte equality with the Git blob. Every character
+reference is still verified by actual file bytes and SHA-256.
+
+Changes to narrative, scripts, assets, source references or even unrelated
+evidence in the intervening commit cause `BLOCKED_ART_BRIEF`. Missing,
+untracked or uncommitted briefs never satisfy this exception. A brief-only
+commit does not verify Image Gen availability, route, visual quality or
+acceptance. Old brief JSON and accepted S19–S23 assets need no modification.
 
 ## Current-turn Terra producer-route preflight (0.5.25)
 
