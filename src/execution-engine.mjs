@@ -10,7 +10,8 @@ import { normalizeResolutionReceiptContract, validateResolutionReceipt } from '.
 import { classifyWebTransportFailure } from './web-transport-failure.mjs';
 import { inspectArtBatch } from './art-output-gate.mjs';
 import { narrativeDualFormatEnabled, verifyNarrativeDualFormatArt } from './narrative-dual-format-art.mjs';
-import { inspectNativeProducerRoute, nativeProducerParentContext } from './native-producer-routing.mjs';
+import { inspectNativeProducerRoute } from './native-producer-routing.mjs';
+import { readRunCapabilityAttestation } from './capability-attestation.mjs';
 import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
 import { VERIFIED_EXISTING_ART_REUSE, verifyExistingArtReuse } from './existing-art-reuse.mjs';
 
@@ -688,7 +689,12 @@ export function createRun(projectDir, pipeline, {
     narrativeDualFormatRequired: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject),
     nativeProducerRouteRequired: pipeline === 'production-art' && normalizedArtMode !== ART_MODES.VERIFIED_EXISTING_ART_REUSE && narrativeDualFormatEnabled(resolvedProject),
     artAcceptanceProfile: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? NARRATIVE_ART_ACCEPTANCE_V2 : null,
-    producerParentSessionId: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? nativeProducerParentContext({projectDir:resolvedProject}) : null,
+    // The run is product-scoped, not Codex-session-scoped. Native parent trust is
+    // resolved at GENERATING from the current, run-scoped capability challenge.
+    // Historical runs without this mode retain their original pinned parent.
+    producerBindingMode: pipeline === 'production-art' && normalizedArtMode === ART_MODES.NEW_GENERATION && narrativeDualFormatEnabled(resolvedProject)
+      ? 'CURRENT_TURN' : null,
+    producerParentSessionId: null,
     projectDir: resolvedProject,
     runDir,
     createdAt,
@@ -905,11 +911,27 @@ export function recordCheckpoint(projectDir, runRef, {
     }
 
     let producerRouteGate = null;
+    let producerAttestationFile = null;
     if (stage === 'GENERATING' && !existingArtReuse && run.nativeProducerRouteRequired === true &&
         (normalizedOutcome === 'CONTINUE' || normalizedOutcome === 'PASS')) {
-      producerRouteGate = inspectNativeProducerRoute(metadata?.producerTraceFile, {
-        parentSessionId: run.producerParentSessionId
-      });
+      let parentSessionId = run.producerParentSessionId;
+      if (run.producerBindingMode === 'CURRENT_TURN') {
+        // No arbitrary metadata, old session marker or parent assertion can
+        // authorize generation. The run-scoped challenge must belong to the
+        // *current* trusted session + turn in this exact project checkout.
+        const verified = readRunCapabilityAttestation(resolvedProject, run.runId);
+        const attestation = verified.attestation;
+        const capability = currentCapabilities.imageGeneration;
+        if (!verified.valid || attestation?.presence !== 'PRESENT' ||
+            !['UNKNOWN', 'AVAILABLE'].includes(attestation?.serviceAvailability) ||
+            capability?.attestationFile !== verified.file ||
+            capability?.trustScope !== 'run-session-turn') {
+          throw new Error('BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED: fresh matching run-scoped capability challenge required');
+        }
+        parentSessionId = attestation.sessionId;
+        producerAttestationFile = verified.file;
+      }
+      producerRouteGate = inspectNativeProducerRoute(metadata?.producerTraceFile, { parentSessionId });
       if (!producerRouteGate.ok)
         throw new Error(producerRouteGate.status + ': ' + producerRouteGate.detail);
     }
@@ -950,6 +972,12 @@ export function recordCheckpoint(projectDir, runRef, {
     }
 
     const artifactInputs = normalizeList(artifacts);
+    if (producerAttestationFile) {
+      // Pin the authority used for the exact produced batch in immutable
+      // checkpoint evidence. It is not a reusable grant for later sessions.
+      const relative = path.relative(resolvedProject, producerAttestationFile).split(path.sep).join('/');
+      if (!artifactInputs.includes(relative)) artifactInputs.push(relative);
+    }
     if (dualFormatGate && !artifactInputs.includes(metadata.dualFormatManifest))
       artifactInputs.push(metadata.dualFormatManifest);
     if (outputGate) {
