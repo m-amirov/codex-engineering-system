@@ -205,6 +205,7 @@ export function readRunCapabilityAttestation(projectDir, runRef = 'latest', {
     [attestation.source === 'in-session-agent-observation', 'source mismatch'],
     [attestation.sessionId === context.session.sessionId, 'session mismatch'],
     [typeof attestation.turnId === 'string' && attestation.turnId.length > 0, 'missing attested turn'],
+    [['run-session-turn','run-session-window'].includes(attestation.trustScope), 'invalid trust scope'],
     [PRESENCE.has(attestation.presence), 'invalid presence'],
     [SERVICE.has(attestation.serviceAvailability), 'invalid serviceAvailability']
   ];
