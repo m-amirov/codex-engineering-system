@@ -216,7 +216,12 @@ test('installed Windows hook command executes through cmd without quoted executa
   const hooks = JSON.parse(fs.readFileSync(path.join(p.codexHome, 'hooks.json'), 'utf8'));
   const handler = hooks.hooks.UserPromptSubmit[0].hooks[0];
   const result = spawnSync('cmd.exe', ['/d', '/s', '/c', handler.commandWindows], {
-    input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: 's', turn_id: 't' }),
+    input: JSON.stringify({
+      hook_event_name: 'UserPromptSubmit',
+      session_id: 's',
+      turn_id: 't',
+      cwd: p.home
+    }),
     encoding: 'utf8'
   });
   assert.equal(result.status, 0, result.stderr);

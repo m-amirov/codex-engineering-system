@@ -50,6 +50,14 @@ test('runtime hook emits useful stderr and fails closed for invalid stdin JSON',
   assert.match(result.stderr, /stack=/);
 });
 
+test('runtime hook fails closed when a live event omits its trusted cwd', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ceos-hook-'));
+  const result = runHook(home, { hook_event_name: 'UserPromptSubmit', session_id: 's1', turn_id: 't1' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /CEOS hook requires a real cwd and nonempty session_id/);
+  assert.equal(fs.existsSync(path.join(home, 'ceos', 'runtime', 'current-turn.json')), false);
+});
+
 function setupWorktrees(t) {
   const home=fs.mkdtempSync(path.join(os.tmpdir(),'ceos-scoped-hook-home-'));
   const a=fs.mkdtempSync(path.join(os.tmpdir(),'ceos-scoped-a-'));
