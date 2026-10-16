@@ -7,6 +7,7 @@ import { readRuntimeContext } from './capability-attestation.mjs';
 
 const MODES = new Set(['inspect', 'guided', 'auto']);
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
+const NATIVE_PARENT_MISMATCH_REASON = /\bnative producer route failed trusted parent binding\b/i;
 const STAGE_ACTIONS = Object.freeze({
   EVIDENCE_COLLECTED: 'COLLECT_EVIDENCE',
   AUDITED: 'REVIEW_EVIDENCE',
@@ -115,7 +116,8 @@ function inspectSessionRecovery(project, run, git) {
     (run.stopReason?.stage === 'GENERATING' ||
      (!run.stopReason?.stage && run.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH')) &&
     (run.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH' ||
-     /BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/.test(String(run.stopReason.reason ?? '')));
+     /BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/.test(String(run.stopReason.reason ?? '')) ||
+     NATIVE_PARENT_MISMATCH_REASON.test(String(run.stopReason.reason ?? '')));
   if (!((run.verdict === null && run.nextStage === 'GENERATING') || parentMismatchBlocked))
     return null;
   const ctx=readRuntimeContext({projectDir:project});

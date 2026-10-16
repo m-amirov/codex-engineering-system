@@ -29,6 +29,7 @@ const RECOVERABLE_BLOCK_CODES = new Set([
 ]);
 const EXTERNAL_RECOVERY_WORDS = /\b(web|transport|capability|review|rate[_ -]?limit|usage limit)\b/i;
 const EXTERNAL_RECOVERY_FAILURES = /\b(unavailable|not ready|disconnect(?:ed)?|failed?|failure|blocked|recover(?:ed|able)?|rate[_ -]?limited|usage limit(?:ed)?)\b/i;
+const NATIVE_PARENT_MISMATCH_REASON = /\bnative producer route failed trusted parent binding\b/i;
 const NATIVE_FALLBACK_STATUSES = new Set(['UNAVAILABLE', 'NOT_ACCEPTING_TURNS', 'RATE_LIMITED']);
 const NATIVE_FALLBACK_REASON = /\b(transport|backend|runtime|bridge|connect(?:ion)?|disconnect(?:ed)?|unavailable|not accepting|rate[_ -]?limit(?:ed)?|usage limit(?:ed)?|timeout|timed out|http\s+\d{3}|refused)\b/i;
 export const ART_MODES = Object.freeze({
@@ -542,7 +543,8 @@ export function createLinkedSessionRecoveryRun(projectDir, sourceRunRef, {expect
       (old.stopReason?.stage === 'GENERATING' ||
        (!old.stopReason?.stage && old.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH')) &&
       (old.stopReason?.code === 'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH' ||
-       /BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/.test(String(old.stopReason.reason ?? '')));
+       /BLOCKED_NATIVE_AGENT_PARENT_MISMATCH/.test(String(old.stopReason.reason ?? '')) ||
+       NATIVE_PARENT_MISMATCH_REASON.test(String(old.stopReason.reason ?? '')));
     if (!(old.verdict === null && old.nextStage === 'GENERATING') && !terminalMismatch)
       throw new Error('BLOCKED_RECOVERY_NOT_AT_GENERATING');
     if (typeof expectedParentSessionId !== 'string' || !expectedParentSessionId.trim() ||
