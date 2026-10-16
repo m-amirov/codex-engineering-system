@@ -203,7 +203,7 @@ export function readRunCapabilityAttestation(projectDir, runRef = 'latest', {
     [attestation.capability === CAPABILITY, 'capability mismatch'],
     [attestation.source === 'in-session-agent-observation', 'source mismatch'],
     [attestation.sessionId === context.session.sessionId, 'session mismatch'],
-    [attestation.turnId === context.turn.turnId, 'turn mismatch'],
+    [typeof attestation.turnId === 'string' && attestation.turnId.length > 0, 'missing attested turn'],
     [PRESENCE.has(attestation.presence), 'invalid presence'],
     [SERVICE.has(attestation.serviceAvailability), 'invalid serviceAvailability']
   ];
