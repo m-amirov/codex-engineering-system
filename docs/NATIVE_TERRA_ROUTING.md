@@ -19,10 +19,14 @@ It can reject a workflow when real runtime evidence contradicts the route.
 ## New-run contract (enabled narrative-game profile only)
 
 A new CEOS `production-art` run reads
-`config/narrative-game.local.json` and binds
-`producerParentSessionId` to the current trusted Codex SessionStart marker.
-It persists `nativeProducerRouteRequired=true`. Older runs retain
-their original immutable contract. Other kinds of games are unaffected.
+`config/narrative-game.local.json` and persists
+`nativeProducerRouteRequired=true`, `producerBindingMode=CURRENT_TURN`,
+and `producerParentSessionId=null`. **Null is the expected deferred binding, not a mismatch.**
+At generation, the official `ceos producer-route-check` resolves the
+effective parent session from the consumed run-scoped capability attestation
+and matching capability snapshot. The actual child rollout must name this
+parent, not the null field. Historical PINNED_PARENT runs retain their own
+persisted binding; other kinds of games are unaffected.
 
 Before **any** native image generation:
 
@@ -37,7 +41,7 @@ Before **any** native image generation:
    `agent_type=ceos_asset_generator`, with no speculative image generation.
    Inspect the real Codex child rollout JSONL written inside
    `$CODEX_HOME/sessions`.
-4. Run the route preflight:
+4. The **parent Codex orchestrator** runs the official route preflight for the existing run ID and actual child trace. For CURRENT_TURN runs this is the *only authoritative CEOS parent-matching calculation*. The Terra child must not re-compare the trace to `run.producerParentSessionId=null` or issue its own legacy PINNED_PARENT mismatch based on that field:
 
 ```powershell
 ceos producer-route-check latest --project . --trace 'C:\Users\user\.codex\sessions\YYYY\MM\DD\rollout-...jsonl' --json
@@ -56,6 +60,16 @@ turn_context.payload.effort                  = medium
 All observed turn contexts in that rollout must match. A child with
 `agent_role:null`, a parent/self rollout, incorrect effort or inherited
 Sol model receives a specific `BLOCKED_NATIVE_AGENT_*` verdict.
+
+When the official gate returns `PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED`,
+the parent records the run ID, exact trace path, actual resolved
+`parentSessionId`, bindingMode, and attestation reference. The producer
+can use this parent-observed PASS to proceed to its **own** callable Image Gen
+tool check; the producer does **not** perform another parent check against the
+nullable run field. The parent revalidates the real trace when recording
+`GENERATING`. A claimed PASS without the genuine gate result, a changed
+trace, a new parent session, missing capability, or incorrect Terra model
+does not authorize generation.
 
 5. Only after independent image-generation capability attestation **inside
    the producer's actual execution context**, perform a source-bound art-brief
