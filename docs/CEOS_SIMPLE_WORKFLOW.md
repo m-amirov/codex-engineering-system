@@ -65,6 +65,25 @@ only when a project contains more than one intentionally scoped progress file.
 Multiple candidates are reported as a short `BLOCKED_AMBIGUOUS_PROGRESS`
 diagnostic instead of being guessed.
 
+When art progress exists, `continue` always treats it as the
+`production-art` pipeline, regardless of the index filename.
+Its read-only decision order is:
+
+1. **Damaged or missing source-bound evidence**: return
+   `BLOCKED_ART_PROGRESS` and `RESTORE_SOURCE_BOUND_PROGRESS`, even if
+   there is no active run. The original acceptance is not erased.
+2. **Verified progress but no active production-art run**: return
+   `NEEDS_SCOPED_PRODUCTION_RUN` and `PREPARE_SCOPED_PRODUCTION_RUN`.
+   This is a planning step, not authorization to generate or to create a
+   run automatically. Do not select an unrelated audit run or replay a
+   terminal historical run.
+3. **Matching active production-art run**: return its next approved unit.
+   Explicitly selected runs from another pipeline are rejected as
+   `BLOCKED_PROGRESS_PIPELINE_MISMATCH`.
+
+None of these statuses fabricates evidence, changes project files, grants
+release approval or invokes native image generation.
+
 ## Operator path
 
 Use the existing canonical game checkout; no second worktree is needed.
