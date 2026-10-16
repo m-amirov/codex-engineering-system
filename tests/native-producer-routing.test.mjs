@@ -5,6 +5,9 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
+import { preflightNativeProducerRoute } from '../src/execution-engine.mjs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { createRun, recordCheckpoint, refreshRunCapabilities } from '../src/execution-engine.mjs';
 import { beginCapabilityChallenge, respondCapabilityChallenge } from '../src/capability-attestation.mjs';
 import { encodeProductionPng } from '../src/art-output-gate.mjs';
@@ -260,4 +263,74 @@ test('CRLF, large records across read chunks and UTF-8 remain supported', t => {
   fs.appendFileSync(x.trace, record + '\r\n');
   const result = inspectNativeProducerRoute(x.trace,{codexHome:x.home,parentSessionId:x.parent});
   assert.equal(result.status,'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED');
+});
+
+test('CURRENT_TURN route CLI resolves parent through trusted run-scoped attestation, without modifying run',t=>{
+  const x=createNovel(t);
+  assert.equal(x.run.run.producerParentSessionId,null);
+  const original=fs.readFileSync(path.join(x.run.runDir,'run.json'),'utf8');
+  const route=preflightNativeProducerRoute(x.game,x.runId,x.trace,{codexHome:x.home});
+  assert.equal(route.status,'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED',JSON.stringify(route));
+  assert.equal(route.parentSessionId,x.parent);
+  assert.equal(route.bindingMode,'CURRENT_TURN');
+  assert.match(route.attestationFile,/image-generation\.json$/);
+  const cli=fileURLToPath(new URL('../bin/ceos.mjs',import.meta.url));
+  const result=spawnSync(process.execPath,[cli,'producer-route-check',x.runId,
+    '--project',x.game,'--trace',x.trace,'--codex-home',x.home,'--json'],{
+    cwd:x.game,encoding:'utf8',env:{...process.env,CODEX_HOME:x.home}
+  });
+  assert.equal(result.status,0,result.stderr+'\n'+result.stdout);
+  const parsed=JSON.parse(result.stdout);
+  assert.equal(parsed.status,'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED');
+  assert.equal(parsed.parentSessionId,x.parent);
+  assert.equal(parsed.bindingMode,'CURRENT_TURN');
+  assert.equal(fs.readFileSync(path.join(x.run.runDir,'run.json'),'utf8'),original);
+});
+
+test('CURRENT_TURN producer CLI refuses absent or stale attestation without borrowing parent',t=>{
+  const x=createNovel(t,{attest:false});
+  assert.equal(preflightNativeProducerRoute(x.game,x.runId,x.trace,{codexHome:x.home}).status,
+    'BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED');
+  const challenge=beginCapabilityChallenge(x.game,x.runId,{codexHome:x.home});
+  const response=respondCapabilityChallenge(x.game,x.runId,{
+    codexHome:x.home,challengeId:challenge.challengeId,nonce:challenge.nonce,
+    presence:'PRESENT',serviceAvailability:'UNKNOWN'
+  });
+  // Attestation without a matching persisted capability refresh is not a grant.
+  assert.equal(preflightNativeProducerRoute(x.game,x.runId,x.trace,{codexHome:x.home}).status,
+    'BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED');
+  const stored=JSON.parse(fs.readFileSync(path.join(x.run.runDir,'capabilities.json'),'utf8'));
+  refreshRunCapabilities(x.game,x.runId,{
+    ...stored,imageGeneration:{...stored.imageGeneration,
+      trustedForGeneration:true,capabilityPresence:'PRESENT',generationAllowed:true,
+      attestationFile:response.file,trustScope:'run-session-turn'}
+  });
+  assert.equal(preflightNativeProducerRoute(x.game,x.runId,x.trace,{codexHome:x.home}).status,
+    'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED');
+  const currentTurn=path.join(x.home,'ceos','runtime','current-turn.json');
+  fs.writeFileSync(currentTurn,JSON.stringify({
+    sessionId:x.parent,turnId:'another-turn',cwd:x.game,observedAt:new Date().toISOString()
+  }));
+  assert.equal(preflightNativeProducerRoute(x.game,x.runId,x.trace,{codexHome:x.home}).status,
+    'BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED');
+});
+
+test('CURRENT_TURN producer CLI still rejects an unrelated Terra child parent',t=>{
+  const x=createNovel(t);
+  x.write({parentId:'unrelated-parent'});
+  const route=preflightNativeProducerRoute(x.game,x.runId,x.trace,{codexHome:x.home});
+  assert.equal(route.status,'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH',JSON.stringify(route));
+});
+
+test('historical pinned-parent producer route remains supported without new attestation',t=>{
+  const x=createNovel(t,{attest:false});
+  const runFile=path.join(x.run.runDir,'run.json');
+  const run=JSON.parse(fs.readFileSync(runFile,'utf8'));
+  run.producerBindingMode=null;
+  run.producerParentSessionId=x.parent;
+  fs.writeFileSync(runFile,JSON.stringify(run,null,2)+'\n');
+  const result=preflightNativeProducerRoute(x.game,x.runId,x.trace,{codexHome:x.home});
+  assert.equal(result.status,'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED',JSON.stringify(result));
+  assert.equal(result.bindingMode,'PINNED_PARENT');
+  assert.equal(result.parentSessionId,x.parent);
 });
