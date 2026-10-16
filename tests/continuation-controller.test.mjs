@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createRun, recordCheckpoint } from '../src/execution-engine.mjs';
-import { planContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
+import { createRun, recordCheckpoint, resumeRun } from '../src/execution-engine.mjs';
+import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cli = path.join(root,'bin','ceos.mjs');
@@ -162,4 +162,150 @@ test('explicit run reference cannot escape the project run directory',t=>{
   const external=planContinuation(project,{runRef:'../../outside'});
   assert.equal(external.status,'BLOCKED_RUN_REF_INVALID');
   assert.equal(external.executable,false);
+});
+
+function novelRecoveryFixture(t) {
+  const project=setup(t);
+  fs.mkdirSync(path.join(project,'config'));
+  fs.mkdirSync(path.join(project,'narrative'));
+  fs.writeFileSync(path.join(project,'config','narrative-game.local.json'),
+    JSON.stringify({profile:'narrative-game',enabled:true,modelPath:'narrative/graph.json'}));
+  fs.writeFileSync(path.join(project,'narrative','graph.json'),
+    JSON.stringify({scenes:[{id:'S22',episode:2}]}));
+  fs.writeFileSync(path.join(project,'canon.json'), JSON.stringify({canon:'verified'}));
+  git(project,'add','config','narrative','canon.json');
+  git(project,'commit','-m','canonical assets and source');
+  const home=fs.mkdtempSync(path.join(os.tmpdir(),'ceos-recovery-home-'));
+  t.after(()=>fs.rmSync(home,{recursive:true,force:true}));
+  const previous=process.env.CODEX_HOME;
+  process.env.CODEX_HOME=home;
+  t.after(()=>{if(previous===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=previous;});
+  const runtime=path.join(home,'ceos','runtime');
+  fs.mkdirSync(runtime,{recursive:true});
+  const writeContext=(session,turnSession=session,ageMs=0)=>{
+    fs.writeFileSync(path.join(runtime,'current-session.json'),JSON.stringify({
+      sessionId:session,observedAt:new Date().toISOString(),cwd:project,source:'startup'
+    }));
+    fs.writeFileSync(path.join(runtime,'current-turn.json'),JSON.stringify({
+      sessionId:turnSession,turnId:'fresh-user-turn',observedAt:new Date(Date.now()-ageMs).toISOString(),cwd:project
+    }));
+  };
+  writeContext('parent-old');
+  const original=createRun(project,'production-art',{
+    scope:{target:'S22 production',inScope:['S22 portrait','S22 desktop'],
+      outOfScope:['release'],acceptanceContract:'native dual-format art gates',
+      mutationBoundary:'production-art/S22'},
+    capabilities:{
+      web:{status:'NOT_CONFIGURED'},
+      imageGeneration:{capabilityPresence:'PRESENT',trustedForGeneration:true,
+        generationAllowed:true,serviceAvailability:'UNKNOWN'},
+      filesystem:{exists:true,readable:true,writable:true}
+    }
+  });
+  recordCheckpoint(project,original.run.runId,{stage:'INVENTORIED',artifacts:['canon.json']});
+  recordCheckpoint(project,original.run.runId,{stage:'CANON_READY',artifacts:['canon.json']});
+  assert.equal(resumeRun(project,original.run.runId).run.nextStage,'GENERATING');
+  return {project,original:original.run.runId,writeContext};
+}
+
+test('normal continue performs evidence-pinned linked recovery and never rewrites its source run',t=>{
+  const x=novelRecoveryFixture(t);
+  const originalFile=path.join(x.project,'.ceos-runs',x.original,'run.json');
+  const before=fs.readFileSync(originalFile,'utf8');
+  x.writeContext('parent-new');
+  const inspected=planContinuation(x.project,{mode:'inspect'});
+  assert.equal(inspected.status,'SESSION_RECOVERY_AVAILABLE');
+  assert.equal(inspected.executable,false);
+  assert.equal(fs.readFileSync(originalFile,'utf8'),before);
+  const dry=cliRun(x.project,'--mode','guided','--dry-run');
+  assert.equal(dry.status,2);
+  assert.equal(JSON.parse(dry.stdout).status,'SESSION_RECOVERY_AVAILABLE');
+  const created=recoverContinuation(x.project,{mode:'guided'});
+  assert.equal(created.status,'READY_FOR_CODEX');
+  assert.equal(created.nextAction.stage,'GENERATING');
+  assert.notEqual(created.runId,x.original);
+  assert.equal(created.recovery.status,'LINKED_SESSION_RECOVERY_CREATED');
+  assert.equal(fs.readFileSync(originalFile,'utf8'),before);
+  const fresh=resumeRun(x.project,created.runId);
+  assert.equal(fresh.integrity.ok,true);
+  assert.equal(fresh.run.producerParentSessionId,'parent-new');
+  assert.equal(fresh.run.linkedRecovery.sourceRunId,x.original);
+  assert.equal(fresh.run.linkedRecovery.canonCheckpointFile.endsWith('-canon-ready.json'),true);
+  assert.equal(fresh.run.nextStage,'GENERATING');
+  assert.equal(fresh.run.checkpointCount,3);
+  const caps=JSON.parse(fs.readFileSync(path.join(fresh.runDir,'capabilities.json'),'utf8'));
+  assert.equal(caps.imageGeneration.trustedForGeneration,false);
+  assert.equal(caps.imageGeneration.generationAllowed,false);
+  assert.equal(caps.imageGeneration.capabilityPresence,'UNKNOWN');
+  assert.equal(planContinuation(x.project).runId,created.runId);
+  assert.equal(planContinuation(x.project,{runRef:x.original}).runId,created.runId);
+  assert.equal(recoverContinuation(x.project,{mode:'guided'}).runId,created.runId);
+});
+
+test('CLI default auto-links stale parent, but explicit inspect remains read-only',t=>{
+  const x=novelRecoveryFixture(t);
+  x.writeContext('parent-new');
+  const inspect=cliRun(x.project,'--mode','inspect');
+  assert.equal(JSON.parse(inspect.stdout).status,'SESSION_RECOVERY_AVAILABLE');
+  const result=cliRun(x.project);
+  assert.equal(result.status,0,result.stderr);
+  const body=JSON.parse(result.stdout);
+  assert.equal(body.status,'READY_FOR_CODEX');
+  assert.equal(body.recovery.status,'LINKED_SESSION_RECOVERY_CREATED');
+  assert.equal(JSON.parse(cliRun(x.project).stdout).runId,body.runId);
+});
+
+test('stale or inconsistent session hooks fail closed without a recovery run',t=>{
+  const x=novelRecoveryFixture(t);
+  x.writeContext('parent-new','other-parent');
+  assert.equal(planContinuation(x.project).status,'BLOCKED_SESSION_CONTEXT_UNVERIFIED');
+  x.writeContext('parent-new','parent-new',31*60*1000);
+  assert.equal(recoverContinuation(x.project).status,'BLOCKED_SESSION_CONTEXT_UNVERIFIED');
+  assert.equal(fs.readdirSync(path.join(x.project,'.ceos-runs')).filter(x=>x.includes('production-art')).length,1);
+});
+
+test('parent mismatch terminal block is eligible, missing art output is not',t=>{
+  const x=novelRecoveryFixture(t);
+  recordCheckpoint(x.project,x.original,{stage:'GENERATING',artifacts:['canon.json'],
+    outcome:'BLOCKED',note:'BLOCKED_NATIVE_AGENT_PARENT_MISMATCH: producer trace parent is old'});
+  x.writeContext('parent-new');
+  assert.equal(recoverContinuation(x.project).status,'READY_FOR_CODEX');
+  const y=novelRecoveryFixture(t);
+  recordCheckpoint(y.project,y.original,{stage:'GENERATING',artifacts:['canon.json'],
+    outcome:'BLOCKED',note:'BLOCKED_ART_OUTPUT / ART_FILE_NOT_FOUND'});
+  y.writeContext('another-parent');
+  assert.equal(recoverContinuation(y.project).status,'NEEDS_RECOVERY_DECISION');
+});
+
+test('changed Git source, missing canon or damaged recovery provenance block',t=>{
+  const x=novelRecoveryFixture(t);
+  x.writeContext('parent-new');
+  fs.appendFileSync(path.join(x.project,'tracked.txt'),'modified');
+  assert.equal(recoverContinuation(x.project).status,'BLOCKED_RECOVERY_GIT_PREFLIGHT');
+  git(x.project,'add','tracked.txt');
+  git(x.project,'commit','-m','unrelated change');
+  const changed=recoverContinuation(x.project);
+  assert.equal(changed.status,'BLOCKED_RECOVERY_GUARD');
+  assert.match(changed.detail,/BLOCKED_RECOVERY_CANON_NOT_CURRENT/);
+
+  const y=novelRecoveryFixture(t);
+  y.writeContext('parent-new');
+  const linked=recoverContinuation(y.project);
+  const oldfile=path.join(y.project,'.ceos-runs',y.original,'run.json');
+  fs.appendFileSync(oldfile,' ');
+  assert.equal(planContinuation(y.project,{runRef:linked.runId}).status,'BLOCKED_INTEGRITY');
+});
+
+test('active concurrent recovery lock blocks creation and never removes another lock',async t=>{
+  const x=novelRecoveryFixture(t);
+  x.writeContext('parent-new');
+  const crypto=await import('node:crypto');
+  const key=crypto.createHash('sha256').update(x.original).digest('hex');
+  const dir=path.join(x.project,'.ceos-runs','.continue-recoveries');
+  fs.mkdirSync(dir,{recursive:true});
+  const lock=path.join(dir,key+'.lock');
+  fs.writeFileSync(lock,'other process');
+  const result=recoverContinuation(x.project);
+  assert.equal(result.status,'BLOCKED_RECOVERY_ALREADY_IN_PROGRESS');
+  assert.equal(fs.readFileSync(lock,'utf8'),'other process');
 });
