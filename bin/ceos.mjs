@@ -362,7 +362,7 @@ try {
     case 'art-brief-verify': {
       if (!args.file || args.file === true) throw new Error('--file <art-brief.json> is required');
       const brief = JSON.parse(fs.readFileSync(path.resolve(project, String(args.file)), 'utf8'));
-      const result = validateArtProducerBrief(project, brief);
+      const result = validateArtProducerBrief(project, brief, {briefPath:String(args.file)});
       print(result, true);
       process.exitCode = result.status === 'READY_TO_GENERATE' ? 0 : 2;
       break;

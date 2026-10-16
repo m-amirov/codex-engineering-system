@@ -134,3 +134,84 @@ test('art-brief-verify CLI reports read-only readiness and blocked code 2',()=>{
   assert.equal(bad.status,2,bad.stderr);
   assert.equal(JSON.parse(bad.stdout).status,'BLOCKED_ART_BRIEF');
 });
+
+function recordBriefCommit(dir, names=['S24','S25','S26']) {
+  const folder=path.join(dir,'artifacts','production-art','stage9.4','briefs');
+  fs.mkdirSync(folder,{recursive:true});
+  const paths=[];
+  const pinned=run(dir,'rev-parse','HEAD');
+  for(const name of names) {
+    const item={...brief(dir),sourceHead:pinned,sceneId:name};
+    const relative='artifacts/production-art/stage9.4/briefs/EP2-'+name+'-current-'+pinned.slice(0,7)+'.json';
+    fs.writeFileSync(path.join(dir,relative),JSON.stringify(item,null,2)+'\n');
+    paths.push(relative);
+  }
+  run(dir,'add','--',...paths);
+  run(dir,'commit','-qm','commit frozen Stage 9.4 briefs');
+  return {paths,originalHead:pinned,newHead:run(dir,'rev-parse','HEAD')};
+}
+
+test('committing S24-S26 briefs does not invalidate sourceHead of their own frozen source',()=>{
+  const dir=makeProject(),batch=recordBriefCommit(dir);
+  const bin=path.join(import.meta.dirname,'..','bin','ceos.mjs');
+  assert.notEqual(batch.newHead,batch.originalHead);
+  for (const file of batch.paths) {
+    const b=JSON.parse(fs.readFileSync(path.join(dir,file),'utf8'));
+    const result=validateArtProducerBrief(dir,b,{briefPath:file});
+    assert.equal(result.status,'READY_TO_GENERATE',result.issues.join(' | '));
+    assert.equal(result.sourceCurrentness,'BRIEF_ONLY_COMMIT');
+    const cli=spawnSync(process.execPath,[bin,'art-brief-verify','--project',dir,
+      '--file',file,'--json'],{encoding:'utf8'});
+    assert.equal(cli.status,0,cli.stderr+' '+cli.stdout);
+    assert.equal(JSON.parse(cli.stdout).sourceCurrentness,'BRIEF_ONLY_COMMIT');
+    // The direct in-memory API cannot claim a committed path it was not given.
+    assert.equal(validateArtProducerBrief(dir,b).status,'BLOCKED_ART_BRIEF');
+  }
+});
+
+test('a second unrelated source commit invalidates the brief-only exemption',()=>{
+  const dir=makeProject(),batch=recordBriefCommit(dir,['S24']);
+  const file=batch.paths[0],b=JSON.parse(fs.readFileSync(path.join(dir,file),'utf8'));
+  fs.writeFileSync(path.join(dir,'source.txt'),'real narrative source changed');
+  run(dir,'add','source.txt');
+  run(dir,'commit','-qm','change product source');
+  const result=validateArtProducerBrief(dir,b,{briefPath:file});
+  assert.equal(result.status,'BLOCKED_ART_BRIEF');
+  assert.equal(result.sourceCurrentness,'UNVERIFIED');
+  assert.match(result.issues.join(' | '),/sourceHead/);
+});
+
+test('modification of committed brief bytes blocks currentness until committed evidence matches',()=>{
+  const dir=makeProject(),batch=recordBriefCommit(dir,['S24']);
+  const file=batch.paths[0];
+  const b=JSON.parse(fs.readFileSync(path.join(dir,file),'utf8'));
+  b.sceneContinuity='Uncommitted character and plot change after source freeze';
+  fs.writeFileSync(path.join(dir,file),JSON.stringify(b,null,2)+'\n');
+  const result=validateArtProducerBrief(dir,b,{briefPath:file});
+  assert.equal(result.status,'BLOCKED_ART_BRIEF');
+  assert.equal(result.sourceCurrentness,'UNVERIFIED');
+});
+
+test('new brief path is not a loophole for stale references or unrelated commits',()=>{
+  const dir=makeProject(),batch=recordBriefCommit(dir,['S24']);
+  const file=batch.paths[0],b=JSON.parse(fs.readFileSync(path.join(dir,file),'utf8'));
+  b.characterReferences[0].sha256='0'.repeat(64);
+  fs.writeFileSync(path.join(dir,file),JSON.stringify(b,null,2)+'\n');
+  const r=validateArtProducerBrief(dir,b,{briefPath:file});
+  assert.equal(r.status,'BLOCKED_ART_BRIEF');
+  assert.match(r.issues.join(' | '),/SHA-256/);
+});
+
+test('brief-only currentness refuses a non-brief addition in the same commit',()=>{
+  const dir=makeProject();
+  const pinned=run(dir,'rev-parse','HEAD');
+  const folder=path.join(dir,'artifacts','production-art','stage9.4','briefs');
+  fs.mkdirSync(folder,{recursive:true});
+  const file='artifacts/production-art/stage9.4/briefs/EP2-S24-current-'+pinned.slice(0,7)+'.json';
+  const b=brief(dir);
+  fs.writeFileSync(path.join(dir,file),JSON.stringify(b,null,2)+'\n');
+  fs.writeFileSync(path.join(dir,'extra.txt'),'unrelated evidence, not a brief\n');
+  run(dir,'add','--',file,'extra.txt');
+  run(dir,'commit','-qm','add brief and unrelated file');
+  assert.equal(validateArtProducerBrief(dir,b,{briefPath:file}).status,'BLOCKED_ART_BRIEF');
+});

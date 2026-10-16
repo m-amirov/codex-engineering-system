@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.26 — 2026-10-16
+
+- Fixed the self-referential Git HEAD cycle for committed S24–S26 production-art briefs: `sourceHead` may be the source ancestor when all intervening changes consist exclusively of newly committed Stage 9.4 brief JSONs pinned to that same source.
+- The art brief validator verifies the complete intervening Git diff, exact Git blob bytes, committed brief path, scene ID and existing reference image hashes. Stale source inputs, modified/uncommitted briefs and unrelated evidence remain blocked.
+- `ceos art-brief-verify` forwards its explicit brief path so in-memory caller claims without a committed file cannot use this exception.
+- Added success/fail-closed CLI and programmatic regression tests. No run re-creation, native generation, Web High or automatic Git writes.
+
+
 ## 0.5.25 — 2026-10-16
 
 - Fixed `ceos producer-route-check` for `CURRENT_TURN` production-art runs: it now resolves the effective parent from the live run-scoped image-generation attestation and matching persisted capability snapshot, not the intentionally null `producerParentSessionId`.
