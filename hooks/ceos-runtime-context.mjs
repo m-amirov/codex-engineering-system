@@ -116,7 +116,16 @@ if (process.exitCode === 1) {
   process.stdout.write(JSON.stringify({ continue: false, suppressOutput: true }));
 } else {
 
-if (input.hook_event_name === 'SessionStart') {
+// Codex UserPromptSubmit hooks also run inside thread-spawned subagents.
+// Their hook payload carries 'subagent' metadata. Do not let a child
+// supersede the root session's current trusted host turn: doing so makes
+// a still-live parent capability attestation appear stale before route
+// verification. Child provenance is checked independently from its real
+// JSONL rollout (role, parent session, effective model and effort).
+// This guard does not manufacture a parent marker when none exists.
+if (input.hook_event_name === 'UserPromptSubmit' && input.subagent != null) {
+  process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }));
+} else if (input.hook_event_name === 'SessionStart') {
   const scoped=sessionScopedFiles(input);
   const prior = readJson(sessionFile);
   const scopedPrior = readJson(scoped.sessionFile);
