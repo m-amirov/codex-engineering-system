@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { resumeRun, inspectBlockedRunRecovery, createLinkedSessionRecoveryRun, EXECUTION_PIPELINES } from './execution-engine.mjs';
 import { readRuntimeContext } from './capability-attestation.mjs';
 import { discoverArtProgress, inspectArtProgress } from './art-progress.mjs';
+import { inspectRunRelocation } from './run-relocation.mjs';
 
 const MODES = new Set(['inspect', 'guided', 'auto']);
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -34,7 +35,12 @@ function gitReadOnly(projectDir) {
   let expected, actual;
   try { expected = fs.realpathSync(project); actual = fs.realpathSync(root.stdout.trim()); }
   catch { return {status:'BLOCKED_GIT', head:null, branch:null, dirty:null}; }
-  if (expected !== actual) return {status:'BLOCKED_WRONG_ROOT', head:null, branch:null, dirty:null};
+  // Windows Git can normalize 8.3-short paths differently from Node.
+  // Compare filesystem identity before refusing an otherwise correct worktree.
+  const left=fs.statSync(expected),right=fs.statSync(actual);
+  const sameRoot=(left.ino && right.ino && left.dev===right.dev && left.ino===right.ino) ||
+    (process.platform==='win32' ? expected.toLowerCase()===actual.toLowerCase() : expected===actual);
+  if (!sameRoot) return {status:'BLOCKED_WRONG_ROOT', head:null, branch:null, dirty:null};
   const head = git('rev-parse','HEAD');
   const branch = git('symbolic-ref','--quiet','--short','HEAD');
   // CEOS writes run checkpoints and latest.json into .ceos-runs itself.
@@ -211,6 +217,19 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
   const summary={project,runId:run.runId,pipeline:run.pipeline,stage:run.nextStage,verdict:run.verdict,
     scopeSha256:run.scopeSha256,cycle:run.cycle,checkpointCount:run.checkpointCount,
     maxCycles:run.maxCycles,git,mode,...(progress ? {progress} : {})};
+  // A relocated run is not valid merely because its old absolute evidence
+  // paths still exist. Require explicit rebinding in all cases, even on a
+  // misleading integrity.ok=true from the original checkout.
+  if (run.projectDir && path.resolve(run.projectDir)!==project) {
+    const relocation=inspectRunRelocation(project,run.runId);
+    if (relocation.status==='READY_FOR_EXPLICIT_RELOCATION')
+      return makeBlocked('NEEDS_EXPLICIT_RUN_RELOCATION',{...summary,
+        integrity:resumed.integrity,relocation,
+        action:{kind:'VERIFY_AND_RELOCATE_RUN',risk:'R1',
+          instruction:relocation.action}});
+    return makeBlocked('BLOCKED_RUN_RELOCATION',{...summary,
+      integrity:resumed.integrity,relocation});
+  }
   if (!resumed.integrity?.ok) return makeBlocked('BLOCKED_INTEGRITY',{...summary,integrity:resumed.integrity});
   if (progress?.pipeline && run.pipeline !== progress.pipeline)
     return makeBlocked('BLOCKED_PROGRESS_PIPELINE_MISMATCH',{...summary,

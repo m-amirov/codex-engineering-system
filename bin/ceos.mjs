@@ -16,6 +16,7 @@ import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
 import { inspectArtProgress } from '../src/art-progress.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
+import { inspectRunRelocation, relocateRun } from '../src/run-relocation.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -139,6 +140,7 @@ Usage:
   ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--art-mode NEW_GENERATION|VERIFIED_EXISTING_ART_REUSE] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--resolution-contract-file json] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
   ceos continue [run-id|latest] [--project dir] [--progress-index path] [--mode inspect|guided|auto] [--dry-run] [--claim --action-id HASH | --release TOKEN] [--json] (guided default; inspect/dry-run read-only)
+  ceos run-relocate [run-id|latest] --project <new-worktree> [--apply --expect-sha <original-run-sha256>] [--json] (read-only preview by default)
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
   ceos run-status [run-id|latest] [--json]
   ceos web-attachment-block [run-id|latest] --phase analysis|midpoint|acceptance --evidence <failed-turn-log.txt> [--project dir] [--json]
@@ -273,6 +275,15 @@ try {
     case 'context': {
       if (!args.skill) throw new Error('--skill is required');
       process.stdout.write(renderContext(project, args.skill)); break;
+    }
+    case 'run-relocate': {
+      const runRef=args._[1] || 'latest';
+      const result=args.apply
+        ? relocateRun(project,runRef,{expectedSha:args['expect-sha']})
+        : inspectRunRelocation(project,runRef);
+      print(result,Boolean(args.json));
+      process.exitCode=['READY_FOR_EXPLICIT_RELOCATION','PASS_RUN_RELOCATED'].includes(result.status) ? 0 : 2;
+      break;
     }
     case 'session-diagnostics': {
       const result=diagnoseRuntimeContext({

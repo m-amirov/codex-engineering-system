@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.24 — 2026-10-16
+
+- Added explicit `ceos run-relocate` preview and SHA-confirmed `--apply` for moved, pre-generation production-art runs. Original metadata is backed up with a relocation receipt; hash and Git ancestry checks are mandatory.
+- `ceos continue` now detects an incorrect `projectDir` even when original absolute evidence paths still exist, and supplies an actionable relocation preview instead of reporting a misleading success.
+- Restricts relocation to clean canonical `CANON_READY → GENERATING` runs with no native producer, generation or Web review receipts. Preserves source history and checkpoint count; no Image Gen, Web, implicit trust or automatic migration.
+- Added relocation safety regression tests and portable worktree documentation. Session/turn trust remains mandatory only for native generation operations, not planning or relocation.
+
+
 ## 0.5.23 — 2026-10-16
 
 - Isolated CEOS SessionStart/UserPromptSubmit freshness markers by canonical Git worktree path and Codex session ID instead of relying on shared last-writer-wins global markers.

@@ -1,6 +1,38 @@
-# Codex Engineering OS (CEOS) 0.5.23
+# Codex Engineering OS (CEOS) 0.5.24
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Explicit worktree relocation (0.5.24)
+
+If an existing, not-yet-generated production-art run has physically moved to
+another Git worktree, `ceos continue` reports
+`NEEDS_EXPLICIT_RUN_RELOCATION` rather than silently reading snapshots from
+the original checkout. Preview without mutation:
+
+```powershell
+ceos run-relocate <run-id> --project "<target-worktree>" --json
+```
+
+The preview includes `originalRunSha256`. Review the project, source Git
+ancestry, checkpoint count, and evidence, then explicitly apply:
+
+```powershell
+ceos run-relocate <run-id> --project "<target-worktree>" --apply --expect-sha <originalRunSha256> --json
+```
+
+This operation works only at `CANON_READY → GENERATING`, on a clean worktree,
+with source HEAD reachable as an ancestor, unchanged scope/capabilities and
+all relocated checkpoint artifacts SHA-matched. It writes original JSON backups
+and a relocation receipt, revalidates full integrity and rolls back on failure.
+It never invokes or attests Image Gen, imports producer traces, changes accepted
+art or enables Web High. Native generation still requires a fresh trusted
+current-turn capability attestation and real producer trace.
+
+**Lifecycle is not required for ordinary continue, inventory, canon, or
+relocation.** Its trust boundary applies at native generation, not to
+project-file progress. `BLOCKED_SESSION_CONTEXT_UNVERIFIED` means the current
+checkout has no trusted Codex turn; it is not proof that Image Gen is available
+or unavailable.
 
 ## Continue and source-bound project progress (0.5.23)
 
