@@ -1,6 +1,22 @@
-# Codex Engineering OS (CEOS) 0.5.24
+# Codex Engineering OS (CEOS) 0.5.25
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Current-turn Terra producer-route preflight (0.5.25)
+
+`ceos producer-route-check` and the `GENERATING` checkpoint now share
+the same parent-resolution contract. For `CURRENT_TURN` runs,
+`producerParentSessionId: null` is expected: the parent is derived from
+a fresh, consumed run-scoped capability challenge and the matching
+`capabilities.json` snapshot for the current live session and turn.
+The preflight verifies the actual child rollout's role, parent ID and
+model/effort without writing a parent ID into `run.json`.
+
+An absent, stale, unrelated, or non-PRESENT attestation remains blocked,
+and the child producer trace cannot be substituted with a parent assertion.
+Preflight does not generate images or authorize an art checkpoint; those
+still require real output PNGs and independent gates. Historical
+`PINNED_PARENT` run behavior is preserved.
 
 ## Explicit worktree relocation (0.5.24)
 

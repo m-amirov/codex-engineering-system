@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.25 — 2026-10-16
+
+- Fixed `ceos producer-route-check` for `CURRENT_TURN` production-art runs: it now resolves the effective parent from the live run-scoped image-generation attestation and matching persisted capability snapshot, not the intentionally null `producerParentSessionId`.
+- Centralized producer parent resolution with the `GENERATING` checkpoint to prevent route-check/checkpoint divergence, while rejecting stale turns, absent capability grants and unrelated Terra children.
+- Added CLI and engine regression coverage for current-turn preflight, missing/stale attestation, unrelated child parent and historical pinned-parent compatibility.
+- Read-only route preflight does not mutate runs, invent traces, or generate images. Existing S19–S23 evidence and Stage 9.4 run remain unchanged.
+
+
 ## 0.5.24 — 2026-10-16
 
 - Added explicit `ceos run-relocate` preview and SHA-confirmed `--apply` for moved, pre-generation production-art runs. Original metadata is backed up with a relocation receipt; hash and Git ancestry checks are mandatory.

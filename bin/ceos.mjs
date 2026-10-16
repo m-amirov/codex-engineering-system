@@ -7,7 +7,7 @@ import { webPreflight } from '../src/web-preflight.mjs';
 import { gitPreflight } from '../src/git-preflight.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { webReviewPlan, validateWebReview } from '../src/web-delegation.mjs';
-import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES } from '../src/execution-engine.mjs';
+import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES, preflightNativeProducerRoute } from '../src/execution-engine.mjs';
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
@@ -555,11 +555,8 @@ try {
     }
     case 'producer-route-check': {
       const ref = args._[1] || 'latest';
-      const run = resumeRun(project, ref);
-      if (run.run.pipeline !== 'production-art') throw new Error('producer route check requires production-art run');
-      const result = inspectNativeProducerRoute(args.trace, {
-        codexHome: args['codex-home'] || undefined,
-        parentSessionId: run.run.producerParentSessionId
+      const result = preflightNativeProducerRoute(project, ref, args.trace, {
+        codexHome: args['codex-home'] || undefined
       });
       if (args.json) print(result, true);
       else {

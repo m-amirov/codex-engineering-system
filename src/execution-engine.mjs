@@ -853,6 +853,68 @@ function assertFinalRouting(run, capabilities) {
   }
 }
 
+/**
+ * Resolve native producer authority without writing a session binding to run.json.
+ * CURRENT_TURN is authorized ONLY by the current run/session/turn capability
+ * challenge and the matching persisted capability snapshot. Legacy pinned-parent
+ * runs preserve their historical contract.
+ *
+ * This function is shared by producer-route-check and GENERATING to prevent
+ * their parent resolution from diverging.
+ */
+function verifiedProducerParent(projectDir, run, capabilities, {codexHome} = {}) {
+  if (run.producerBindingMode !== 'CURRENT_TURN') {
+    return {ok:true, parentSessionId:run.producerParentSessionId,
+      attestationFile:null, bindingMode:'PINNED_PARENT'};
+  }
+  const verified=readRunCapabilityAttestation(projectDir,run.runId,{codexHome});
+  const attestation=verified.attestation;
+  const image=capabilities?.imageGeneration;
+  if (!verified.valid || attestation?.presence!=='PRESENT' ||
+      !['UNKNOWN','AVAILABLE'].includes(attestation?.serviceAvailability) ||
+      image?.trustedForGeneration!==true ||
+      image?.capabilityPresence!=='PRESENT' ||
+      image?.generationAllowed!==true ||
+      image?.attestationFile!==verified.file ||
+      image?.trustScope!=='run-session-turn') {
+    return {ok:false,status:'BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED',
+      detail:'Fresh matching run-scoped capability challenge and trusted capability snapshot required' +
+        (verified.reason ? ': '+verified.reason : '')};
+  }
+  return {ok:true,parentSessionId:attestation.sessionId,
+    attestationFile:verified.file,bindingMode:'CURRENT_TURN'};
+}
+
+/** Read-only route preflight. It never grants generation, creates traces or mutates a run. */
+export function preflightNativeProducerRoute(projectDir, runRef='latest', traceFile, {codexHome}={}) {
+  const project=path.resolve(projectDir);
+  const resumed=resumeRun(project,runRef);
+  if (path.resolve(resumed.run.projectDir ?? '')!==project ||
+      path.resolve(resumed.run.runDir ?? '')!==path.resolve(resumed.runDir))
+    return {ok:false,status:'BLOCKED_NATIVE_AGENT_RUN_LOCATION_MISMATCH',
+      detail:'Run location differs from the requested checkout; use verified run relocation'};
+  if (resumed.run.pipeline!=='production-art')
+    return {ok:false,status:'BLOCKED_NATIVE_AGENT_PIPELINE_MISMATCH',
+      detail:'Native producer route requires a production-art run'};
+  if (!resumed.integrity.ok)
+    return {ok:false,status:'BLOCKED_INTEGRITY',
+      detail:resumed.integrity.issues.join('; ')};
+  if (resumed.run.verdict || resumed.run.nextStage!=='GENERATING')
+    return {ok:false,status:'BLOCKED_NATIVE_AGENT_WRONG_STAGE',
+      detail:'Native producer route preflight requires an active GENERATING stage'};
+  if (resumed.run.nativeProducerRouteRequired!==true)
+    return {ok:false,status:'BLOCKED_NATIVE_AGENT_ROUTE_NOT_REQUIRED',
+      detail:'Selected run does not require a native producer route'};
+  const capabilities=readJson(path.join(resumed.runDir,'capabilities.json'));
+  const parent=verifiedProducerParent(project,resumed.run,capabilities,{codexHome});
+  if (!parent.ok) return parent;
+  const result=inspectNativeProducerRoute(traceFile,{
+    codexHome,parentSessionId:parent.parentSessionId
+  });
+  return {...result,bindingMode:parent.bindingMode,
+    ...(parent.attestationFile ? {attestationFile:parent.attestationFile} : {})};
+}
+
 export function recordCheckpoint(projectDir, runRef, {
   stage,
   artifacts = [],
@@ -925,24 +987,14 @@ export function recordCheckpoint(projectDir, runRef, {
     let producerAttestationFile = null;
     if (stage === 'GENERATING' && !existingArtReuse && run.nativeProducerRouteRequired === true &&
         (normalizedOutcome === 'CONTINUE' || normalizedOutcome === 'PASS')) {
-      let parentSessionId = run.producerParentSessionId;
-      if (run.producerBindingMode === 'CURRENT_TURN') {
-        // No arbitrary metadata, old session marker or parent assertion can
-        // authorize generation. The run-scoped challenge must belong to the
-        // *current* trusted session + turn in this exact project checkout.
-        const verified = readRunCapabilityAttestation(resolvedProject, run.runId);
-        const attestation = verified.attestation;
-        const capability = currentCapabilities.imageGeneration;
-        if (!verified.valid || attestation?.presence !== 'PRESENT' ||
-            !['UNKNOWN', 'AVAILABLE'].includes(attestation?.serviceAvailability) ||
-            capability?.attestationFile !== verified.file ||
-            capability?.trustScope !== 'run-session-turn') {
-          throw new Error('BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED: fresh matching run-scoped capability challenge required');
-        }
-        parentSessionId = attestation.sessionId;
-        producerAttestationFile = verified.file;
-      }
-      producerRouteGate = inspectNativeProducerRoute(metadata?.producerTraceFile, { parentSessionId });
+      // Resolve the exact parent with the same verified rules used by
+      // ceos producer-route-check. CURRENT_TURN does not populate run.json.
+      const parent=verifiedProducerParent(resolvedProject,run,currentCapabilities);
+      if (!parent.ok) throw new Error(parent.status+': '+parent.detail);
+      producerAttestationFile=parent.attestationFile;
+      producerRouteGate=inspectNativeProducerRoute(metadata?.producerTraceFile, {
+        parentSessionId:parent.parentSessionId
+      });
       if (!producerRouteGate.ok)
         throw new Error(producerRouteGate.status + ': ' + producerRouteGate.detail);
     }
