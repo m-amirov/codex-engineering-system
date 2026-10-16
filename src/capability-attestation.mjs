@@ -216,7 +216,10 @@ export function readRunCapabilityAttestation(projectDir, runRef = 'latest', {
   try { challenge = readJson(cfile); }
   catch { return { valid: false, reason: 'challenge evidence missing', file, attestation: null }; }
   if (challenge.status !== 'CONSUMED' || challenge.runId !== resolved.run.runId ||
-      challenge.sessionId !== attestation.sessionId || challenge.turnId !== attestation.turnId) {
+      challenge.capability !== CAPABILITY || challenge.challengeId !== attestation.challengeId ||
+      challenge.source !== 'ceos-in-session-challenge' ||
+      challenge.sessionId !== attestation.sessionId || challenge.turnId !== attestation.turnId ||
+      challenge.consumedAt !== attestation.observedAt) {
     return { valid: false, reason: 'challenge consumption/freshness mismatch', file, attestation: null };
   }
 
