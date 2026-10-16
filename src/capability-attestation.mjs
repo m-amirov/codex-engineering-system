@@ -11,6 +11,7 @@ const CAPABILITY = 'image-generation';
 export const IMAGE_GENERATION_TOOL = 'image_gen.imagegen';
 const MAX_RUNTIME_CONTEXT_AGE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_CHALLENGE_TTL_SECONDS = 30 * 60;
+const MAX_ATTESTATION_AGE_MS = 30 * 60 * 1000;
 
 function now() {
   return new Date().toISOString();
