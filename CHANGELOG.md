@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.22 — 2026-10-16
+
+- Fixed linked session recovery for historical scopes containing the source-bound `resolutionReceiptContract`. CEOS now revalidates the locked exact lines and evidence SHA-256 and reconstructs the contract through normal run creation without changing scope, evidence, or source run.
+- Rejects unsupported scope extensions, missing locked source hashes, and changed historical receipt sources, with regression coverage for recovery and non-recovery.
+- Existing fresh session and Git/canon currentness boundaries remain in force; this release does not relax canon source-HEAD checks or automatically invoke Image Gen.
+
+
 ## 0.5.21 — 2026-10-16
 
 - Added automatic session-only linked recovery to ordinary `ceos continue` for eligible narrative production-art runs waiting at `GENERATING` after the Codex parent session changes.
