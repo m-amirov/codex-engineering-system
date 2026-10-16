@@ -542,10 +542,16 @@ export function createLinkedSessionRecoveryRun(projectDir, sourceRunRef, {expect
     const caps = structuredClone(readJson(path.join(original.runDir, 'capabilities.json')));
     caps.imageGeneration = {
       ...caps.imageGeneration,
+      status:'unknown',
       capabilityPresence:'UNKNOWN',
       serviceAvailability:'UNKNOWN',
+      callable:false,
       trustedForGeneration:false,
       generationAllowed:false,
+      attestationFile:null,
+      observedTool:null,
+      trustScope:null,
+      serviceEvidence:null,
       source:'linked-recovery-requires-fresh-run-session-turn-challenge'
     };
     const blocker = capabilityBlockers(caps,{pipeline:old.pipeline,webRequired:old.webRequired})
