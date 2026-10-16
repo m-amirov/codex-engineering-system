@@ -497,6 +497,33 @@ export function resolveRun(projectDir, runRef = 'latest') {
 }
 
 /**
+ * Rehydrate a historical receipt contract through the same source-backed
+ * createRun preflight used for fresh runs. Never silently remove it or
+ * treat changed source evidence as a valid recovery.
+ */
+function recoverResolutionReceiptContract(project, scope) {
+  const allowed = ['target','inScope','outOfScope','acceptanceContract',
+    'mutationBoundary','resolutionReceiptContract'];
+  if (Object.keys(scope).some(key => !allowed.includes(key)))
+    throw new Error('BLOCKED_RECOVERY_SCOPE_UNSUPPORTED');
+  if (!Object.hasOwn(scope,'resolutionReceiptContract')) return null;
+  const locked = scope.resolutionReceiptContract;
+  const contract = normalizeResolutionReceiptContract(locked);
+  if (typeof locked.sourceEvidenceSha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/i.test(locked.sourceEvidenceSha256))
+    throw new Error('BLOCKED_RECOVERY_RESOLUTION_RECEIPT_HASH_MISSING');
+  const source = resolveArtifact(project,project,contract.sourceEvidence);
+  if (source.type !== 'file' || source.sha256 !== locked.sourceEvidenceSha256)
+    throw new Error('BLOCKED_RECOVERY_RESOLUTION_RECEIPT_SOURCE_CHANGED');
+  const errors = validateResolutionReceipt(
+    {historicalExactLines:contract.requiredExactLines},
+    contract,fs.readFileSync(source.path,'utf8'));
+  if (errors.length)
+    throw new Error('BLOCKED_RECOVERY_RESOLUTION_RECEIPT_SOURCE_INVALID: ' + errors.join('; '));
+  return contract;
+}
+
+/**
  * Session-only recovery of a previously accepted CANON_READY milestone.
  * No generated pixels, attestation or native trace is inherited. The source
  * run and canon checkpoint remain immutable, pinned by content hashes.
@@ -527,9 +554,9 @@ export function createLinkedSessionRecoveryRun(projectDir, sourceRunRef, {expect
     if (!source.available || source.head !== expectedHead)
       throw new Error('BLOCKED_RECOVERY_SOURCE_HEAD_CHANGED');
     const scope = readJson(path.join(original.runDir, 'scope.json'));
-    if (scopeHash(scope) !== old.scopeSha256 ||
-        Object.keys(scope).some(key => !['target','inScope','outOfScope','acceptanceContract','mutationBoundary'].includes(key)))
-      throw new Error('BLOCKED_RECOVERY_SCOPE_UNSUPPORTED');
+    if (scopeHash(scope) !== old.scopeSha256)
+      throw new Error('BLOCKED_RECOVERY_SCOPE_CHANGED');
+    const resolutionReceiptContract = recoverResolutionReceiptContract(project,scope);
     const checkpointsDir = path.join(original.runDir, 'checkpoints');
     const checkpoints = fs.readdirSync(checkpointsDir).filter(name=>name.endsWith('.json')).sort();
     const acceptedCanon = checkpoints.filter(name=>name.endsWith('-canon-ready.json'))
@@ -561,7 +588,8 @@ export function createLinkedSessionRecoveryRun(projectDir, sourceRunRef, {expect
     const linked = createRun(project, old.pipeline, {
       scope, capabilities:caps, webRequired:old.webRequired,
       maxCycles:old.maxCycles, webReviewMode:old.webReviewMode,
-      webReviewAssurance:old.webReviewAssurance, artMode:old.artMode
+      webReviewAssurance:old.webReviewAssurance, artMode:old.artMode,
+      resolutionReceiptContract
     });
     return withRunLock(linked.runDir, () => {
       const next = readJson(path.join(linked.runDir, 'run.json'));

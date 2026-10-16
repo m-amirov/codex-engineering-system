@@ -164,7 +164,7 @@ test('explicit run reference cannot escape the project run directory',t=>{
   assert.equal(external.executable,false);
 });
 
-function novelRecoveryFixture(t) {
+function novelRecoveryFixture(t,{receiptContract=false}={}) {
   const project=setup(t);
   fs.mkdirSync(path.join(project,'config'));
   fs.mkdirSync(path.join(project,'narrative'));
@@ -173,7 +173,11 @@ function novelRecoveryFixture(t) {
   fs.writeFileSync(path.join(project,'narrative','graph.json'),
     JSON.stringify({scenes:[{id:'S22',episode:2}]}));
   fs.writeFileSync(path.join(project,'canon.json'), JSON.stringify({canon:'verified'}));
-  git(project,'add','config','narrative','canon.json');
+  const historicalLines=['The original generation used these source-bound pixels.',
+    'The preserved receipt must repeat this exact second line.'];
+  if(receiptContract)
+    fs.writeFileSync(path.join(project,'historical-receipt.txt'),historicalLines.join('\n')+'\n');
+  git(project,'add','config','narrative','canon.json',...(receiptContract?['historical-receipt.txt']:[]));
   git(project,'commit','-m','canonical assets and source');
   const home=fs.mkdtempSync(path.join(os.tmpdir(),'ceos-recovery-home-'));
   t.after(()=>fs.rmSync(home,{recursive:true,force:true}));
@@ -200,7 +204,10 @@ function novelRecoveryFixture(t) {
       imageGeneration:{status:'available',capabilityPresence:'PRESENT',trustedForGeneration:true,
         generationAllowed:true,serviceAvailability:'UNKNOWN',attestationFile:'stale-attestation',observedTool:'image_gen.imagegen',trustScope:'run-session-turn'},
       filesystem:{exists:true,readable:true,writable:true}
-    }
+    },
+    ...(receiptContract?{resolutionReceiptContract:{
+      schemaVersion:1,requiredExactLines:historicalLines,sourceEvidence:'historical-receipt.txt'
+    }}:{})
   });
   recordCheckpoint(project,original.run.runId,{stage:'INVENTORIED',artifacts:['canon.json']});
   recordCheckpoint(project,original.run.runId,{stage:'CANON_READY',artifacts:['canon.json']});
@@ -244,6 +251,64 @@ test('normal continue performs evidence-pinned linked recovery and never rewrite
   assert.equal(planContinuation(x.project).runId,created.runId);
   assert.equal(planContinuation(x.project,{runRef:x.original}).runId,created.runId);
   assert.equal(recoverContinuation(x.project,{mode:'guided'}).runId,created.runId);
+});
+
+test('linked session recovery preserves locked resolution receipt source and hash',t=>{
+  const x=novelRecoveryFixture(t,{receiptContract:true});
+  const sourceDir=path.join(x.project,'.ceos-runs',x.original);
+  const sourceScope=JSON.parse(fs.readFileSync(path.join(sourceDir,'scope.json'),'utf8'));
+  const before=fs.readFileSync(path.join(sourceDir,'run.json'),'utf8');
+  assert.match(sourceScope.resolutionReceiptContract.sourceEvidenceSha256,/^[a-f0-9]{64}$/);
+  x.writeContext('parent-new');
+  const linked=recoverContinuation(x.project,{mode:'guided'});
+  assert.equal(linked.status,'READY_FOR_CODEX',JSON.stringify(linked));
+  const newRun=resumeRun(x.project,linked.runId);
+  assert.equal(newRun.integrity.ok,true);
+  assert.equal(newRun.run.scopeSha256,sourceScope && JSON.parse(before).scopeSha256);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(newRun.runDir,'scope.json'),'utf8')),sourceScope);
+  assert.equal(newRun.run.linkedRecovery.sourceRunId,x.original);
+  assert.equal(fs.readFileSync(path.join(sourceDir,'run.json'),'utf8'),before);
+  assert.equal(recoverContinuation(x.project,{mode:'guided'}).runId,linked.runId);
+});
+
+test('linked recovery rejects drifted receipt source without creating a new run',t=>{
+  const x=novelRecoveryFixture(t,{receiptContract:true});
+  x.writeContext('parent-new');
+  fs.appendFileSync(path.join(x.project,'historical-receipt.txt'),'source changed\n');
+  git(x.project,'add','historical-receipt.txt');
+  git(x.project,'commit','-m','change locked evidence');
+  const result=recoverContinuation(x.project,{mode:'guided'});
+  assert.equal(result.status,'BLOCKED_RECOVERY_GUARD');
+  assert.match(result.detail,/BLOCKED_RECOVERY_RESOLUTION_RECEIPT_SOURCE_CHANGED/);
+  assert.equal(fs.readdirSync(path.join(x.project,'.ceos-runs'))
+    .filter(name=>name.includes('production-art')).length,1);
+});
+
+test('linked recovery rejects missing locked evidence hash even when source scope is internally consistent',async t=>{
+  const x=novelRecoveryFixture(t,{receiptContract:true});
+  const base=path.join(x.project,'.ceos-runs',x.original);
+  const scopePath=path.join(base,'scope.json'),runPath=path.join(base,'run.json');
+  const scope=JSON.parse(fs.readFileSync(scopePath,'utf8'));
+  delete scope.resolutionReceiptContract.sourceEvidenceSha256;
+  fs.writeFileSync(scopePath,JSON.stringify(scope,null,2)+'\n');
+  const old=JSON.parse(fs.readFileSync(runPath,'utf8'));
+  const hash=await import('node:crypto');
+  old.scopeSha256=hash.createHash('sha256').update(JSON.stringify(scope)).digest('hex');
+  fs.writeFileSync(runPath,JSON.stringify(old,null,2)+'\n');
+  // Model a well-formed historical checkpoint created before the hash field
+  // was mandatory. A partial scope edit without updating this checkpoint
+  // would correctly fail the existing integrity gate earlier.
+  const cp=path.join(base,'checkpoints','001-scope-locked.json');
+  const checkpoint=JSON.parse(fs.readFileSync(cp,'utf8'));
+  checkpoint.artifacts[0].sha256=hash.createHash('sha256').update(fs.readFileSync(scopePath)).digest('hex');
+  checkpoint.artifacts[0].size=fs.statSync(scopePath).size;
+  fs.writeFileSync(cp,JSON.stringify(checkpoint,null,2)+'\n');
+  x.writeContext('parent-new');
+  const result=recoverContinuation(x.project,{mode:'guided'});
+  assert.equal(result.status,'BLOCKED_RECOVERY_GUARD');
+  assert.match(result.detail,/BLOCKED_RECOVERY_RESOLUTION_RECEIPT_HASH_MISSING/);
+  assert.equal(fs.readdirSync(path.join(x.project,'.ceos-runs'))
+    .filter(name=>name.includes('production-art')).length,1);
 });
 
 test('CLI default auto-links stale parent, but explicit inspect remains read-only',t=>{

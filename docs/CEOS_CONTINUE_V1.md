@@ -80,7 +80,11 @@ are not eligible.
 
 The source run stays unchanged. Before linking, CEOS verifies its integrity,
 a clean Git worktree, HEAD matching the accepted CANON_READY checkpoint,
-unchanged scope, and valid parent/turn context. A new run keeps source/canon
+unchanged scope, and valid parent/turn context. Historical
+  `resolutionReceiptContract` scopes retain their original exact lines,
+  authoritative source path and SHA-256 across recovery; the source is checked
+  again through the standard receipt preflight. No contract is stripped or
+  reinterpreted. Unknown scope extensions and source drift remain blocked. A new run keeps source/canon
 hashes in LINKED_SESSION_RECOVERY and inherits only the pre-generation
 CANON_READY milestone; no PNG, acceptance, tool invocation or generation PASS
 is inferred. It is bound to the fresh parent session. Native capability
