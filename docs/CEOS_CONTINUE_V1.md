@@ -134,6 +134,12 @@ SessionStart and UserPromptSubmit now persist additional worktree/session
 evidence under `~/.codex/ceos/runtime/worktrees/<SHA256(realpath(cwd))>/<SHA256(session_id)>/`.
 Project-bound continue and capability challenges read only the requested
 worktree's context; a turn in a separate checkout cannot evict it.
+Eligibility also requires the live worktree host binding at
+`~/.codex/ceos/runtime/worktrees/<SHA256(realpath(cwd))>/host.json` to match
+both the candidate session ID and its current turn ID. An `ACTIVE_LIFECYCLE`
+receipt or scoped `turn.json` without that binding is diagnostic history only
+and returns `BLOCKED_ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND`, even when it is
+the only remaining candidate.
 The historical global `current-session.json` / `current-turn.json`
 files remain as a migration fallback only when **both** recorded cwd
 values match the requested project and there is no scoped state.

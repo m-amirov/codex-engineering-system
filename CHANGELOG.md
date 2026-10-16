@@ -5,6 +5,7 @@
 - Isolated CEOS SessionStart/UserPromptSubmit freshness markers by canonical Git worktree path and Codex session ID instead of relying on shared last-writer-wins global markers.
 - `ceos continue`, linked native parent creation, and Image Gen capability challenges now select the requested project's host-observed hook context, independent of other worktrees' sessions.
 - Fail closed on multiple fresh sessions for the same worktree, corrupt or stale markers, and cross-worktree borrowing. Legacy-global migration is allowed only when both cwd fields resolve to the requested project and no scoped records exist.
+- Active lifecycle and scoped turn markers cannot establish a trusted producer parent without a matching live worktree session/turn binding; missing or mismatched bindings return `BLOCKED_ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND`.
 - Added parallel-session and trust-boundary regression tests. No native Image Gen, Web High, or unattended generation is introduced.
 
 

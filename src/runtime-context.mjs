@@ -99,6 +99,7 @@ export function runtimeContextPaths({ homeDir=os.homedir(), codexHome, projectDi
     turnFile:path.join(root,'current-turn.json'),
     project,
     worktreeDir:worktreeKey ? path.join(root,'worktrees',worktreeKey) : null,
+    hostFile:worktreeKey ? path.join(root,'worktrees',worktreeKey,'host.json') : null,
     lifecycleDir:worktreeKey ? path.join(root,'lifecycle',worktreeKey) : null
   };
 }
@@ -133,7 +134,9 @@ function inspectRuntimeContext(options={}) {
       selectedSessionId:null,trustedHost:null,candidates:[]}};
   }
 
-  const host=validHostContext(paths,legacy);
+  const scopedHostPresent=Boolean(paths.hostFile && fs.existsSync(paths.hostFile));
+  const scopedHost=scopedHostPresent ? readJson(paths.hostFile) : null;
+  const host=validHostContext(paths,scopedHostPresent ? {session:scopedHost,turn:scopedHost} : legacy);
   const diagnostics={status:'BLOCKED',selectionError:null,project:paths.project,
     selectedSessionId:null,
     trustedHost:host ? {sessionId:host.session.sessionId,turnId:host.turn.turnId,observedAt:host.turn.observedAt} : null,
@@ -149,6 +152,7 @@ function inspectRuntimeContext(options={}) {
     }
     const eligible=[];
     let invalid=false;
+    let unboundActiveLifecycle=false;
     for (const entry of entries) {
       const root=path.join(paths.worktreeDir,entry.name);
       const session=readJson(path.join(root,'session.json'));
@@ -163,8 +167,17 @@ function inspectRuntimeContext(options={}) {
         invalid=true;
         continue;
       }
-      const hostMatch=host?.session.sessionId === session.sessionId && canonical(session.cwd)===paths.project;
+      const hostMatch=host?.session.sessionId === session.sessionId &&
+        host.turn.turnId === (scopedTurn?.turnId ?? host.turn.turnId) &&
+        canonical(session.cwd)===paths.project;
       const turn=scopedTurn ?? (hostMatch ? host.turn : null);
+      if (lifecycle?.state === 'active' && !hostMatch) {
+        diagnostics.candidates.push(candidateRecord(paths,entry,session,scopedTurn,lifecycle,null,
+          'ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND',
+          'active lifecycle record has no matching current host session and turn binding'));
+        unboundActiveLifecycle=true;
+        continue;
+      }
       if (!turn) {
         diagnostics.candidates.push(candidateRecord(paths,entry,session,null,lifecycle,null,'INCOMPLETE_MARKER','turn.json is missing and no matching trusted host turn exists'));
         continue;
@@ -207,6 +220,7 @@ function inspectRuntimeContext(options={}) {
       eligible.push({entry,session,turn,lifecycle,classification,root});
     }
     if (invalid) diagnostics.selectionError='BLOCKED_SESSION_CONTEXT_CORRUPT';
+    else if (unboundActiveLifecycle) diagnostics.selectionError='BLOCKED_ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND';
     else if (eligible.length > 1) diagnostics.selectionError='BLOCKED_AMBIGUOUS_WORKTREE_SESSIONS';
     else if (eligible.length === 1 && eligible[0].classification !== 'UNVERIFIED_LEGACY') {
       const selected=eligible[0];

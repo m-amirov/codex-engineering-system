@@ -119,7 +119,7 @@ test('two simultaneous sessions in the same worktree are blocked until one ends'
   x.send('SessionStart','session-B',x.a);
   x.send('UserPromptSubmit','session-B',x.a,'turn-B');
   assert.equal(readRuntimeContext({codexHome:x.home,projectDir:x.a}).selectionError,
-    'BLOCKED_AMBIGUOUS_WORKTREE_SESSIONS');
+    'BLOCKED_ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND');
   assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),null);
   x.send('SessionEnd','session-A',x.a);
   const ended=JSON.parse(fs.readFileSync(path.join(x.home,'ceos','runtime','lifecycle',
@@ -139,6 +139,60 @@ test('compact SessionStart preserves the trusted current turn',t=>{
   const ctx=readRuntimeContext({codexHome:x.home,projectDir:x.a});
   assert.equal(ctx.session.sessionId,'session-A');
   assert.equal(ctx.turn.turnId,'turn-A');
+});
+
+test('active lifecycle cannot become trusted producer parent without current host turn binding',t=>{
+  const x=setupWorktrees(t);
+  const selectedSessionId='01a14440-1fcb-4f2f-9b58-000000000001';
+  const actualSessionId='01a14440-07d6-4f2f-9b58-000000000002';
+  assert.equal(runHook(x.home,{hook_event_name:'SessionStart',session_id:selectedSessionId,
+    source:'startup',model:'m',cwd:x.a}).status,0);
+  assert.equal(runHook(x.home,{hook_event_name:'UserPromptSubmit',session_id:selectedSessionId,
+    turn_id:'selected-turn',model:'m',cwd:x.a}).status,0);
+
+  // A new client entry clears the global current turn, but the prior scoped
+  // lifecycle and turn remain as host-observed history.
+  assert.equal(runHook(x.home,{hook_event_name:'SessionStart',session_id:actualSessionId,
+    source:'resume',model:'m',cwd:x.a,client:'codex'}).status,0);
+  assert.equal(fs.existsSync(path.join(x.home,'ceos','runtime','current-turn.json')),false);
+
+  const diagnostics=diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(diagnostics.status,'BLOCKED',JSON.stringify(diagnostics));
+  assert.equal(diagnostics.trustedHost,null);
+  assert.equal(diagnostics.selectedSessionId,null);
+  assert.equal(diagnostics.candidates.find(c=>c.sessionId===selectedSessionId).classification,
+    'ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND');
+  assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),null);
+});
+
+test('re-entry through ChatGPT and Codex clients cannot reuse active scoped session without UserPromptSubmit',t=>{
+  for (const client of ['chatgpt','codex']) {
+    const x=setupWorktrees(t);
+    const selectedSessionId=`${client}-selected`;
+    const actualSessionId=`${client}-actual`;
+    assert.equal(runHook(x.home,{hook_event_name:'SessionStart',session_id:selectedSessionId,
+      source:'startup',model:'m',cwd:x.a,client}).status,0);
+    assert.equal(runHook(x.home,{hook_event_name:'UserPromptSubmit',session_id:selectedSessionId,
+      turn_id:`${client}-turn`,model:'m',cwd:x.a,client}).status,0);
+    assert.equal(runHook(x.home,{hook_event_name:'SessionStart',session_id:actualSessionId,
+      source:'resume',model:'m',cwd:x.a,client}).status,0);
+
+    const diagnostics=diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a});
+    assert.equal(diagnostics.status,'BLOCKED',`${client}: ${JSON.stringify(diagnostics)}`);
+    assert.equal(diagnostics.selectionError,'BLOCKED_ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND');
+    assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),null);
+  }
+});
+
+test('missing UserPromptSubmit leaves a new SessionStart blocked even with one active lifecycle marker',t=>{
+  const x=setupWorktrees(t);
+  assert.equal(runHook(x.home,{hook_event_name:'SessionStart',session_id:'session-without-prompt',
+    source:'startup',model:'m',cwd:x.a,client:'codex'}).status,0);
+  const diagnostics=diagnoseRuntimeContext({codexHome:x.home,projectDir:x.a});
+  assert.equal(diagnostics.status,'BLOCKED',JSON.stringify(diagnostics));
+  assert.equal(diagnostics.selectionError,'BLOCKED_ACTIVE_LIFECYCLE_CURRENT_TURN_UNBOUND');
+  assert.equal(diagnostics.selectedSessionId,null);
+  assert.equal(nativeProducerParentContext({codexHome:x.home,projectDir:x.a}),null);
 });
 
 test('legacy rollout without SessionEnd remains blocked and diagnostics remain read-only',t=>{

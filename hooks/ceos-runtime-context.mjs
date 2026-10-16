@@ -87,6 +87,7 @@ function sessionScopedFiles(input) {
   const sessionKey=crypto.createHash('sha256').update(input.session_id).digest('hex');
   const root=path.join(runtimeRoot,'worktrees',worktreeKey,sessionKey);
   return {
+    hostFile:path.join(runtimeRoot,'worktrees',worktreeKey,'host.json'),
     root, sessionFile:path.join(root,'session.json'),
     turnFile:path.join(root,'turn.json'),
     lifecycleFile:path.join(runtimeRoot,'lifecycle',worktreeKey,`${sessionKey}.json`),
@@ -118,9 +119,11 @@ if (process.exitCode === 1) {
 if (input.hook_event_name === 'SessionStart') {
   const scoped=sessionScopedFiles(input);
   const prior = readJson(sessionFile);
-  const changedSession = Boolean(prior?.sessionId && prior.sessionId !== input.session_id);
+  const scopedPrior = readJson(scoped.sessionFile);
+  const changedSession = Boolean(scopedPrior?.sessionId && scopedPrior.sessionId !== input.session_id);
+  const globalSessionChanged = Boolean(prior?.sessionId && prior.sessionId !== input.session_id);
   const hardReset = ['startup', 'clear', 'fork'].includes(input.source);
-  if (changedSession || hardReset) {
+  if (changedSession || globalSessionChanged || hardReset) {
     fs.rmSync(turnFile, { force: true });
     const legacy = readJson(legacyCapabilityFile);
     if (!legacy?.sessionId || legacy.sessionId !== input.session_id) fs.rmSync(legacyCapabilityFile, { force: true });
@@ -139,6 +142,13 @@ if (input.hook_event_name === 'SessionStart') {
   // active turn. Do not erase its trusted scoped turn marker in that case.
   if (!(input.source === 'compact' && !changedSession)) fs.rmSync(scoped.turnFile,{force:true});
   atomicWriteJson(scoped.lifecycleFile,lifecycleMarker(scoped,input,'active','SessionStart'));
+  const preservedTurn = input.source === 'compact' && !changedSession ? readJson(scoped.turnFile) : null;
+  atomicWriteJson(scoped.hostFile, {
+    schemaVersion: 1, sessionId: input.session_id,
+    turnId: preservedTurn?.sessionId === input.session_id ? preservedTurn.turnId : null,
+    model: input.model, cwd: input.cwd, observedAt,
+    event: 'SessionStart', source: input.source
+  });
   process.stdout.write(JSON.stringify({
     continue: true,
     suppressOutput: true,
@@ -174,6 +184,7 @@ if (input.hook_event_name === 'SessionStart') {
     turnId:input.turn_id,model:input.model,cwd:input.cwd,observedAt};
   atomicWriteJson(turnFile,turn);
   atomicWriteJson(scoped.turnFile,turn);
+  atomicWriteJson(scoped.hostFile, { ...turn, event: 'UserPromptSubmit' });
   atomicWriteJson(scoped.lifecycleFile,lifecycleMarker(scoped,input,'active','UserPromptSubmit'));
   process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }));
 } else if (input.hook_event_name === 'SessionEnd') {
@@ -183,6 +194,8 @@ if (input.hook_event_name === 'SessionStart') {
   atomicWriteJson(scoped.lifecycleFile,lifecycleMarker(scoped,input,'ended','SessionEnd'));
   // Never clear another active session's scoped files.
   fs.rmSync(scoped.root,{recursive:true,force:true});
+  const currentHost=readJson(scoped.hostFile);
+  if (currentHost?.sessionId === input.session_id) fs.rmSync(scoped.hostFile,{force:true});
   const session = readJson(sessionFile);
   if (!session?.sessionId || session.sessionId === input.session_id) {
     fs.rmSync(turnFile, { force: true });
