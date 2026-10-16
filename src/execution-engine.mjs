@@ -373,8 +373,11 @@ function nextAction(run) {
     requirements.push('metadata.existingArtReuse: VERIFIED_EXISTING_ART_REUSE contract with current files, hashes, manifest, provenance, runtime pixels, independent art acceptance and clean blocking-findings summary');
   if (def.id === 'GENERATING' && run.artOutputGateRequired)
     requirements.push('metadata.artOutputs: real generated PNG paths, kind and expected dimensions; each output must pass ceos art-output-verify before the next Image Gen call');
-  if (def.id === 'GENERATING' && run.nativeProducerRouteRequired)
+  if (def.id === 'GENERATING' && run.nativeProducerRouteRequired) {
     requirements.push('metadata.producerTraceFile: actual Codex child rollout JSONL proving agent_role=ceos_asset_generator and effective model=gpt-5.6-terra/medium; a parent assertion is insufficient');
+    if (run.producerBindingMode === 'CURRENT_TURN')
+      requirements.push('fresh run-scoped capability challenge from this exact live session + turn; generation parent is verified now, not borrowed from run creation');
+  }
   if (run.narrativeDualFormatRequired && (def.id === 'INTEGRATED' || def.id === 'REAUDITED'))
     requirements.push('metadata.dualFormatManifest: source-bound episode art mapping; both portrait 2:3 and desktop 16:9 real PNG assets required for every scene');
   if (def.finalReview) requirements.push('explicit outcome PASS, FAIL, BLOCKED, or ESCALATE plus metadata.evidenceContract for PASS');
