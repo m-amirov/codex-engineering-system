@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.28 — 2026-10-16
+
+- Kept root `UserPromptSubmit` session/turn binding intact when a native child emits a hook with `subagent` metadata. Child hooks no longer overwrite the current worktree host or parent lifecycle, avoiding a spurious `turn mismatch` in fresh run-scoped Image Gen attestation.
+- Added hook and challenge regression tests: child hook preserves parent marker/attestation, child cannot invent root authority, a real new root turn still invalidates old attestation.
+- Did not change Terra Medium policy: a genuine `gpt-5.6-luna` child rollout remains `BLOCKED_NATIVE_AGENT_MODEL_MISMATCH`. No route verification, PNG generation, recovery run or accepted-art changes are implied.
+
+
 ## 0.5.27 — 2026-10-16
 
 - Introduced execution-bound host trust for native producer selection: CEOS selects the current matched worktree-scoped UserPromptSubmit session/turn, treating prior active lifecycles lacking SessionEnd as read-only diagnostic history instead of a blanket execution blocker.
