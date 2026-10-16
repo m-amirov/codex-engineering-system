@@ -876,7 +876,7 @@ function verifiedProducerParent(projectDir, run, capabilities, {codexHome} = {})
       image?.capabilityPresence!=='PRESENT' ||
       image?.generationAllowed!==true ||
       image?.attestationFile!==verified.file ||
-      image?.trustScope!=='run-session-turn') {
+      !['run-session-turn','run-session-window'].includes(image?.trustScope)) {
     return {ok:false,status:'BLOCKED_GENERATION_CURRENT_TURN_UNVERIFIED',
       detail:'Fresh matching run-scoped capability challenge and trusted capability snapshot required' +
         (verified.reason ? ': '+verified.reason : '')};
