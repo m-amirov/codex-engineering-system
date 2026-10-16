@@ -209,6 +209,13 @@ function novelRecoveryFixture(t,{receiptContract=false}={}) {
       schemaVersion:1,requiredExactLines:historicalLines,sourceEvidence:'historical-receipt.txt'
     }}:{})
   });
+  // Historical fixture: pre-deferred-binding runs were irrevocably pinned to
+  // their parent at create time. Migration must not reinterpret them.
+  const originalRunFile=path.join(original.runDir,'run.json');
+  const legacy=JSON.parse(fs.readFileSync(originalRunFile,'utf8'));
+  legacy.producerBindingMode=null;
+  legacy.producerParentSessionId='parent-old';
+  fs.writeFileSync(originalRunFile,JSON.stringify(legacy,null,2)+'\n');
   recordCheckpoint(project,original.run.runId,{stage:'INVENTORIED',artifacts:['canon.json']});
   recordCheckpoint(project,original.run.runId,{stage:'CANON_READY',artifacts:['canon.json']});
   assert.equal(resumeRun(project,original.run.runId).run.nextStage,'GENERATING');
