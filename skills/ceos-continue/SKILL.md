@@ -63,8 +63,15 @@ is a **Codex-host execution adapter**, not a separate model host or daemon.
 - BLOCKED_RECOVERY_* or BLOCKED_SESSION_CONTEXT_UNVERIFIED: stop and
   diagnose stale hook markers, source HEAD drift, dirty worktree or lock.
   Never bypass the gate to retry generation.
-- BLOCKED_ART_OUTPUT / ART_FILE_NOT_FOUND are NOT session recovery;
-  inspect the real producer output transport/persistence problem.
+- BLOCKED_ART_OUTPUT / ART_FILE_NOT_FOUND are NOT session recovery.
+  Locate the **original local native PNG** if the host persisted it and
+  compare its full Image Gen SHA-256. Use `ceos art-output-import` only
+  with a real, accessible local PNG and the full known source SHA.
+  A chat preview or text describing pixels is not transport. Once
+  imported, rerun `art-output-verify` with a **new receipt filename**.
+  Never erase the failed receipt or rewrite an immutable terminal checkpoint.
+  Terminal recovery is a separate explicit decision; do not assume that
+  having a file reopens an unsupported run.
 
 
 - RECOVERY_CHECK_REQUIRED: verify that the external blocker truly changed
