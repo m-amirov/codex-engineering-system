@@ -617,7 +617,10 @@ test('S24 recovered original PNG and failed+PASS receipts are checkpoint-pinned 
   const r=createRun(project,'production-art',{
     scope:{target:'S24 bounded generation',inScope:['S24'],outOfScope:['release'],
       acceptanceContract:'art verified',mutationBoundary:'generated PNG only'},
-    capabilities,
+    capabilities:{...capabilities,imageGeneration:{
+      status:'available',capabilityPresence:'PRESENT',
+      trustedForGeneration:true,generationAllowed:true,serviceAvailability:'UNKNOWN'
+    }},
     maxCycles:1
   });
   const id=r.run.runId;
