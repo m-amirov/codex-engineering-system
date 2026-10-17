@@ -1,6 +1,33 @@
-# Codex Engineering OS (CEOS) 0.5.33
+# Codex Engineering OS (CEOS) 0.5.34
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Producer batch ledger as hash-pinned continuation evidence (0.5.34)
+
+After native S24–S26 generation, an accepted `GENERATING` checkpoint
+may reference an untracked producer-batch JSON ledger. CEOS 0.5.33
+recognized only PNGs and output receipts, so `continue` incorrectly
+blocked the `INTEGRATED` step despite the source-bound checkpoint.
+
+CEOS now also recognizes untracked JSON files under
+`artifacts/production-art/**/producer-batches/*.json`, **but only**
+when the ledger is itself an exact path/SHA-256/size-matched artifact
+of a completed `GENERATING` checkpoint with a
+`PASS_ART_BATCH_MECHANICAL` gate and **all** gate output checks
+bound to hash-verified project PNGs in that same checkpoint. The
+ledger must contain a valid non-empty JSON object. No generic
+`artifacts/` exemption and no inferred Image Gen receipt are added.
+
+A ledger missing from the checkpoint's artifacts, an unknown JSON
+in the producer-batches directory, an altered ledger, any source
+modification, a non-PASS batch or altered PNG still blocks. Git
+remains truthfully `dirty=true`; `checkpointedEvidenceOnly=true`
+and `allowedEvidencePaths` disclose exactly what was verified.
+
+If the ledger was **not** recorded among the accepted checkpoint
+artifacts, this version will not silently repair it; inspect the
+immutable checkpoint and stop for an explicit evidence decision.
+No new run, auto-staging, push, merge or content release occurs.
 
 ## Checkpoint-verified production evidence in dirty worktrees (0.5.33)
 
