@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { inspectArtBatch } from './art-output-gate.mjs';
+import { inspectSourceBoundRevalidation } from './source-bound-revalidation.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const pngPath = /^assets\/production\/(?:[^/]+\/)*[^/]+\.png$/i;
@@ -109,6 +111,83 @@ function persistedEvidence(project,runDir) {
   return approved;
 }
 
+
+/**
+ * A successful source-bound revalidation may produce *untracked* evidence
+ * while keeping the product HEAD unchanged. Recheck its complete historical
+ * proof before exempting the exact contract and its hash-bound mechanical
+ * receipt from the source-dirty guard. This is not an artistic PASS.
+ */
+function confinedEvidenceJson(project, relative) {
+  if (typeof relative !== 'string' || !relative.startsWith('artifacts/') ||
+      !relative.endsWith('.json') || relative.includes('\\') ||
+      relative.split('/').some(part => !part || part === '.' || part === '..')) return null;
+  const full=path.resolve(project,relative);
+  if (posix(path.relative(project,full))!==relative) return null;
+  try {
+    const stat=fs.lstatSync(full);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size < 1 ||
+        stat.size > 8*1024*1024 || fs.realpathSync(full)!==full) return null;
+    return {full,relative};
+  } catch { return null; }
+}
+
+function verifiedRevalidationManifest(project, relative, contract) {
+  if (!/^(?:artifacts\/)(?:[^/]+\/)*[^/]*REVALIDATION_BATCH_MANIFEST[^/]*\.json$/i.test(relative))
+    return false;
+  const file=confinedEvidenceJson(project,relative);
+  if (!file) return false;
+  try {
+    const doc=JSON.parse(fs.readFileSync(file.full,'utf8'));
+    if (doc.sourceHead !== undefined && doc.sourceHead !== contract.sourceHeads.current) return false;
+    const reference=contract.mechanicalRevalidation.inspected;
+    if (!Array.isArray(doc.assets) || !Array.isArray(reference) ||
+        doc.assets.length!==reference.length || !reference.length) return false;
+    const accepted=inspectArtBatch(doc,{projectDir:project});
+    if (accepted.status!=='PASS_ART_BATCH_MECHANICAL' ||
+        accepted.inspected.length!==reference.length) return false;
+    const expected=new Map();
+    for (const item of reference) {
+      const absolute=path.resolve(item.path);
+      if (expected.has(absolute) || item.status!=='PASS_ART_OUTPUT_MECHANICAL') return false;
+      expected.set(absolute,item);
+    }
+    for (const item of accepted.inspected) {
+      const original=expected.get(path.resolve(item.path));
+      if (!original || original.sha256!==item.sha256 ||
+          original.bytes!==item.bytes ||
+          original.dimensions?.width!==item.dimensions?.width ||
+          original.dimensions?.height!==item.dimensions?.height) return false;
+      expected.delete(path.resolve(item.path));
+    }
+    return expected.size===0;
+  } catch { return false; }
+}
+
+function verifiedRevalidationDirt(project, indexPath, entries) {
+  const allowed=new Set();
+  const contractFile=confinedEvidenceJson(project,indexPath);
+  if (!contractFile) return allowed;
+  // The validator recomputes SHA-256, HEAD, mappings and all original
+  // Web/runtime/PNG receipts; never trust a status field in the JSON alone.
+  const verified=inspectSourceBoundRevalidation(project,indexPath);
+  if (verified.status!=='PASS_ART_PROGRESS_REVALIDATED') return allowed;
+  try {
+    const contract=JSON.parse(fs.readFileSync(contractFile.full,'utf8'));
+    if (contract.kind!=='STAGE9_4_SOURCE_BOUND_REVALIDATION') return allowed;
+    const receipt=confinedEvidenceJson(project,contract.mechanicalRevalidation?.path);
+    if (!receipt || digest(receipt.full)!==contract.mechanicalRevalidation.sha256) return allowed;
+    allowed.add(indexPath);
+    allowed.add(receipt.relative);
+    for (const entry of entries) {
+      if (!entry.startsWith('?? ')) continue;
+      const relative=entry.slice(3);
+      if (verifiedRevalidationManifest(project,relative,contract)) allowed.add(relative);
+    }
+    return allowed;
+  } catch { return new Set(); }
+}
+
 /**
  * A clean *source* tree can carry untracked project-owned production evidence.
  * Only exact SHA-pinned artifacts from an immutable successful checkpoint are
@@ -118,17 +197,19 @@ function persistedEvidence(project,runDir) {
  * Input is git status --porcelain=v1 -z --untracked-files=all, excluding
  * .ceos-runs. Returning evidenceOnlyDirty never modifies the Git index/files.
  */
-export function inspectCheckpointedArtDirt(projectDir,runDir,rawStatus) {
+export function inspectCheckpointedArtDirt(projectDir,runDir,rawStatus,{progressIndex=null}={}) {
   const entries=String(rawStatus??'').split('\0').filter(Boolean);
   if (!entries.length) return {evidenceOnlyDirty:false,allowedEvidencePaths:[],blockedPaths:[]};
   if (entries.length>1000) return {evidenceOnlyDirty:false,allowedEvidencePaths:[],blockedPaths:['TOO_MANY_CHANGES']};
   const root=fs.realpathSync(projectDir);
   const approved=persistedEvidence(root,runDir);
+  const revalidated=progressIndex ? verifiedRevalidationDirt(root,progressIndex,entries) : new Set();
   const allowed=[],blocked=[];
   for(const entry of entries) {
     const status=entry.slice(0,2),relative=entry.slice(3);
-    if (status==='??' && approved.has(relative) &&
-        (pngPath.test(relative) || receiptPath.test(relative) || producerLedgerPath.test(relative))) {
+    if (status==='??' && ((approved.has(relative) &&
+        (pngPath.test(relative) || receiptPath.test(relative) || producerLedgerPath.test(relative))) ||
+        revalidated.has(relative))) {
       allowed.push(relative);
     } else {
       blocked.push(relative || 'UNRECOGNIZED_GIT_STATUS');

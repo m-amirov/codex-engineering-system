@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.37 — 2026-10-17: Continue evidence-only handoff
+
+- `continue` now revalidates source-bound contract and mechanical receipt before exempting their exact untracked evidence from the Git dirty-worktree block; supported revalidation batch manifests must independently match the receipt's entire SHA-256-pinned PNG set.
+- Kept tracked/staged source edits, malformed or unknown evidence, stale source HEAD and missing artistic approval fail-closed. Added direct continuation regression tests. No implicit commit, publication or generation.
+
+
+## 0.5.36 — 2026-10-17
+
+- Added source-bound historical art revalidation for dependency-drifted acceptance ledgers. The contract verifies the historical ledger, dependency snapshots, current graph mappings, PNG bytes and original Web/runtime/mechanical acceptance receipts without mutating historical evidence.
+- `art-progress` and `continue --mode inspect` treat one confirmed revalidation contract plus its historical ledger as one progress chain; conflicting revalidation indexes remain fail-closed and deferred S24–S26 stay `MECHANICAL_ONLY_NOT_ART_ACCEPTED`.
+- `ceos continue` and run status now resolve a unique short run-id suffix (for example `f2c045`) and fail closed when that suffix matches multiple runs.
+- Preserved checkpoint-qualified recovery classification for legacy `INTEGRATED` full-episode coverage blockers.
+
+## Unreleased
+
+- Added source-bound historical art revalidation for dependency-drifted
+  acceptance ledgers. The new contract compares old/current JSON records,
+  verifies current graph mappings and PNG bytes, keeps deferred pairs separate,
+  and fails closed on visual or evidence drift without mutating historical
+  ledgers or invoking generation.
+
 ## 0.5.35 — 2026-10-17
 
 - Added bounded `BATCH_ONLY` dual-format verification for new narrative production-art integration. It still validates actual authored scenes in the graph, source HEAD, both independent portrait/desktop PNGs and exact full coverage of the hash-pinned GENERATING output set, but does not require the other 14 ungenerated EP2 scenes or imply final episode acceptance.

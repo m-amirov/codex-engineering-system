@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { decodeProductionPng } from './art-output-gate.mjs';
+import { inspectSourceBoundRevalidation } from './source-bound-revalidation.mjs';
 
 const HASH = /^[a-f0-9]{64}$/i;
 const safeId = x => typeof x === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(x);
@@ -202,6 +203,13 @@ export function discoverArtProgress(projectDir, requestedPath = null) {
   const project = fs.realpathSync(path.resolve(projectDir));
   if (requestedPath !== null && requestedPath !== undefined) return {indexPath:String(requestedPath),candidates:[String(requestedPath)]};
   const candidates = discoverProgressFiles(project);
+  const revalidations = candidates.filter(candidate => {
+    try {
+      const bytes = fs.readFileSync(path.resolve(project, candidate));
+      return JSON.parse(bytes.toString('utf8'))?.kind === 'STAGE9_4_SOURCE_BOUND_REVALIDATION';
+    } catch { return false; }
+  });
+  if (revalidations.length === 1) return { indexPath: revalidations[0], candidates };
   return {indexPath:candidates.length === 1 ? candidates[0] : null,candidates};
 }
 
@@ -235,6 +243,8 @@ export function inspectArtProgress(projectDir, indexPath) {
     if (!indexFile.startsWith(project + path.sep)) throw new Error('out of project');
     index = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
   } catch { problems.push('INDEX_UNREADABLE'); return block(); }
+  if (index?.kind === 'STAGE9_4_SOURCE_BOUND_REVALIDATION')
+    return inspectSourceBoundRevalidation(project, indexPath);
   if (index?.schemaVersion !== 1 || !index.plan || !Array.isArray(index.batches)) {
     if (index?.kind === 'STAGE9_4_SOURCE_BOUND_ACCEPTANCE_LEDGER')
       return inspectLegacyStage9Ledger(project,index);
