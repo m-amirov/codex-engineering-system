@@ -68,8 +68,16 @@ function inspectLegacyStage9Ledger(project, ledger) {
   if (ledger.currentness?.mode !== 'DEPENDENCY_BASED_REUSE' || ledger.currentness?.productInputsUnchanged !== true)
     globalErrors.push('LEDGER_SOURCE_CURRENTNESS_INVALID');
 
-  for (const [index, dependency] of (Array.isArray(ledger.dependencyEvidence) ? ledger.dependencyEvidence : []).entries())
-    readProjectFile(project, dependency?.path, dependency?.sha256, problems, `DEPENDENCY_${index}`);
+  const staleDependencies=[];
+  for (const [index, dependency] of (Array.isArray(ledger.dependencyEvidence)
+    ? ledger.dependencyEvidence : []).entries()) {
+    const observed=readProjectFile(project, dependency?.path, dependency?.sha256,
+      problems,`DEPENDENCY_${index}`);
+    if (observed && observed.sha256 !== String(dependency?.sha256??'').toLowerCase())
+      staleDependencies.push({index,path:observed.path,
+        previousSha256:dependency.sha256,currentSha256:observed.sha256,
+        status:'HISTORICAL_DEPENDENCY_DRIFT_REVALIDATION_REQUIRED'});
+  }
   if (!Array.isArray(ledger.dependencyEvidence) || !ledger.dependencyEvidence.length)
     globalErrors.push('LEDGER_DEPENDENCIES_MISSING');
 
@@ -162,6 +170,11 @@ function inspectLegacyStage9Ledger(project, ledger) {
     acceptedPng:acceptedCount * 2,
     remainingPng:Number.isInteger(declaredPairs) ? (declaredPairs - acceptedCount) * 2 : null,
     batches,problems:[...new Set(problems)],
+    staleDependencies,
+    ...(staleDependencies.length ? {revalidation:{
+      status:'REVALIDATION_REQUIRED',
+      instruction:'Do not rewrite the historical ledger. Compare the old accepted scene mappings and source dependencies against current narrative assets; create separately verified acceptance/currentness evidence or rerun affected runtime/independent pixel checks. No accepted count is carried forward until validated.'
+    }} : {}),
     finalEpisodeAcceptance:ledger.boundary?.episodeFinalAcceptance === true ? 'VERIFIED' : 'NOT_VERIFIED',
     releaseReady:false
   };

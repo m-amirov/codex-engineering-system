@@ -259,6 +259,25 @@ function writeCheckpoint(runDir, run, checkpoint) {
   run.checkpointCount = index;
 }
 
+/** Bound an INTEGRATED batch to previously verified, immutable real bytes.
+ * A caller cannot declare a smaller manifest after generating six other PNGs.
+ */
+function latestGeneratingBatchOutputChecks(runDir,cycle) {
+  const checkpointsDir=path.join(runDir,'checkpoints');
+  if (!fs.existsSync(checkpointsDir)) return null;
+  const entries=fs.readdirSync(checkpointsDir)
+    .filter(name=>/^\d{3,}-generating\.json$/.test(name)).sort().reverse();
+  for (const name of entries) {
+    const cp=readJson(path.join(checkpointsDir,name));
+    if (cp.stage!=='GENERATING' || cp.cycle!==cycle ||
+        !['CONTINUE','PASS'].includes(cp.outcome)) continue;
+    if (cp.metadata?.artOutputGate?.status!=='PASS_ART_BATCH_MECHANICAL') return null;
+    const checks=cp.metadata.artOutputGate.checks;
+    return Array.isArray(checks) && checks.length>0 ? checks : null;
+  }
+  return null;
+}
+
 function priorExistingArtReuseContract(runDir) {
   const checkpointsDir = path.join(runDir, 'checkpoints');
   if (!fs.existsSync(checkpointsDir)) return null;
@@ -329,10 +348,25 @@ function terminalize(run, verdict, reason) {
   run.stopReason = reason ?? null;
 }
 
+function isScopedDualFormatCoverageBlocked(run) {
+  return run?.pipeline==='production-art' &&
+    run.artMode===ART_MODES.NEW_GENERATION &&
+    run.narrativeDualFormatRequired===true &&
+    run.state==='BLOCKED' && run.verdict==='BLOCKED' &&
+    run.stopReason?.code==='STAGE_BLOCKED' &&
+    run.stopReason?.stage==='INTEGRATED' &&
+    /\bNARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE\b/.test(
+      String(run.stopReason?.reason??'')
+    );
+}
+
 function isRecoverableBlocked(run) {
   if (run.verdict !== 'BLOCKED' || run.state !== 'BLOCKED') return false;
   const stopReason = run.stopReason ?? {};
   if (RECOVERABLE_BLOCK_CODES.has(stopReason.code)) return true;
+  // Exact legacy full-episode-at-batch-stage failure is recoverable only
+  // after a fresh scoped dual-format verification against actual GEN outputs.
+  if (isScopedDualFormatCoverageBlocked(run)) return true;
   // Only explicit output-transport failures can request a special verified
   // reopen. The actual failed/PASS PNG receipt proofs are checked later
   // inside the run lock; classification alone never authorizes reopening.
@@ -388,7 +422,9 @@ function nextAction(run) {
       requirements.push('consumed run-scoped Image Gen challenge from this parent session (original issuance/response turn verified, maximum 30 minutes old); a fresh current host turn, real Terra child and PNG gates are still required');
   }
   if (run.narrativeDualFormatRequired && (def.id === 'INTEGRATED' || def.id === 'REAUDITED'))
-    requirements.push('metadata.dualFormatManifest: source-bound episode art mapping; both portrait 2:3 and desktop 16:9 real PNG assets required for every scene');
+    requirements.push(run.artMode === ART_MODES.NEW_GENERATION
+      ? 'metadata.dualFormatManifest: source-bound mappings for the exact generated batch; both portrait 2:3 and desktop 16:9 PNGs must match hash-pinned GENERATING output checks; episode final coverage is NOT asserted by a batch'
+      : 'metadata.dualFormatManifest: full source-bound episode art mapping; both portrait 2:3 and desktop 16:9 files required for all authored scenes');
   if (def.finalReview) requirements.push('explicit outcome PASS, FAIL, BLOCKED, or ESCALATE plus metadata.evidenceContract for PASS');
   return {
     terminal: false,
@@ -1025,14 +1061,24 @@ export function recordCheckpoint(projectDir, runRef, {
         (normalizedOutcome === 'CONTINUE' || normalizedOutcome === 'PASS')) {
       if (typeof metadata?.dualFormatManifest !== 'string' || !metadata.dualFormatManifest.trim())
         throw new Error('NARRATIVE_DUAL_FORMAT_MANIFEST_REQUIRED: metadata.dualFormatManifest');
+      const requestEpisodeFinal = metadata.episodeFinalAcceptance === true;
+      const batchCoverage = !existingArtReuse && !requestEpisodeFinal;
       dualFormatGate = verifyNarrativeDualFormatArt(resolvedProject, metadata.dualFormatManifest, {
         currentHead: currentSource.available ? currentSource.head : undefined,
         baseHead: existingArtReuseContract?.sourceHead,
-        dependencyBased: existingArtReuseContract?.currentness?.mode === 'DEPENDENCY_BASED_REUSE'
+        dependencyBased: existingArtReuseContract?.currentness?.mode === 'DEPENDENCY_BASED_REUSE',
+        coverageMode:batchCoverage?'BATCH_ONLY':'FULL_EPISODE',
+        expectedBatchOutputs:batchCoverage
+          ? latestGeneratingBatchOutputChecks(resolved.runDir,run.cycle)
+          : null
       });
       if (dualFormatGate.status !== 'PASS_DUAL_FORMAT_ART_MECHANICAL')
         throw new Error('NARRATIVE_DUAL_FORMAT_ART_BLOCKED: ' +
           dualFormatGate.errors.map(e => e.code + ':' + e.id).join(', '));
+      if (batchCoverage && metadata.episodeFinalAcceptance === true)
+        throw new Error('NARRATIVE_BATCH_CANNOT_ASSERT_EPISODE_FINAL_ACCEPTANCE');
+      if (batchCoverage && metadata.releaseReady === true)
+        throw new Error('NARRATIVE_BATCH_CANNOT_ASSERT_RELEASE_READY');
     }
 
     if (definition.requiresDefectCount) {
@@ -1169,7 +1215,8 @@ export function refreshRunCapabilities(projectDir, runRef, capabilities) {
 export function reopenBlockedRun(projectDir, runRef = 'latest', {
   reason,
   evidence = [],
-  artOutputRecovery = null
+  artOutputRecovery = null,
+  dualFormatBatchRecovery = null
 } = {}) {
   const resolvedProject = path.resolve(projectDir);
   const resolved = resolveRun(resolvedProject, runRef);
@@ -1185,6 +1232,33 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
       throw new Error(`Blocked run is not recoverable from an explicitly supported external condition: ${run.stopReason?.code ?? '(missing code)'}`);
     }
 
+    const needsScopedCoverageRecovery=isScopedDualFormatCoverageBlocked(run);
+    if (!needsScopedCoverageRecovery && dualFormatBatchRecovery)
+      throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_WRONG_BLOCKER');
+    let scopedRecovery=null;
+    if (needsScopedCoverageRecovery) {
+      if (typeof dualFormatBatchRecovery?.manifest !== 'string' ||
+          !dualFormatBatchRecovery.manifest.trim())
+        throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_MANIFEST_REQUIRED');
+      const blockedCheckpoint=readJson(checkpointFile(
+        resolved.runDir,run.checkpointCount,'INTEGRATED'));
+      const currentSource=gitSourceSnapshot(resolvedProject);
+      if (blockedCheckpoint.stage!=='INTEGRATED' ||
+          blockedCheckpoint.outcome!=='BLOCKED' ||
+          blockedCheckpoint.note!==run.stopReason.reason ||
+          blockedCheckpoint.source?.head!==currentSource.head)
+        throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_BLOCKED_CHECKPOINT_CHANGED');
+      const expectedBatchOutputs=latestGeneratingBatchOutputChecks(resolved.runDir,run.cycle);
+      scopedRecovery=verifyNarrativeDualFormatArt(
+        resolvedProject,dualFormatBatchRecovery.manifest,{
+          currentHead:currentSource.available ? currentSource.head : null,
+          coverageMode:'BATCH_ONLY',expectedBatchOutputs
+        });
+      if (scopedRecovery.status!=='PASS_DUAL_FORMAT_ART_MECHANICAL' ||
+          scopedRecovery.fullEpisodeCovered===true)
+        throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_INVALID_BATCH: ' +
+          scopedRecovery.errors.map(e=>e.code+':'+e.id).join(','));
+    }
     const needsNativeOutputProof=isArtOutputTransportBlocked(run);
     if (!needsNativeOutputProof && artOutputRecovery)
       throw new Error('ART_TRANSPORT_RECOVERY_WRONG_BLOCKER');
@@ -1200,6 +1274,8 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
         throw new Error('ART_TRANSPORT_RECOVERY_SOURCE_HEAD_CHANGED');
     }
     const artifactNames=normalizeList(evidence);
+    if (scopedRecovery && !artifactNames.includes(dualFormatBatchRecovery.manifest))
+      artifactNames.push(dualFormatBatchRecovery.manifest);
     if (outputRecovery) {
       for (const file of [
         outputRecovery.failedReceipt,
@@ -1222,6 +1298,10 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
       reopenReason,
       ...(outputRecovery ? { artOutputRecovery: outputRecovery,
         recoveryCategory:'NATIVE_IMAGE_OUTPUT_TRANSPORT_ONLY',
+        generationCandidateReused:true,artisticAcceptance:'NOT_VERIFIED' } : {}),
+      ...(scopedRecovery ? { dualFormatBatchRecovery:scopedRecovery,
+        recoveryCategory:'NARRATIVE_SCOPED_DUAL_FORMAT_ONLY',
+        episodeFinalAcceptance:'NOT_VERIFIED',releaseReady:false,
         generationCandidateReused:true,artisticAcceptance:'NOT_VERIFIED' } : {}),
       artifacts: artifactRecords
     });

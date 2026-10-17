@@ -1,6 +1,44 @@
-# Codex Engineering OS (CEOS) 0.5.34
+# Codex Engineering OS (CEOS) 0.5.35
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Scoped dual-format generation and historical acceptance currentness (0.5.35)
+
+New `production-art` runs generate **bounded** scene groups. Their
+`INTEGRATED` stage now validates the manifest's scene subset against
+the current authoritative narrative graph, requiring both 2:3 and
+16:9 actual PNG variants. **Every PNG** in that manifest must match
+the exact bytes/SHA in the run's most recent immutable successful
+`GENERATING` checkpoint, and every checkpoint output must appear in
+the manifest. You can integrate S24–S26 without inventing art for the
+other EP2 scenes. `coverageMode=BATCH_ONLY`, `episodeFinalAcceptance=
+NOT_VERIFIED`, `releaseReady=false`. Unknown scenes, mismatched or
+orphaned CG pairs and fabricated manifest coverage still block.
+
+Full-episode coverage remains the default direct verifier contract and
+is enforced for explicit `metadata.episodeFinalAcceptance=true` and
+existing-art-reuse flows. A batch `REAUDITED` can pass only its
+declared project scope after **real runtime pixels and independent
+acceptance**; it never promotes the episode or release automatically.
+
+A prior `INTEGRATED` terminal `STAGE_BLOCKED` whose reason is exactly
+`NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE` can be explicitly
+reopened **in the same run** via `ceos resume RUN --reopen-blocked`
+with `--dual-format-batch-manifest <existing project-relative JSON>`
+and `--reason`. CEOS revalidates the original checkpoint, unchanged
+source HEAD and the entire generated output set before appending a
+separate `RUN_REOPENED` checkpoint. No implicit reopen, regeneration,
+checkpoint rewrite or episode-level PASS.
+
+When `narrative/assets.json` changes after S19–S23 were accepted,
+the historical S19–S23 dependency SHA necessarily becomes stale.
+`ceos art-progress` now reports `staleDependencies` with exact old
+and current hashes and `REVALIDATION_REQUIRED`, **not** a fabricated
+PASS. Keep that historical ledger immutable. Either prove the old
+scene mapping/currentness via additional trustworthy evidence or
+obtain targeted fresh runtime/independent pixel acceptance and add a
+new source-bound evidence ledger. Do not mark the old five pairs
+accepted against changed source solely because their PNG bytes match.
 
 ## Producer batch ledger as hash-pinned continuation evidence (0.5.34)
 

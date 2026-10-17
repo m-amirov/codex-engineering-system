@@ -54,7 +54,10 @@ function pngDimensions(bytes) {
 }
 
 /** Mechanical contract only; independent Web High must review actual pixels of BOTH variants. */
-export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {currentHead, baseHead, dependencyBased = false} = {}) {
+export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {
+  currentHead, baseHead, dependencyBased = false, coverageMode = 'FULL_EPISODE',
+  expectedBatchOutputs = null
+} = {}) {
   const errors = [];
   const fail = (code, id = '') => errors.push({code, id});
   const buffer = readConfinedFile(projectDir, manifestPath, errors, 'manifest');
@@ -70,7 +73,11 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {currentH
     (dependencyBased && manifest.sourceHead === baseHead);
   if (!HEAD.test(head ?? '') || !sourceCurrent) fail('ART_SOURCE_HEAD_MISMATCH');
 
-  // Inventory is drawn from the real narrative graph; a manually shortened scene list cannot earn coverage.
+  if (!['FULL_EPISODE','BATCH_ONLY'].includes(coverageMode)) fail('ART_COVERAGE_MODE_INVALID');
+
+  // Inventory is drawn from the real narrative graph. BATCH_ONLY checks a
+  // positive set of actual authored scene IDs and all six-ish real outputs
+  // already pinned by the GENERATING checkpoint. It NEVER claims episode PASS.
   const profileBytes = readConfinedFile(projectDir,'config/narrative-game.local.json',errors,'profile');
   let profile;
   try { profile = JSON.parse(profileBytes.toString('utf8')); } catch { fail('ART_PROFILE_JSON'); }
@@ -82,13 +89,30 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {currentH
   const required = (Array.isArray(graph?.scenes) ? graph.scenes : [])
     .filter(s => s?.episode === manifest.episode).map(s=>s.id);
   if (!required.length || new Set(required).size !== required.length) fail('ART_EPISODE_SCENES_MISSING');
-  for (const id of required) if (!safeName(id) || !safeName(manifest.sceneAssets[id]))
-    fail('ART_SCENE_UNMAPPED',String(id));
-  for (const id of Object.keys(manifest.sceneAssets))
+  const declaredScenes=Object.keys(manifest.sceneAssets);
+  const scoped=coverageMode==='BATCH_ONLY';
+  if (scoped && (!declaredScenes.length || !Array.isArray(expectedBatchOutputs) ||
+      !expectedBatchOutputs.length)) fail('ART_BATCH_EVIDENCE_REQUIRED');
+  for (const id of (scoped?declaredScenes:required))
+    if (!safeName(id) || !safeName(manifest.sceneAssets[id]))
+      fail('ART_SCENE_UNMAPPED',String(id));
+  for (const id of declaredScenes)
     if (!required.includes(id)) fail('ART_SCENE_EXTRA',id);
-  const used = new Set(required.map(id=>manifest.sceneAssets[id]).filter(safeName));
+  const used = new Set((scoped?declaredScenes:required).map(id=>manifest.sceneAssets[id]).filter(safeName));
   for (const id of used) if (!Object.hasOwn(manifest.assets,id)) fail('ART_ASSET_UNDECLARED',id);
   for (const id of Object.keys(manifest.assets)) if (!used.has(id)) fail('ART_ASSET_ORPHAN',id);
+
+  const observedBatch=new Map();
+  const expected=new Map();
+  if (scoped && Array.isArray(expectedBatchOutputs)) {
+    for (const output of expectedBatchOutputs) {
+      const absolute=path.resolve(String(output?.path ?? ''));
+      if (!SHA.test(output?.sha256 ?? '') ||
+          expected.has(absolute) || !path.isAbsolute(output?.path ?? ''))
+        fail('ART_BATCH_EVIDENCE_INVALID',String(output?.path ?? ''));
+      expected.set(absolute, String(output.sha256 ?? '').toLowerCase());
+    }
+  }
 
   let inspected = 0;
   for (const id of used) {
@@ -109,17 +133,33 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {currentH
           Math.abs(size.width / size.height - shape.ratio) > shape.tolerance)
         fail('ART_VARIANT_FORMAT_INVALID',id+':'+format);
       signatures.push({path:variant.path,sha256:digest});
+      if (scoped) {
+        const abs=path.resolve(projectDir,variant.path);
+        if (!expected.has(abs) || expected.get(abs)!==digest)
+          fail('ART_BATCH_VARIANT_NOT_GENERATED',id+':'+format);
+        else observedBatch.set(abs,digest);
+      }
       inspected++;
     }
     if (signatures.length === 2 &&
         (signatures[0].path === signatures[1].path || signatures[0].sha256 === signatures[1].sha256))
       fail('ART_VARIANTS_NOT_INDEPENDENT',id);
   }
+  if (scoped && (expected.size!==observedBatch.size ||
+      [...expected].some(([f,h])=>observedBatch.get(f)!==h)))
+    fail('ART_BATCH_OUTPUT_COVERAGE_MISMATCH');
+  const fullEpisodeCovered=required.length>0 &&
+    required.every(id=>safeName(manifest.sceneAssets[id]) &&
+      used.has(manifest.sceneAssets[id])) &&
+    declaredScenes.length===required.length;
   return {
     status:errors.length?'BLOCKED_DUAL_FORMAT_ART':'PASS_DUAL_FORMAT_ART_MECHANICAL',
-    episode:manifest.episode, requiredScenes:required.length, mappedScenes:required.filter(id=>used.has(manifest.sceneAssets[id])).length,
-    uniqueAssets:used.size, variantFilesChecked:inspected, visualAcceptance:'NOT_VERIFIED',
+    coverageMode,episode:manifest.episode,requiredScenes:required.length,
+    mappedScenes:required.filter(id=>used.has(manifest.sceneAssets[id])).length,
+    coveredSceneIds:scoped?declaredScenes.sort():[...required].sort(),
+    fullEpisodeCovered,episodeFinalAcceptance:'NOT_VERIFIED',releaseReady:false,
+    uniqueAssets:used.size,variantFilesChecked:inspected,visualAcceptance:'NOT_VERIFIED',
     errors,
-    disclaimer:'File and mapping integrity only. Portrait and desktop pixels require separate independent runtime/Web High acceptance.'
+    disclaimer:'Mechanical verification of these authored scenes only. BATCH_ONLY is never episode final acceptance; real runtime/Web High review remains mandatory.'
   };
 }

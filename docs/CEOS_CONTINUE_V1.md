@@ -133,7 +133,7 @@ The existing CEOS risk and Git policies remain in force. Read-only planning
 does not grant mutation. A host using auto must already hold authorization
 for the exact task and remain within locked scope. External actions have
 their own risk/approval requirements. A CEOS final PASS still requires
-existing checkpoint, evidence, Web and full narrative/dual-format gates.
+existing checkpoint, evidence and Web gates. For NEW_GENERATION narrative batches, INTEGRATED uses BATCH_ONLY dual-format verification against every PNG in the successful GENERATING checkpoint; episode-final coverage remains a separate explicit requirement. A legacy full-episode-at-batch INTEGRATED terminal may be explicitly reopened with `resume --reopen-blocked --dual-format-batch-manifest <path> --reason <text>` only after revalidating the immutable batch and unchanged HEAD. Historic acceptance dependency drift still blocks current accepted-progress claims until fresh revalidation.
 No arbitrary "mark PASS" or step skipping is supported.
 
 ## Remaining scope (not falsely claimed by V1)

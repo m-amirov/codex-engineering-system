@@ -144,6 +144,7 @@ Usage:
   ceos continue [run-id|latest] [--project dir] [--progress-index path] [--mode inspect|guided|auto] [--dry-run] [--claim --action-id HASH | --release TOKEN] [--json] (guided default; inspect/dry-run read-only)
   ceos run-relocate [run-id|latest] --project <new-worktree> [--apply --expect-sha <original-run-sha256>] [--json] (read-only preview by default)
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
+  ceos resume RUN_ID --reopen-blocked --reason "Scoped integration coverage fixed" --dual-format-batch-manifest <project-relative.json> --json
   ceos resume RUN_ID --reopen-blocked --reason "S24 portrait output transport recovered" --art-output-failed-receipt <project-path> --art-output-pass-receipt <project-path> --art-output-native-source <absolute-native-generated-images.png> --json
   ceos run-status [run-id|latest] [--json]
   ceos web-attachment-block [run-id|latest] --phase analysis|midpoint|acceptance --evidence <failed-turn-log.txt> [--project dir] [--json]
@@ -505,7 +506,9 @@ try {
               failedReceipt: args['art-output-failed-receipt'],
               passReceipt: args['art-output-pass-receipt'],
               nativeSource: args['art-output-native-source']
-            } : null
+            } : null,
+          dualFormatBatchRecovery: args['dual-format-batch-manifest']
+            ? { manifest:args['dual-format-batch-manifest'] } : null
         });
       }
       if (args.json) print(result, true); else printExecution(result);
