@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.33 — 2026-10-17
+
+- Updated `ceos continue` to recognize **only** SHA-256-pinned untracked production PNGs and art-output receipts from immutable and integrity-verified GENERATING / RUN_REOPENED checkpoints, so the restored S24 portrait doesn't force an unrelated Git commit or terminal-block the next production-art action.
+- Keeps honest `git.dirty=true` metadata and exposes `checkpointedEvidenceOnly`, exact `allowedEvidencePaths` and `blockedPaths`. Modified/staged/tracked source, unknown output, unpinned receipts, broken checksum and compromised art-progress evidence are still blocked.
+- Uses NUL-safe git status with `--untracked-files=all` to avoid directory-level exemptions that could hide unknown files.
+- Regression coverage includes reopened run `GENERATING` continuation/claim with recovered image and receipts, previously unpinned images, tracked source drift, and tampered checkpoint output.
+- No mutation of game run, terminal history, accepted S19–S23 or actual generated files by the CEOS update.
+
+
 ## 0.5.32 — 2026-10-17
 
 - Introduced explicit narrowly verified recovery of production-art GENERATING terminal `STAGE_BLOCKED` due solely to missing native Image Gen target (`BLOCKED_ART_OUTPUT / ART_FILE_NOT_FOUND`). Recovery requires the immutable failure checkpoint, old failed output receipt, fresh PASS receipt, actual project PNG and original `generated_images` PNG matching the full SHA-256 and unchanged source HEAD.
