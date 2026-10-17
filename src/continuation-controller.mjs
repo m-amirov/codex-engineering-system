@@ -225,7 +225,10 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
   const run=resumed.run, git=gitReadOnly(project);
   if (run.pipeline==='production-art' && git.status==='READY' &&
       git.dirty && resumed.integrity?.ok && !TERMINAL.has(run.state)) {
-    const scoped=inspectCheckpointedArtDirt(project,resumed.runDir,git.porcelain);
+    const scoped=inspectCheckpointedArtDirt(project,resumed.runDir,git.porcelain,{
+      progressIndex:progress?.acceptanceSource==='STAGE9_4_SOURCE_BOUND_REVALIDATION'
+        ? progress.indexPath : null
+    });
     git.checkpointedEvidenceOnly=scoped.evidenceOnlyDirty;
     git.allowedEvidencePaths=scoped.allowedEvidencePaths;
     git.blockedPaths=scoped.blockedPaths;
