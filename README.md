@@ -1,6 +1,42 @@
-# Codex Engineering OS (CEOS) 0.5.31
+# Codex Engineering OS (CEOS) 0.5.32
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Verified native PNG transport recovery after terminal BLOCKED (0.5.32)
+
+A narrowly scoped `production-art` GENERATING run stopped with
+`STAGE_BLOCKED`, `BLOCKED_ART_OUTPUT` and `ART_FILE_NOT_FOUND` can be
+**explicitly** reopened if its original Image Gen PNG has since been
+byte-for-byte materialized. This is not generic recovery of failed image art.
+The existing failed receipt and terminal checkpoint remain immutable.
+Supply a *new* PASS mechanical receipt and the readable original file
+from `generated_images`; CEOS confirms exact target, full SHA-256,
+actual PNG decoded dimensions, blocked checkpoint, and unchanged Git HEAD.
+
+```powershell
+ceos resume RUN_ID --project "<game-worktree>" --reopen-blocked \
+  --reason "Native S24 portrait PNG successfully recovered unchanged" \
+  --art-output-failed-receipt "artifacts/production-art/stage9.4/output-receipts/S24-portrait-art-output-verify.json" \
+  --art-output-pass-receipt "artifacts/production-art/stage9.4/output-receipts/S24-portrait-art-output-imported-verify-20261017.json" \
+  --art-output-native-source "<original-absolute-Codex-generated_images-PNG>" --json
+```
+
+The command reopens **the same run** with a new auditable
+`RUN_REOPENED` checkpoint and `nextStage=GENERATING`, without resetting
+the cycle, replenishing candidate budgets, creating another run or granting
+Image Gen. It pins the restored PNG and both receipts as hash-checked
+checkpoint artifacts, preserves the original blocked reason, and records
+`visualAcceptance=NOT_VERIFIED`. A new generation needs a fresh valid
+attestation and verified Terra route; the recovered portrait is not a
+reason to generate it again.
+
+The `continue --mode inspect` planner reports `RECOVERY_CHECK_REQUIRED`
+instead of `NEEDS_RECOVERY_DECISION` for this specific *recognized*
+transport failure, but still cannot perform a reopen or accept image art.
+Missing/mismatched bytes, wrong source HEAD, wrong blocker or forged
+receipts leave the terminal run untouched. Git dirty status from the
+restored evidence is **not** implicitly cleaned or committed; normal
+product work still follows the existing Git preflight boundary.
 
 ## Native Image Gen PNG materialization (0.5.31)
 
