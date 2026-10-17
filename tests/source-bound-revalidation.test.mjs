@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { encodeProductionPng } from '../src/art-output-gate.mjs';
 import { createSourceBoundRevalidation, inspectSourceBoundRevalidation } from '../src/source-bound-revalidation.mjs';
 import { discoverArtProgress, inspectArtProgress } from '../src/art-progress.mjs';
+import { createRun } from '../src/execution-engine.mjs';
+import { planContinuation } from '../src/continuation-controller.mjs';
 
 const ceosRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -251,4 +253,93 @@ test('CLI creates a new contract only and never overwrites an existing evidence 
     '--ledger', x.ledgerPath, '--mechanical-receipt', x.mechanicalPath,
     '--deferred-pairs', 'S24;S25;S26', '--output', output, '--json'], { cwd: x.project, encoding: 'utf8' });
   assert.notEqual(again.status, 0);
+});
+
+function currentContinuationFixture(t) {
+  const x=fixture(t);
+  // Keep all historical art and original Web/runtime evidence tracked, while
+  // the freshly derived contract and batch receipt remain untracked files.
+  const originalMechanical=fs.readFileSync(abs(x.project,x.mechanicalPath));
+  fs.unlinkSync(abs(x.project,x.mechanicalPath));
+  fs.unlinkSync(abs(x.project,x.contractPath));
+  git(x.project,['add','.']);
+  git(x.project,['commit','--quiet','-m','lock current sources and historical art']);
+  write(x.project,x.mechanicalPath,originalMechanical);
+  const currentContract=createSourceBoundRevalidation(x.project,x.ledgerPath,{
+    deferredPairs:['S24','S25','S26'],mechanicalReceiptPath:x.mechanicalPath
+  });
+  writeJson(x.project,x.contractPath,currentContract);
+  const manifestPath='artifacts/production-art/stage9.4/STAGE9_4_S19_S23_REVALIDATION_BATCH_MANIFEST_20261017.json';
+  writeJson(x.project,manifestPath,{
+    schemaVersion:1,sourceHead:currentContract.sourceHeads.current,
+    assets:currentContract.mechanicalRevalidation.inspected.map(item=>({
+      path:path.relative(x.project,item.path).replaceAll('\\','/'),
+      kind:'background',width:item.dimensions.width,height:item.dimensions.height
+    }))
+  });
+  const capabilities={
+    web:{status:'NOT_CONFIGURED'},
+    imageGeneration:{capabilityPresence:'ABSENT',serviceAvailability:'UNKNOWN',generationAllowed:false},
+    filesystem:{exists:true,readable:true,writable:true}
+  };
+  const run=createRun(x.project,'production-art',{
+    scope:{target:'S24-S26 integration',inScope:['S24','S25','S26'],outOfScope:['release'],
+      acceptanceContract:'independent runtime pixel acceptance',mutationBoundary:'S24-S26 art only'},
+    capabilities
+  }).run;
+  return {...x,manifestPath,run};
+}
+
+test('continue accepts only untracked currentness contract, hash-bound receipt and exact batch manifest',t=>{
+  const x=currentContinuationFixture(t);
+  const result=planContinuation(x.project,{runRef:x.run.runId,mode:'inspect'});
+  assert.equal(result.status,'READY_FOR_CODEX',JSON.stringify(result));
+  assert.equal(result.progress.status,'PASS_ART_PROGRESS_REVALIDATED');
+  assert.equal(result.progress.acceptedPairs,5);
+  assert.equal(result.git.dirty,true);
+  assert.equal(result.git.checkpointedEvidenceOnly,true);
+  assert.deepEqual(result.git.blockedPaths,[]);
+  assert.deepEqual(result.git.allowedEvidencePaths.sort(),
+    [x.contractPath,x.mechanicalPath,x.manifestPath].sort());
+});
+
+test('continue still blocks stray evidence, tampered manifest, source drift and modified tracked files',t=>{
+  const x=currentContinuationFixture(t);
+  const inspect=()=>planContinuation(x.project,{runRef:x.run.runId,mode:'inspect'});
+  const rogue='artifacts/production-art/stage9.4/REVALIDATION_BATCH_MANIFEST_ROGUE.json';
+  writeJson(x.project,rogue,{assets:[{path:'assets/nonexistent.png',kind:'background'}]});
+  let result=inspect();
+  assert.equal(result.status,'BLOCKED_DIRTY_WORKTREE');
+  assert.ok(result.git.blockedPaths.includes(rogue));
+  fs.unlinkSync(abs(x.project,rogue));
+
+  const originalManifest=fs.readFileSync(abs(x.project,x.manifestPath));
+  const manifest=readJson(x.project,x.manifestPath);
+  manifest.assets[0].path=manifest.assets[1].path;
+  writeJson(x.project,x.manifestPath,manifest);
+  result=inspect();
+  assert.equal(result.status,'BLOCKED_DIRTY_WORKTREE');
+  assert.ok(result.git.blockedPaths.includes(x.manifestPath));
+  fs.writeFileSync(abs(x.project,x.manifestPath),originalManifest);
+
+  fs.appendFileSync(abs(x.project,'narrative/graph.json'),'\n');
+  result=inspect();
+  assert.equal(result.status,'BLOCKED_ART_PROGRESS');
+  fs.writeFileSync(abs(x.project,'narrative/graph.json'),
+    Buffer.from(JSON.stringify(readJson(x.project,'narrative/graph.json')) + '\n'));
+  // Restore exact original tracked bytes (the preceding JSON parse ignores whitespace).
+  git(x.project,['checkout','--','narrative/graph.json']);
+  assert.equal(inspect().status,'READY_FOR_CODEX');
+
+  fs.appendFileSync(abs(x.project,'narrative/episodes/ep-02.json'),'\n');
+  result=inspect();
+  assert.equal(result.status,'BLOCKED_ART_PROGRESS');
+});
+
+test('changed mechanically bound receipt cannot be exempted from source-bound dirt guard',t=>{
+  const x=currentContinuationFixture(t);
+  fs.appendFileSync(abs(x.project,x.mechanicalPath),'\n');
+  const plan=planContinuation(x.project,{runRef:x.run.runId,mode:'inspect'});
+  assert.equal(plan.status,'BLOCKED_ART_PROGRESS');
+  assert.equal(plan.executable,false);
 });
