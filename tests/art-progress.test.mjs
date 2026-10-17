@@ -177,6 +177,25 @@ test('actual PNG drift never counts a formerly accepted batch',t=>{
   assert.ok(r.problems.some(x=>x.includes('HASH_MISMATCH')));
 });
 
+test('historical ledger dependency drift is reported with old/current SHA without rewriting acceptance',t=>{
+  const x=legacyLedgerFixture(t);
+  const ledger=JSON.parse(fs.readFileSync(path.join(x.project,x.ledgerPath),'utf8'));
+  const source='narrative/graph.json';
+  const before=fs.readFileSync(path.join(x.project,x.ledgerPath));
+  fs.writeFileSync(path.join(x.project,source),'{"scene":"S19","addedMapping":"S24"}\\n');
+  const result=inspectArtProgress(x.project,x.ledgerPath);
+  assert.equal(result.status,'BLOCKED_ART_PROGRESS');
+  assert.equal(result.acceptedPairs,0);
+  assert.ok(result.problems.includes('DEPENDENCY_0_HASH_MISMATCH'));
+  assert.equal(result.revalidation.status,'REVALIDATION_REQUIRED');
+  assert.deepEqual(result.staleDependencies,[{
+    index:0,path:source,previousSha256:ledger.dependencyEvidence[0].sha256,
+    currentSha256:crypto.createHash('sha256').update(fs.readFileSync(path.join(x.project,source))).digest('hex'),
+    status:'HISTORICAL_DEPENDENCY_DRIFT_REVALIDATION_REQUIRED'
+  }]);
+  assert.deepEqual(fs.readFileSync(path.join(x.project,x.ledgerPath)),before);
+});
+
 test('source dependencies changing invalidate historical acceptance',t=>{
   const x=fixture(t);
   fs.appendFileSync(path.join(x.project,x.dep),'new dialogue');
