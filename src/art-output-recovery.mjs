@@ -14,7 +14,9 @@ export function isArtOutputTransportBlocked(run) {
     run?.artMode==='NEW_GENERATION' && run?.verdict==='BLOCKED' &&
     run?.state==='BLOCKED' && s?.code==='STAGE_BLOCKED' &&
     s?.stage==='GENERATING' &&
-    typeof s.reason==='string' && outputFailure.test(s.reason);
+    typeof s.reason==='string' && outputFailure.test(s.reason) &&
+    /\\bSHA-256\\s+[a-f0-9]{64}\\b/i.test(s.reason) &&
+    /\\bassets\\/[^\\s]+\\.png\\b/i.test(s.reason);
 }
 function safeProjectFile(projectDir,relative,prefix) {
   if (typeof relative!=='string' || !relative ||
