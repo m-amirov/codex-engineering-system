@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Added source-bound historical art revalidation for dependency-drifted
+  acceptance ledgers. The new contract compares old/current JSON records,
+  verifies current graph mappings and PNG bytes, keeps deferred pairs separate,
+  and fails closed on visual or evidence drift without mutating historical
+  ledgers or invoking generation.
+
 ## 0.5.35 — 2026-10-17
 
 - Added bounded `BATCH_ONLY` dual-format verification for new narrative production-art integration. It still validates actual authored scenes in the graph, source HEAD, both independent portrait/desktop PNGs and exact full coverage of the hash-pinned GENERATING output set, but does not require the other 14 ungenerated EP2 scenes or imply final episode acceptance.
