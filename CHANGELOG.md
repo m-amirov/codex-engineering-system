@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.32 — 2026-10-17
+
+- Introduced explicit narrowly verified recovery of production-art GENERATING terminal `STAGE_BLOCKED` due solely to missing native Image Gen target (`BLOCKED_ART_OUTPUT / ART_FILE_NOT_FOUND`). Recovery requires the immutable failure checkpoint, old failed output receipt, fresh PASS receipt, actual project PNG and original `generated_images` PNG matching the full SHA-256 and unchanged source HEAD.
+- New `ceos resume RUN --reopen-blocked --art-output-failed-receipt ... --art-output-pass-receipt ... --art-output-native-source ... --reason ...` accepts this proof; no automatic reopening, no run recreation and no manual edits to original checkpoint.
+- Records a new hash-pinned `RUN_REOPENED` checkpoint, preserves original failure history and candidate spend; resumes same `GENERATING` cycle without awarding visual PASS or carrying tool attestation to a new session.
+- Regression tests for positive exact-byte recovery, duplicate reopen refusal, missing/altered original, wrong receipt, unrelated block and CLI path; normal fail-closed safeguards unchanged.
+
+
 ## 0.5.31 — 2026-10-16
 
 - Added `ceos art-output-import` to safely materialize an existing local native Image Gen PNG into a project path before `art-output-verify`, with mandatory complete SHA-256, decoded image/dimension gate, byte-exact verification, atomic no-clobber destination and idempotent matching-file recheck.
