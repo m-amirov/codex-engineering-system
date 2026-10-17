@@ -1,6 +1,33 @@
-# Codex Engineering OS (CEOS) 0.5.32
+# Codex Engineering OS (CEOS) 0.5.33
 
 CEOS is a global-first engineering operating layer for Codex. Version 0.5.0 introduced the **Deterministic Execution Engine**; 0.5.1 hardened Windows installation so the global CLI no longer depends on the Git worktree so long multi-stage workflows no longer depend on the parent model remembering prose instructions correctly.
+
+## Checkpoint-verified production evidence in dirty worktrees (0.5.33)
+
+`ceos continue` now distinguishes **actual product source changes** from
+untracked original generated assets and their receipts **already pinned by
+a successful immutable GENERATING or native-transport RUN_REOPENED checkpoint**.
+A project with only those verified outputs can return `READY_FOR_CODEX`
+without asking the producer to commit or delete the assets just to obtain
+a clean Git status. The output reports `git.dirty=true` truthfully and
+`git.checkpointedEvidenceOnly=true`, plus the exact allowlisted paths.
+
+Only *untracked* PNG files under `assets/production/` and output receipts
+under `artifacts/production-art/**/output-receipts/` qualify, and only if
+their bytes, paths and SHA-256 match the run's immutable checkpoint record.
+The historical `RUN_REOPENED` must contain valid failed/PASS receipts and
+correct recovered PNG; normal GENERATING checkpoints must contain a
+validated mechanical output gate. Modified/staged/tracked source files,
+uncheckpointed assets, changed accepted images, unknown receipts, symlinks
+and invalid receipts still block. The existing art-progress/ledger and run
+integrity gates run first.
+
+**This does not make Git clean** and does not relax mandatory Git remote
+checks before mutation. Existing `git-preflight` may report
+`IN_SYNC_DIRTY` when the only dirt is this verified evidence; do not
+reset, stash, delete, force-add or silently commit. Do not attempt a
+fast-forward with any dirty files. A strict branch/source HEAD check
+still applies to continued work.
 
 ## Verified native PNG transport recovery after terminal BLOCKED (0.5.32)
 
