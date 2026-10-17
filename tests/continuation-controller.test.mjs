@@ -778,7 +778,11 @@ test('producer-batches JSON not included in a successful generating checkpoint i
   const folder=path.join(project,'artifacts/production-art/stage9.4/producer-batches');
   fs.mkdirSync(folder,{recursive:true});
   fs.writeFileSync(path.join(folder,'unbound.json'),'{"producer":"terra"}\n');
-  const run=newRun(project);
+  const run=createRun(project,'production-art',{
+    scope:{target:'art',inScope:['S24'],outOfScope:['release'],
+      acceptanceContract:'source art',mutationBoundary:'art assets'},
+    capabilities
+  }).run;
   const plan=planContinuation(project,{runRef:run.runId});
   assert.equal(plan.status,'BLOCKED_DIRTY_WORKTREE');
   assert.deepEqual(plan.git.allowedEvidencePaths,[]);
