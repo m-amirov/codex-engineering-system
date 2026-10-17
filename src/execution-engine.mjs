@@ -348,10 +348,25 @@ function terminalize(run, verdict, reason) {
   run.stopReason = reason ?? null;
 }
 
+function isScopedDualFormatCoverageBlocked(run) {
+  return run?.pipeline==='production-art' &&
+    run.artMode===ART_MODES.NEW_GENERATION &&
+    run.narrativeDualFormatRequired===true &&
+    run.state==='BLOCKED' && run.verdict==='BLOCKED' &&
+    run.stopReason?.code==='STAGE_BLOCKED' &&
+    run.stopReason?.stage==='INTEGRATED' &&
+    /\\bNARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE\\b/.test(
+      String(run.stopReason?.reason??'')
+    );
+}
+
 function isRecoverableBlocked(run) {
   if (run.verdict !== 'BLOCKED' || run.state !== 'BLOCKED') return false;
   const stopReason = run.stopReason ?? {};
   if (RECOVERABLE_BLOCK_CODES.has(stopReason.code)) return true;
+  // Exact legacy full-episode-at-batch-stage failure is recoverable only
+  // after a fresh scoped dual-format verification against actual GEN outputs.
+  if (isScopedDualFormatCoverageBlocked(run)) return true;
   // Only explicit output-transport failures can request a special verified
   // reopen. The actual failed/PASS PNG receipt proofs are checked later
   // inside the run lock; classification alone never authorizes reopening.
@@ -1200,7 +1215,8 @@ export function refreshRunCapabilities(projectDir, runRef, capabilities) {
 export function reopenBlockedRun(projectDir, runRef = 'latest', {
   reason,
   evidence = [],
-  artOutputRecovery = null
+  artOutputRecovery = null,
+  dualFormatBatchRecovery = null
 } = {}) {
   const resolvedProject = path.resolve(projectDir);
   const resolved = resolveRun(resolvedProject, runRef);
@@ -1216,6 +1232,33 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
       throw new Error(`Blocked run is not recoverable from an explicitly supported external condition: ${run.stopReason?.code ?? '(missing code)'}`);
     }
 
+    const needsScopedCoverageRecovery=isScopedDualFormatCoverageBlocked(run);
+    if (!needsScopedCoverageRecovery && dualFormatBatchRecovery)
+      throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_WRONG_BLOCKER');
+    let scopedRecovery=null;
+    if (needsScopedCoverageRecovery) {
+      if (typeof dualFormatBatchRecovery?.manifest !== 'string' ||
+          !dualFormatBatchRecovery.manifest.trim())
+        throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_MANIFEST_REQUIRED');
+      const blockedCheckpoint=readJson(checkpointFile(
+        resolved.runDir,run.checkpointCount,'INTEGRATED'));
+      const currentSource=gitSourceSnapshot(resolvedProject);
+      if (blockedCheckpoint.stage!=='INTEGRATED' ||
+          blockedCheckpoint.outcome!=='BLOCKED' ||
+          blockedCheckpoint.note!==run.stopReason.reason ||
+          blockedCheckpoint.source?.head!==currentSource.head)
+        throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_BLOCKED_CHECKPOINT_CHANGED');
+      const expectedBatchOutputs=latestGeneratingBatchOutputChecks(resolved.runDir,run.cycle);
+      scopedRecovery=verifyNarrativeDualFormatArt(
+        resolvedProject,dualFormatBatchRecovery.manifest,{
+          currentHead:currentSource.available ? currentSource.head : null,
+          coverageMode:'BATCH_ONLY',expectedBatchOutputs
+        });
+      if (scopedRecovery.status!=='PASS_DUAL_FORMAT_ART_MECHANICAL' ||
+          scopedRecovery.fullEpisodeCovered===true)
+        throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_INVALID_BATCH: ' +
+          scopedRecovery.errors.map(e=>e.code+':'+e.id).join(','));
+    }
     const needsNativeOutputProof=isArtOutputTransportBlocked(run);
     if (!needsNativeOutputProof && artOutputRecovery)
       throw new Error('ART_TRANSPORT_RECOVERY_WRONG_BLOCKER');
@@ -1231,6 +1274,8 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
         throw new Error('ART_TRANSPORT_RECOVERY_SOURCE_HEAD_CHANGED');
     }
     const artifactNames=normalizeList(evidence);
+    if (scopedRecovery && !artifactNames.includes(dualFormatBatchRecovery.manifest))
+      artifactNames.push(dualFormatBatchRecovery.manifest);
     if (outputRecovery) {
       for (const file of [
         outputRecovery.failedReceipt,
@@ -1253,6 +1298,10 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
       reopenReason,
       ...(outputRecovery ? { artOutputRecovery: outputRecovery,
         recoveryCategory:'NATIVE_IMAGE_OUTPUT_TRANSPORT_ONLY',
+        generationCandidateReused:true,artisticAcceptance:'NOT_VERIFIED' } : {}),
+      ...(scopedRecovery ? { dualFormatBatchRecovery:scopedRecovery,
+        recoveryCategory:'NARRATIVE_SCOPED_DUAL_FORMAT_ONLY',
+        episodeFinalAcceptance:'NOT_VERIFIED',releaseReady:false,
         generationCandidateReused:true,artisticAcceptance:'NOT_VERIFIED' } : {}),
       artifacts: artifactRecords
     });
