@@ -2,7 +2,7 @@
 name: ceos-continue
 description: Continue an existing CEOS project workflow from persisted runs and checkpoints with a bounded next action, safe claim, verified execution, and evidence-based checkpointing.
 metadata:
-  ceos-version: "0.5.23"
+  ceos-version: "0.5.35"
 ---
 
 # Skill: ceos-continue
@@ -88,6 +88,23 @@ is a **Codex-host execution adapter**, not a separate model host or daemon.
   candidate spend. Do not assume that an ordinary missing-file or image
   quality error qualifies. The command is never run automatically.
 
+
+- INTEGRATED / NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE:
+  a legacy three-scene batch must not be forced to generate all other
+  episode scenes. In CEOS 0.5.35, explicitly run
+  `ceos resume RUN --reopen-blocked --reason "Scoped batch proof restored"
+  --dual-format-batch-manifest PROJECT_RELATIVE_JSON --json`
+  only for this exact terminal reason. The engine verifies the original
+  terminal checkpoint, current HEAD, real scene graph and *every*
+  immutable GENERATING output PNG; then it adds a separate RUN_REOPENED
+  record. Never edit the old checkpoint. Batch coverage never proves
+  episode final acceptance.
+- Historical `DEPENDENCY_*_HASH_MISMATCH` after a runtime asset-map update:
+  do not rewrite old accepted S19–S23 ledger, falsely retain accepted counts
+  or wave through an unknown mapping. Inspect `art-progress.staleDependencies`,
+  compare old/new scene mappings, and create new independently verified
+  currentness evidence or targeted runtime/Web pixel re-acceptance before
+  claiming those scenes current.
 
 - RECOVERY_CHECK_REQUIRED: verify that the external blocker truly changed
   (installed CEOS version, Web availability, producer route, capabilities
