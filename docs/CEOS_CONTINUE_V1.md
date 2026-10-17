@@ -69,7 +69,9 @@ Expected statuses:
   the named files are restored or the explicit evidence path is repaired.
 - BLOCKED_INTEGRITY / BLOCKED_GIT_PREFLIGHT / BLOCKED_DIRTY_WORKTREE.
   Verified output evidence pinned to immutable GENERATING or RUN_REOPENED
-  checkpoints may be untracked yet not block. The plan still shows
+  checkpoints may be untracked yet not block. A producer-batches JSON ledger
+  qualifies only when explicitly SHA-pinned in the same successful GENERATING
+  checkpoint with all mechanical output checks matched to actual PNGs. The plan still shows
   `git.dirty=true` and `git.checkpointedEvidenceOnly=true`, with exact
   approved file paths; anything else, including accepted-art changes,
   remains BLOCKED_DIRTY_WORKTREE. No Git reset, staging, or auto-commit.

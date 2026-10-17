@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.34 — 2026-10-17
+
+- Extended the 0.5.33 `continue` evidence-only Git classification to include an untracked producer-batch JSON ledger **only** when hash-pinned as an artifact of the same successful `GENERATING` checkpoint whose full mechanical output gate is backed by real hashed PNGs.
+- The matching ledger must be a valid non-empty JSON object at a restricted `artifacts/production-art/**/producer-batches/*.json` path. Generic untracked JSON, mutated ledgers, non-PASS/missing output checks, tracked source edits and unknown PNGs still block.
+- Added tests for actual GENERATING→INTEGRATED transition with checkpointed ledger and claim/release, plus rogue JSON, tracked source drift, output change and ledger tamper rejection.
+- No changes to the game worktree, run `f2c045`, generated S24–S26 images, producer trace, evidence history, or runtime/Web acceptance.
+
+
 ## 0.5.33 — 2026-10-17
 
 - Updated `ceos continue` to recognize **only** SHA-256-pinned untracked production PNGs and art-output receipts from immutable and integrity-verified GENERATING / RUN_REOPENED checkpoints, so the restored S24 portrait doesn't force an unrelated Git commit or terminal-block the next production-art action.

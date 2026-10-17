@@ -26,8 +26,10 @@ is a **Codex-host execution adapter**, not a separate model host or daemon.
    the local-only Git snapshot proves remote synchronization. Stop on
    diverged or behind state; never fast-forward a dirty tree. For production
    art, `continue` may explicitly report `git.checkpointedEvidenceOnly=true`
-   even with `git.dirty=true`, but only for hash-pinned *untracked* PNGs and
-   output receipts from immutable checkpoints. If the remote is IN_SYNC and
+   even with `git.dirty=true`, but only for hash-pinned *untracked* PNGs, output receipts and producer-batch
+   JSON ledgers explicitly present in a successful GENERATING checkpoint with
+   a fully matched PASS_ART_BATCH_MECHANICAL gate. No directory-wide JSON
+   exemption and no inference of acceptance from a ledger. If the remote is IN_SYNC and
    those are the only changes, continue the already authorized bounded
    action without forcing a Git commit or deleting evidence. Any other
    dirty source, acceptance ledger or uncheckpointed file still blocks.
