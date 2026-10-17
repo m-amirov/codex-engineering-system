@@ -68,6 +68,11 @@ Expected statuses:
   source-bound evidence no longer revalidates. Continue is non-claimable until
   the named files are restored or the explicit evidence path is repaired.
 - BLOCKED_INTEGRITY / BLOCKED_GIT_PREFLIGHT / BLOCKED_DIRTY_WORKTREE.
+  Verified output evidence pinned to immutable GENERATING or RUN_REOPENED
+  checkpoints may be untracked yet not block. The plan still shows
+  `git.dirty=true` and `git.checkpointedEvidenceOnly=true`, with exact
+  approved file paths; anything else, including accepted-art changes,
+  remains BLOCKED_DIRTY_WORKTREE. No Git reset, staging, or auto-commit.
 - BLOCKED_ALREADY_CLAIMED / BLOCKED_STALE_ACTION.
 - RECOVERY_CHECK_REQUIRED: existing execution engine allows a type of
   explicit reopen; first obtain fresh evidence, then call supported

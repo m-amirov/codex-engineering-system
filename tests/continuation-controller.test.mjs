@@ -6,7 +6,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createRun, recordCheckpoint, resumeRun } from '../src/execution-engine.mjs';
+import { createRun, recordCheckpoint, reopenBlockedRun, resumeRun } from '../src/execution-engine.mjs';
+import { encodeProductionPng, inspectArtOutput } from '../src/art-output-gate.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -603,4 +604,95 @@ test('active concurrent recovery lock blocks creation and never removes another 
   const result=recoverContinuation(x.project);
   assert.equal(result.status,'BLOCKED_RECOVERY_ALREADY_IN_PROGRESS');
   assert.equal(fs.readFileSync(lock,'utf8'),'other process');
+});
+
+test('S24 recovered original PNG and failed+PASS receipts are checkpoint-pinned but never Git-clean',t=>{
+  const project=setup(t);
+  const inventory='inventory.json',canon='canon.json';
+  fs.writeFileSync(path.join(project,inventory),'{"scenes":["S24"]}\n');
+  fs.writeFileSync(path.join(project,canon),'{"source":"approved"}\n');
+  git(project,'add',inventory,canon);
+  git(project,'commit','-m','source-bound art preparation');
+
+  const r=createRun(project,'production-art',{
+    scope:{target:'S24 bounded generation',inScope:['S24'],outOfScope:['release'],
+      acceptanceContract:'art verified',mutationBoundary:'generated PNG only'},
+    capabilities:{...capabilities,imageGeneration:{
+      status:'available',capabilityPresence:'PRESENT',
+      trustedForGeneration:true,generationAllowed:true,serviceAvailability:'UNKNOWN'
+    }},
+    maxCycles:1
+  });
+  const id=r.run.runId;
+  recordCheckpoint(project,id,{stage:'INVENTORIED',artifacts:[inventory]});
+  recordCheckpoint(project,id,{stage:'CANON_READY',artifacts:[canon]});
+
+  const rel='assets/production/cg/ep2-dining-refusal-response-cg.png';
+  const dest=path.join(project,rel);
+  const failure='artifacts/production-art/stage9.4/output-receipts/S24-failed.json';
+  const success='artifacts/production-art/stage9.4/output-receipts/S24-imported-pass.json';
+  const image=Buffer.alloc(16*24*4);
+  for(let i=0;i<16*24;i++) {
+    image[i*4]=70;image[i*4+1]=90;image[i*4+2]=140;image[i*4+3]=255;
+  }
+  const bytes=encodeProductionPng({width:16,height:24,pixels:image});
+  const originalRoot=fs.mkdtempSync(path.join(os.tmpdir(),'ceos-native-art-'));
+  t.after(()=>fs.rmSync(originalRoot,{force:true,recursive:true}));
+  const folder=path.join(originalRoot,'generated_images','host-id');
+  fs.mkdirSync(folder,{recursive:true});
+  const native=path.join(folder,'exec.png');
+  fs.writeFileSync(native,bytes);
+  const expected=sha256(bytes);
+  const persist=(rel,data)=>{
+    const f=path.join(project,rel);
+    fs.mkdirSync(path.dirname(f),{recursive:true});
+    fs.writeFileSync(f,JSON.stringify(data,null,2)+'\n');
+  };
+  persist(failure,{schemaVersion:1,status:'BLOCKED_ART_OUTPUT',
+    path:dest,kind:'background',issues:['ART_FILE_NOT_FOUND'],
+    recordedAt:new Date().toISOString()});
+  const note='BLOCKED_ART_OUTPUT: S24 portrait generated-images (16x24, SHA-256 '+
+    expected+'), copy to target '+rel+' failed; art-output-verify ART_FILE_NOT_FOUND';
+  recordCheckpoint(project,id,{stage:'GENERATING',artifacts:[failure],
+    outcome:'BLOCKED',note});
+  fs.mkdirSync(path.dirname(dest),{recursive:true});
+  fs.writeFileSync(dest,bytes);
+  const mechanical=inspectArtOutput(dest,{kind:'background',width:16,height:24});
+  assert.equal(mechanical.status,'PASS_ART_OUTPUT_MECHANICAL');
+  persist(success,{...mechanical,recordedAt:new Date().toISOString()});
+  const opened=reopenBlockedRun(project,id,{reason:'native output copied byte-identically',
+    artOutputRecovery:{failedReceipt:failure,passReceipt:success,nativeSource:native}});
+  assert.equal(opened.integrity.ok,true);
+  assert.equal(opened.run.checkpointCount,6);
+  const plan=planContinuation(project,{runRef:id,mode:'guided'});
+  assert.equal(plan.status,'READY_FOR_CODEX',JSON.stringify(plan));
+  assert.equal(plan.git.dirty,true,'Git truth remains dirty');
+  assert.equal(plan.git.checkpointedEvidenceOnly,true);
+  assert.deepEqual(plan.git.allowedEvidencePaths.sort(),[rel,failure,success].sort());
+  assert.deepEqual(plan.git.blockedPaths,[]);
+  assert.equal(plan.action.kind,'PRODUCE_BOUNDED_ART_BATCH');
+  const claim=claimContinuation(project,{runRef:id,mode:'guided',
+    expectedActionId:plan.action.id});
+  assert.equal(claim.status,'READY_FOR_CODEX');
+  assert.equal(releaseContinuation(project,{runRef:id,token:claim.lease.token}).status,
+    'RELEASED');
+
+  // A new untracked candidate has no immutable checkpoint and is blocked.
+  const extra='assets/production/cg/uncheckpointed.png';
+  fs.copyFileSync(dest,path.join(project,extra));
+  const uncheckpointed=planContinuation(project,{runRef:id,mode:'guided'});
+  assert.equal(uncheckpointed.status,'BLOCKED_DIRTY_WORKTREE');
+  assert.ok(uncheckpointed.git.blockedPaths.includes(extra));
+  fs.rmSync(path.join(project,extra));
+
+  // Valid generated evidence cannot hide a dirty tracked source file.
+  fs.appendFileSync(path.join(project,'tracked.txt'),'source drift');
+  assert.equal(planContinuation(project,{runRef:id,mode:'guided'}).status,
+    'BLOCKED_DIRTY_WORKTREE');
+  fs.writeFileSync(path.join(project,'tracked.txt'),'original\n');
+
+  // Hash-pinned outputs remain immutable even if the Git status is still ??.
+  fs.writeFileSync(dest,'tampered');
+  assert.equal(planContinuation(project,{runRef:id,mode:'guided'}).status,
+    'BLOCKED_INTEGRITY');
 });
