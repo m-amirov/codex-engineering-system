@@ -96,10 +96,7 @@ export function verifyArtOutputTransportRecovery(projectDir,runDir,run,{
       checkpoint.note!==run.stopReason.reason)
     throw new Error('ART_TRANSPORT_RECOVERY_TERMINAL_CHECKPOINT_MISMATCH');
 
-  // Prior authored source HEAD must not change; the imported PNG and receipts
-  // are permitted uncommitted evidence but cannot silently replace source.
-  const git=fs.existsSync(path.join(projectDir,'.git')) ?
-    null : null; // HEAD is checked in the execution engine under its run lock.
+  // Git HEAD is checked by the execution engine under the run lock.
 
   const verified=inspectArtOutput(target,{
     kind:pass.kind,width:pass.dimensions.width,height:pass.dimensions.height
