@@ -5,6 +5,10 @@ import crypto from 'node:crypto';
 const SHA256 = /^[a-f0-9]{64}$/;
 const pngPath = /^assets\/production\/(?:[^/]+\/)*[^/]+\.png$/i;
 const receiptPath = /^artifacts\/production-art\/(?:[^/]+\/)*output-receipts\/[^/]+\.json$/i;
+// Only ledger files directly pinned by a completed GENERATING checkpoint may
+// be treated as production evidence. A matching directory name alone is not
+// authority to exclude an arbitrary JSON file from source-dirt inspection.
+const producerLedgerPath = /^artifacts\/production-art\/(?:[^/]+\/)*producer-batches\/[a-z0-9][a-z0-9._-]*\.json$/i;
 const digest = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const posix = p => p.split(path.sep).join('/');
 
@@ -12,7 +16,7 @@ function scopedArtifact(project, record) {
   if (record?.type !== 'file' || typeof record?.projectRelativePath !== 'string' ||
       !SHA256.test(record.sha256 ?? '') || !Number.isInteger(record.size) || record.size < 1) return null;
   const relative = record.projectRelativePath;
-  if (!pngPath.test(relative) && !receiptPath.test(relative)) return null;
+  if (!pngPath.test(relative) && !receiptPath.test(relative) && !producerLedgerPath.test(relative)) return null;
   const full = path.resolve(project,relative);
   const fromRoot = posix(path.relative(project,full));
   if (fromRoot !== relative || path.resolve(record.path ?? '') !== full) return null;
@@ -74,13 +78,31 @@ function persistedEvidence(project,runDir) {
     if (checkpoint.stage === 'GENERATING' &&
         checkpoint.metadata?.artOutputGate?.status === 'PASS_ART_BATCH_MECHANICAL') {
       const checks=checkpoint.metadata.artOutputGate.checks ?? [];
+      const boundOutputs=[];
       for(const check of checks) {
         const output=[...files.values()].find(f=>pngPath.test(f.relative) &&
           f.full===check.path && f.sha256===check.sha256);
         if (!output) continue;
+        boundOutputs.push(output);
         approved.add(output.relative);
         for(const receipt of files.values()) if (receiptPath.test(receipt.relative) &&
             passReceiptFor(receipt.full,output)) approved.add(receipt.relative);
+      }
+      // A producer ledger has to be listed as a SHA-pinned artifact in
+      // this *same* successful generation checkpoint. All output checks
+      // must correspond to real, matching project PNG bytes. This does
+      // not infer a vendor-specific ledger schema or certify art quality.
+      if (['CONTINUE','PASS'].includes(checkpoint.outcome) &&
+          checks.length>0 && boundOutputs.length===checks.length) {
+        for(const ledger of files.values()) {
+          if (!producerLedgerPath.test(ledger.relative)) continue;
+          try {
+            const document=JSON.parse(fs.readFileSync(ledger.full,'utf8'));
+            if (document && typeof document==='object' &&
+                !Array.isArray(document) && Object.keys(document).length>0)
+              approved.add(ledger.relative);
+          } catch { /* malformed or non-JSON ledger cannot be exempted */ }
+        }
       }
     }
   }
@@ -106,7 +128,7 @@ export function inspectCheckpointedArtDirt(projectDir,runDir,rawStatus) {
   for(const entry of entries) {
     const status=entry.slice(0,2),relative=entry.slice(3);
     if (status==='??' && approved.has(relative) &&
-        (pngPath.test(relative) || receiptPath.test(relative))) {
+        (pngPath.test(relative) || receiptPath.test(relative) || producerLedgerPath.test(relative))) {
       allowed.push(relative);
     } else {
       blocked.push(relative || 'UNRECOGNIZED_GIT_STATUS');
