@@ -13,6 +13,7 @@ import {
   recordRoutingTrace,
   refreshRunCapabilities,
   reopenBlockedRun,
+  inspectBlockedRunRecovery,
   resumeRun
 } from '../src/execution-engine.mjs';
 
@@ -937,4 +938,20 @@ test('immutable reuse checkpoint detects changed source bytes on resume', () => 
   const resumed = resumeRun(project, fixture.id);
   assert.equal(resumed.integrity.ok, false);
   assert.match(resumed.integrity.issues.join('\n'), /artifact changed after checkpoint GENERATING/);
+});
+
+test('only legacy scoped INTEGRATED coverage terminal qualifies for explicit dual-format recovery',()=>{
+  const base={pipeline:'production-art',artMode:'NEW_GENERATION',
+    narrativeDualFormatRequired:true,state:'BLOCKED',verdict:'BLOCKED',
+    stopReason:{code:'STAGE_BLOCKED',stage:'INTEGRATED',
+      reason:'NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE: batch S24-S26 covers 3 of 17 EP2 scenes'}};
+  assert.equal(inspectBlockedRunRecovery(base).reopenSupported,true);
+  for(const mutation of [
+    {stopReason:{...base.stopReason,reason:'ART_SCENE_EXTRA: unknown'}},
+    {stopReason:{...base.stopReason,stage:'GENERATING'}},
+    {artMode:'VERIFIED_EXISTING_ART_REUSE'},
+    {pipeline:'audit-repair-loop'}
+  ]) {
+    assert.equal(inspectBlockedRunRecovery({...base,...mutation}).reopenSupported,false);
+  }
 });
