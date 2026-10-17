@@ -92,6 +92,43 @@ function fixture(t) {
   ]);
   writeJson(project, mechanicalPath, { status: 'PASS_ART_BATCH_MECHANICAL', inspected });
 
+  for (const detail of ledgerAssets) {
+    for (const asset of detail.assets) {
+      const receipt = `artifacts/revalidation/asset-receipts/${detail.id}-${asset.path.includes('-landscape.') ? 'landscape' : 'portrait'}.json`;
+      asset.receipt = receipt;
+      asset.receiptSha256 = writeJson(project, receipt, {
+        status: 'PASS_ART_OUTPUT_MECHANICAL',
+        sha256: asset.sha256,
+        bytes: asset.bytes,
+        dimensions: Object.fromEntries(asset.dimensions.split('x').map((value, index) => [index ? 'height' : 'width', Number(value)]))
+      });
+    }
+  }
+  const runtimeCaptures = pairs.flatMap(([pairId], index) => ['portrait', 'landscape'].map(format => {
+    const screenshot = `artifacts/revalidation/runtime/${pairId}-${format}.png`;
+    const screenshotSha256 = write(project, screenshot, png(180 + index * 2 + (format === 'landscape' ? 1 : 0)));
+    return { tag: pairId, assetFormat: format, screenshot, screenshotSha256, noHorizontalOverflow: true, noVerticalOverflow: true };
+  }));
+  const webReceiptPath = 'artifacts/revalidation/web-high.json';
+  const runtimeReceiptPath = 'artifacts/revalidation/runtime.json';
+  const webReceiptSha256 = writeJson(project, webReceiptPath, {
+    status: 'PASS',
+    profile: 'NARRATIVE_ART_ACCEPTANCE_V2',
+    reviewTraceId: 'test-historical-web-review',
+    actualPixelsReceived: true,
+    sourceHead: historicalHead,
+    evidenceRefs: pairs.map(([pairId]) => `${pairId}-pixels`),
+    receivedEvidenceRefs: pairs.map(([pairId]) => `${pairId}-pixels`)
+  });
+  const runtimeReceiptSha256 = writeJson(project, runtimeReceiptPath, {
+    status: 'PASS_RUNTIME',
+    sourceHead: historicalHead,
+    consoleErrors: [],
+    requestFailures: [],
+    httpErrors: [],
+    captures: runtimeCaptures
+  });
+
   const ledgerPath = 'artifacts/production-art/stage9.4/STAGE9_4_S19_S23_ACCEPTANCE_LEDGER_20261016.json';
   writeJson(project, ledgerPath, {
     schemaVersion: 1,
@@ -101,7 +138,13 @@ function fixture(t) {
     progress: { plannedPairs: 25, plannedPngs: 50, acceptedPairs: 5, acceptedPngs: 10, acceptedPairIds: pairs.map(item => item[0]) },
     dependencyEvidence: historicalHashes,
     mechanicalRevalidation: { status: 'PASS_ART_BATCH_MECHANICAL' },
-    groups: [{ pairs: pairs.map(item => item[0]), pairsDetail: ledgerAssets }],
+    groups: [{
+      pairs: pairs.map(item => item[0]),
+      acceptance: 'HISTORICAL_WEB_HIGH_PASS',
+      webReceipt: { path: webReceiptPath, sha256: webReceiptSha256 },
+      runtimeReceipt: { path: runtimeReceiptPath, sha256: runtimeReceiptSha256 },
+      pairsDetail: ledgerAssets
+    }],
     boundary: { episodeFinalAcceptance: false, releaseReady: false }
   });
 
@@ -154,6 +197,27 @@ test('source-bound revalidation fails closed on accepted mapping drift and PNG t
   result = inspectSourceBoundRevalidation(x.project, x.contractPath);
   assert.equal(result.status, 'BLOCKED_ART_PROGRESS');
   assert.ok(result.problems.some(problem => /REVALIDATION_EVIDENCE_MISMATCH|RUNTIME_ASSET_DIMENSIONS|RUNTIME_ASSET_HASH|PNG_STRUCTURE_INCOMPLETE/.test(problem)), JSON.stringify(result));
+});
+
+test('source-bound revalidation rejects tampered historical acceptance receipts', t => {
+  const x = fixture(t);
+  const ledger = readJson(x.project, x.ledgerPath);
+  const receiptPath = ledger.groups[0].webReceipt.path;
+  const receipt = readJson(x.project, receiptPath);
+  receipt.actualPixelsReceived = false;
+  writeJson(x.project, receiptPath, receipt);
+  const result = inspectSourceBoundRevalidation(x.project, x.contractPath);
+  assert.equal(result.status, 'BLOCKED_ART_PROGRESS', JSON.stringify(result));
+  assert.ok(result.problems.some(problem => /HISTORICAL_GROUP_0_WEB_HIGH_HASH_MISMATCH|HISTORICAL_WEB_HIGH|REVALIDATION_EVIDENCE_MISMATCH/.test(problem)), JSON.stringify(result));
+});
+
+test('art-progress discovery remains ambiguous for conflicting revalidation indexes', t => {
+  const x = fixture(t);
+  const first = readJson(x.project, x.contractPath);
+  writeJson(x.project, 'artifacts/revalidation/conflicting-art-progress-index.json', { ...first, deferredPairs: [{ id: 'S24' }, { id: 'S25' }, { id: 'S26' }] });
+  const discovered = discoverArtProgress(x.project);
+  assert.equal(discovered.indexPath, null);
+  assert.deepEqual(discovered.candidates.sort(), [x.ledgerPath, x.contractPath, 'artifacts/revalidation/conflicting-art-progress-index.json'].sort());
 });
 
 test('source-bound revalidation rejects contract scope promotion and historical ledger mutation', t => {

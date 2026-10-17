@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.36 — 2026-10-17
+
+- Added source-bound historical art revalidation for dependency-drifted acceptance ledgers. The contract verifies the historical ledger, dependency snapshots, current graph mappings, PNG bytes and original Web/runtime/mechanical acceptance receipts without mutating historical evidence.
+- `art-progress` and `continue --mode inspect` treat one confirmed revalidation contract plus its historical ledger as one progress chain; conflicting revalidation indexes remain fail-closed and deferred S24–S26 stay `MECHANICAL_ONLY_NOT_ART_ACCEPTED`.
+- Preserved checkpoint-qualified recovery classification for legacy `INTEGRATED` full-episode coverage blockers.
+
 ## Unreleased
 
 - Added source-bound historical art revalidation for dependency-drifted

@@ -34,6 +34,7 @@ const EXTERNAL_RECOVERY_FAILURES = /\b(unavailable|not ready|disconnect(?:ed)?|f
 const NATIVE_PARENT_MISMATCH_REASON = /\bnative producer route failed trusted parent binding\b/i;
 const NATIVE_FALLBACK_STATUSES = new Set(['UNAVAILABLE', 'NOT_ACCEPTING_TURNS', 'RATE_LIMITED']);
 const NATIVE_FALLBACK_REASON = /\b(transport|backend|runtime|bridge|connect(?:ion)?|disconnect(?:ed)?|unavailable|not accepting|rate[_ -]?limit(?:ed)?|usage limit(?:ed)?|timeout|timed out|http\s+\d{3}|refused)\b/i;
+const LEGACY_DUAL_FORMAT_COVERAGE_BLOCKER = 'NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE';
 export const ART_MODES = Object.freeze({
   NEW_GENERATION: 'NEW_GENERATION',
   VERIFIED_EXISTING_ART_REUSE
@@ -253,6 +254,11 @@ function checkpointFile(runDir, index, stage) {
   return path.join(runDir, 'checkpoints', `${String(index).padStart(3, '0')}-${slug}.json`);
 }
 
+function readCheckpointIfPresent(runDir, index, stage) {
+  const file = checkpointFile(runDir, index, stage);
+  return fs.existsSync(file) ? readJson(file) : null;
+}
+
 function writeCheckpoint(runDir, run, checkpoint) {
   const index = (run.checkpointCount ?? 0) + 1;
   atomicWriteJson(checkpointFile(runDir, index, checkpoint.stage), { index, ...checkpoint });
@@ -348,25 +354,40 @@ function terminalize(run, verdict, reason) {
   run.stopReason = reason ?? null;
 }
 
-function isScopedDualFormatCoverageBlocked(run) {
+function isLegacyDualFormatCoverageCheckpoint(checkpoint) {
+  return checkpoint?.stage === 'INTEGRATED' &&
+    checkpoint.outcome === 'BLOCKED' &&
+    checkpoint.metadata?.blockerCode === LEGACY_DUAL_FORMAT_COVERAGE_BLOCKER &&
+    checkpoint.metadata?.dualFormatGate?.verificationMode === 'BATCH_INTEGRATION' &&
+    Array.isArray(checkpoint.metadata?.dualFormatGate?.errors) &&
+    checkpoint.metadata.dualFormatGate.errors.includes(LEGACY_DUAL_FORMAT_COVERAGE_BLOCKER);
+}
+
+function isScopedDualFormatCoverageBlocked(run, {
+  integratedCheckpoint = null,
+  requireCheckpoint = false
+} = {}) {
+  const reasonConfirmsLegacyBlocker = /\bNARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE\b/.test(
+    String(run?.stopReason?.reason ?? '')
+  );
+  const checkpointConfirmsLegacyBlocker = isLegacyDualFormatCoverageCheckpoint(integratedCheckpoint);
   return run?.pipeline==='production-art' &&
     run.artMode===ART_MODES.NEW_GENERATION &&
     run.narrativeDualFormatRequired===true &&
     run.state==='BLOCKED' && run.verdict==='BLOCKED' &&
     run.stopReason?.code==='STAGE_BLOCKED' &&
     run.stopReason?.stage==='INTEGRATED' &&
-    /\bNARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE\b/.test(
-      String(run.stopReason?.reason??'')
-    );
+    (requireCheckpoint ? checkpointConfirmsLegacyBlocker :
+      reasonConfirmsLegacyBlocker || checkpointConfirmsLegacyBlocker);
 }
 
-function isRecoverableBlocked(run) {
+function isRecoverableBlocked(run, recoveryContext = {}) {
   if (run.verdict !== 'BLOCKED' || run.state !== 'BLOCKED') return false;
   const stopReason = run.stopReason ?? {};
   if (RECOVERABLE_BLOCK_CODES.has(stopReason.code)) return true;
   // Exact legacy full-episode-at-batch-stage failure is recoverable only
   // after a fresh scoped dual-format verification against actual GEN outputs.
-  if (isScopedDualFormatCoverageBlocked(run)) return true;
+  if (isScopedDualFormatCoverageBlocked(run, recoveryContext)) return true;
   // Only explicit output-transport failures can request a special verified
   // reopen. The actual failed/PASS PNG receipt proofs are checked later
   // inside the run lock; classification alone never authorizes reopening.
@@ -379,11 +400,11 @@ function isRecoverableBlocked(run) {
 }
 
 /** Read-only recovery classification, sharing the exact allowlist used by reopenBlockedRun. */
-export function inspectBlockedRunRecovery(run) {
+export function inspectBlockedRunRecovery(run, recoveryContext = {}) {
   const blocked = run?.verdict === 'BLOCKED' && run?.state === 'BLOCKED';
   return {
     blocked,
-    reopenSupported: blocked && isRecoverableBlocked(run),
+    reopenSupported: blocked && isRecoverableBlocked(run, recoveryContext),
     reason: blocked ? (run.stopReason ?? null) : null,
     policy: 'Never reopen automatically; require fresh external evidence and an explicit reason.'
   };
@@ -1228,11 +1249,15 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
     }
     const integrity = assertRunIntegrity(resolved.runDir, run);
     if (!integrity.ok) throw new Error(`Run integrity check failed:\n- ${integrity.issues.join('\n- ')}`);
-    if (!isRecoverableBlocked(run)) {
+    const blockedCheckpoint = run.stopReason?.stage === 'INTEGRATED'
+      ? readCheckpointIfPresent(resolved.runDir, run.checkpointCount, 'INTEGRATED')
+      : null;
+    const recoveryContext = { integratedCheckpoint: blockedCheckpoint, requireCheckpoint: true };
+    if (!isRecoverableBlocked(run, recoveryContext)) {
       throw new Error(`Blocked run is not recoverable from an explicitly supported external condition: ${run.stopReason?.code ?? '(missing code)'}`);
     }
 
-    const needsScopedCoverageRecovery=isScopedDualFormatCoverageBlocked(run);
+    const needsScopedCoverageRecovery=isScopedDualFormatCoverageBlocked(run, recoveryContext);
     if (!needsScopedCoverageRecovery && dualFormatBatchRecovery)
       throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_WRONG_BLOCKER');
     let scopedRecovery=null;
@@ -1240,13 +1265,13 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
       if (typeof dualFormatBatchRecovery?.manifest !== 'string' ||
           !dualFormatBatchRecovery.manifest.trim())
         throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_MANIFEST_REQUIRED');
-      const blockedCheckpoint=readJson(checkpointFile(
-        resolved.runDir,run.checkpointCount,'INTEGRATED'));
       const currentSource=gitSourceSnapshot(resolvedProject);
       if (blockedCheckpoint.stage!=='INTEGRATED' ||
           blockedCheckpoint.outcome!=='BLOCKED' ||
           blockedCheckpoint.note!==run.stopReason.reason ||
-          blockedCheckpoint.source?.head!==currentSource.head)
+          blockedCheckpoint.source?.head!==currentSource.head ||
+          !isLegacyDualFormatCoverageCheckpoint(blockedCheckpoint) ||
+          blockedCheckpoint.metadata?.dualFormatManifest!==dualFormatBatchRecovery.manifest)
         throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_BLOCKED_CHECKPOINT_CHANGED');
       const expectedBatchOutputs=latestGeneratingBatchOutputChecks(resolved.runDir,run.cycle);
       scopedRecovery=verifyNarrativeDualFormatArt(

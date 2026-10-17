@@ -9,6 +9,8 @@ const HEAD = /^[a-f0-9]{40}$/i;
 const safeId = value => typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(value);
 const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const stable = value => JSON.stringify(value);
+const unique = values => new Set(values).size === values.length;
+const text = value => typeof value === 'string' && value.trim().length > 0;
 
 function safeRelative(relative) {
   return typeof relative === 'string' && relative && !path.isAbsolute(relative) &&
@@ -215,6 +217,102 @@ function readMechanicalReceipt(project, relative) {
   return { path: relative, sha256: digest(bytes), status: receipt.status, inspected };
 }
 
+function readEvidenceJson(project, descriptor, label) {
+  if (!descriptor || !safeRelative(descriptor.path) || !HASH.test(String(descriptor.sha256 ?? '')))
+    throw new Error(`${label}_REFERENCE_INVALID`);
+  const bytes = projectBytes(project, descriptor.path);
+  const actualSha256 = digest(bytes);
+  if (actualSha256 !== String(descriptor.sha256).toLowerCase())
+    throw new Error(`${label}_HASH_MISMATCH`);
+  return { path: descriptor.path, sha256: actualSha256, value: readJson(bytes, label) };
+}
+
+function dimensions(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^(\d+)x(\d+)$/.exec(value);
+  return match ? { width: Number(match[1]), height: Number(match[2]) } : null;
+}
+
+function validateAssetAcceptanceReceipt(project, detail, asset, label) {
+  const receipt = readEvidenceJson(project, {
+    path: asset.receipt,
+    sha256: asset.receiptSha256
+  }, label).value;
+  const expectedDimensions = dimensions(asset.dimensions);
+  if (receipt.status !== 'PASS_ART_OUTPUT_MECHANICAL' ||
+      receipt.sha256 !== asset.sha256 || receipt.bytes !== asset.bytes ||
+      stable(receipt.dimensions) !== stable(expectedDimensions))
+    throw new Error(`${label}_NOT_ACCEPTED`);
+  return receipt;
+}
+
+function validateRuntimeCapture(project, capture, label) {
+  const screenshot = capture?.screenshot;
+  if (!safeRelative(screenshot) || !HASH.test(String(capture?.screenshotSha256 ?? '')))
+    throw new Error(`${label}_SCREENSHOT_REFERENCE_INVALID`);
+  const bytes = projectBytes(project, screenshot);
+  const noHorizontalOverflow = capture.noHorizontalOverflow ?? capture.visualRuntime?.noHorizontalOverflow;
+  const noVerticalOverflow = capture.noVerticalOverflow ?? capture.visualRuntime?.noVerticalOverflow;
+  if (digest(bytes) !== String(capture.screenshotSha256).toLowerCase() ||
+      (Number.isInteger(capture.screenshotBytes) && capture.screenshotBytes !== bytes.length) ||
+      noHorizontalOverflow !== true || noVerticalOverflow !== true)
+    throw new Error(`${label}_SCREENSHOT_NOT_ACCEPTED`);
+}
+
+function validateHistoricalAcceptanceReceipts(project, ledger, acceptedPairs) {
+  const acceptedIds = new Set(acceptedPairs.map(item => item.id));
+  const covered = new Set();
+  for (const [groupIndex, group] of (Array.isArray(ledger.groups) ? ledger.groups : []).entries()) {
+    const label = `HISTORICAL_GROUP_${groupIndex}`;
+    if (!Array.isArray(group?.pairs) || !group.pairs.length || !unique(group.pairs) ||
+        group.pairs.some(pair => !acceptedIds.has(pair) || covered.has(pair)))
+      throw new Error(`${label}_SCOPE_INVALID`);
+    const details = new Map((Array.isArray(group.pairsDetail) ? group.pairsDetail : []).map(item => [item?.id, item]));
+    if (details.size !== group.pairs.length || group.pairs.some(pair => !details.has(pair)))
+      throw new Error(`${label}_PAIR_DETAILS_INVALID`);
+
+    const web = readEvidenceJson(project, group.webReceipt, `${label}_WEB_HIGH`).value;
+    if (web.status !== 'PASS' || !text(web.reviewTraceId) || web.actualPixelsReceived !== true ||
+        !HEAD.test(String(web.sourceHead ?? '')) || !Array.isArray(web.evidenceRefs) || !web.evidenceRefs.length ||
+        !Array.isArray(web.receivedEvidenceRefs) ||
+        !web.evidenceRefs.every(reference => web.receivedEvidenceRefs.includes(reference)))
+      throw new Error(`${label}_WEB_HIGH_NOT_ACCEPTED`);
+
+    const runtime = readEvidenceJson(project, group.runtimeReceipt, `${label}_RUNTIME`).value;
+    if (!String(runtime.status).startsWith('PASS') || !HEAD.test(String(runtime.sourceHead ?? '')) ||
+        !Array.isArray(runtime.captures) || (runtime.consoleErrors?.length ?? 1) ||
+        (runtime.requestFailures?.length ?? 1) || (runtime.httpErrors?.length ?? 1))
+      throw new Error(`${label}_RUNTIME_NOT_ACCEPTED`);
+
+    for (const pair of group.pairs) {
+      const detail = details.get(pair);
+      const assetPaths = new Set();
+      for (const [assetIndex, asset] of detail.assets.entries()) {
+        if (!safeRelative(asset?.path) || !HASH.test(String(asset?.sha256 ?? '')) ||
+            !Number.isInteger(asset?.bytes) || !dimensions(asset?.dimensions))
+          throw new Error(`${label}_ASSET_${pair}_${assetIndex}_REFERENCE_INVALID`);
+        assetPaths.add(asset.path);
+        validateAssetAcceptanceReceipt(project, detail, asset, `${label}_ASSET_${pair}_${assetIndex}_RECEIPT`);
+      }
+      const captures = runtime.captures.filter(capture => {
+        const source = capture?.source ?? capture?.assetSrc;
+        const normalizedSource = normalizeAssetPath(source);
+        return capture?.tag === pair || (normalizedSource && assetPaths.has(normalizedSource));
+      });
+      const formats = new Set();
+      for (const [captureIndex, capture] of captures.entries()) {
+        const format = capture?.assetFormat ?? capture?.format;
+        if (format === 'portrait' || format === 'landscape') formats.add(format);
+        validateRuntimeCapture(project, capture, `${label}_RUNTIME_${pair}_${captureIndex}`);
+      }
+      if (!formats.has('portrait') || !formats.has('landscape'))
+        throw new Error(`${label}_RUNTIME_COVERAGE_${pair}`);
+      covered.add(pair);
+    }
+  }
+  if (covered.size !== acceptedIds.size) throw new Error('HISTORICAL_ACCEPTANCE_SCOPE_MISMATCH');
+}
+
 function buildDerived(project, ledgerPath, ledger, { deferredPairs, mechanicalReceiptPath }) {
   assertLedger(ledger);
   if (!Array.isArray(deferredPairs) || !deferredPairs.length || !deferredPairs.every(safeId) || new Set(deferredPairs).size !== deferredPairs.length)
@@ -225,6 +323,7 @@ function buildDerived(project, ledgerPath, ledger, { deferredPairs, mechanicalRe
   const historicalRef = ledger.currentHead;
   if (!HEAD.test(String(historicalRef))) throw new Error('HISTORICAL_HEAD_INVALID');
   const head = currentHead(project);
+  validateHistoricalAcceptanceReceipts(project, ledger, acceptedPairs);
   const dependencyComparisons = ledger.dependencyEvidence.map(dependency => dependencySnapshot(project, historicalRef, dependency.path, dependency));
   const historicalAssets = readJson(historicalBytes(project, historicalRef, 'narrative/assets.json'), 'HISTORICAL_ASSETS');
   const currentAssets = readJson(projectBytes(project, 'narrative/assets.json'), 'CURRENT_ASSETS');

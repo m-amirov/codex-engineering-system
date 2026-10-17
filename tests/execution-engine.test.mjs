@@ -955,3 +955,65 @@ test('only legacy scoped INTEGRATED coverage terminal qualifies for explicit dua
     assert.equal(inspectBlockedRunRecovery({...base,...mutation}).reopenSupported,false);
   }
 });
+
+test('legacy S24-S26-style coverage blocker is classified from the INTEGRATED checkpoint metadata',()=>{
+  const run={pipeline:'production-art',artMode:'NEW_GENERATION',
+    narrativeDualFormatRequired:true,state:'BLOCKED',verdict:'BLOCKED',
+    stopReason:{code:'STAGE_BLOCKED',stage:'INTEGRATED',
+      reason:'S24-S26 batch integration evidence is complete, but the full-EP2 coverage gate blocks INTEGRATED.'}};
+  const integratedCheckpoint={
+    stage:'INTEGRATED',outcome:'BLOCKED',note:run.stopReason.reason,
+    source:{head:'a'.repeat(40)},
+    metadata:{
+      blockerCode:'NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE',
+      dualFormatGate:{
+        verificationMode:'BATCH_INTEGRATION',
+        errors:['NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE']
+      }
+    }
+  };
+  assert.equal(inspectBlockedRunRecovery(run,{integratedCheckpoint}).reopenSupported,true);
+});
+
+test('checkpoint-qualified BATCH_ONLY recovery rejects unconfirmed legacy coverage metadata',()=>{
+  const run={pipeline:'production-art',artMode:'NEW_GENERATION',
+    narrativeDualFormatRequired:true,state:'BLOCKED',verdict:'BLOCKED',
+    stopReason:{code:'STAGE_BLOCKED',stage:'INTEGRATED',
+      reason:'S24-S26 batch integration evidence is complete, but the full-EP2 coverage gate blocks INTEGRATED.'}};
+  const checkpoint={
+    stage:'INTEGRATED',outcome:'BLOCKED',note:run.stopReason.reason,
+    source:{head:'a'.repeat(40)},
+    metadata:{
+      blockerCode:'NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE',
+      dualFormatManifest:'batch.json',
+      dualFormatGate:{verificationMode:'BATCH_INTEGRATION',errors:['NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE']}
+    }
+  };
+  for (const mutation of [
+    {metadata:{...checkpoint.metadata,blockerCode:'ART_SCENE_EXTRA'}},
+    {metadata:{...checkpoint.metadata,dualFormatGate:{...checkpoint.metadata.dualFormatGate,verificationMode:'FULL_EPISODE'}}},
+    {metadata:{...checkpoint.metadata,dualFormatGate:{...checkpoint.metadata.dualFormatGate,errors:['ART_SCENE_EXTRA']}}},
+    {stage:'GENERATING'}
+  ]) {
+    assert.equal(inspectBlockedRunRecovery(run,{integratedCheckpoint:{...checkpoint,...mutation},requireCheckpoint:true}).reopenSupported,false);
+  }
+});
+
+test('scoped recovery rejects a manifest that is not bound to the legacy checkpoint',()=>{
+  const project=gitProject();
+  fs.mkdirSync(path.join(project,'config'),{recursive:true});
+  fs.mkdirSync(path.join(project,'narrative'),{recursive:true});
+  fs.writeFileSync(path.join(project,'config','narrative-game.local.json'),JSON.stringify({profile:'narrative-game',enabled:true,modelPath:'narrative/graph.json'}));
+  fs.writeFileSync(path.join(project,'narrative','graph.json'),JSON.stringify({schemaVersion:1,scenes:[{id:'S01',episode:1}]}));
+  const start=createRun(project,'production-art',{scope:scope(),capabilities:caps(project,{image:'unknown'})});
+  const runFile=path.join(start.runDir,'run.json');
+  const run=JSON.parse(fs.readFileSync(runFile,'utf8'));
+  const reason='S24-S26 batch integration evidence is complete, but the full-EP2 coverage gate blocks INTEGRATED.';
+  run.state='BLOCKED'; run.verdict='BLOCKED'; run.nextStage=null; run.completedAt=new Date().toISOString(); run.checkpointCount=18;
+  run.stopReason={code:'STAGE_BLOCKED',stage:'INTEGRATED',reason};
+  const checkpoint={index:18,stage:'INTEGRATED',outcome:'BLOCKED',note:reason,source:{available:true,head:start.run.sourceAtStart.head},metadata:{blockerCode:'NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE',dualFormatManifest:'correct.json',dualFormatGate:{verificationMode:'BATCH_INTEGRATION',errors:['NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE']}},artifacts:[]};
+  fs.mkdirSync(path.join(start.runDir,'checkpoints'),{recursive:true});
+  fs.writeFileSync(path.join(start.runDir,'checkpoints','018-integrated.json'),JSON.stringify(checkpoint,null,2));
+  fs.writeFileSync(runFile,JSON.stringify(run,null,2));
+  assert.throws(()=>reopenBlockedRun(project,start.run.runId,{reason:'wrong manifest',dualFormatBatchRecovery:{manifest:'wrong.json'}}),/NARRATIVE_DUAL_FORMAT_RECOVERY_BLOCKED_CHECKPOINT_CHANGED/);
+});
