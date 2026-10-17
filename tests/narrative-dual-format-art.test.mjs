@@ -136,3 +136,53 @@ test('production-art state machine requires verified pairs only for new opted-in
   assert.match(engine,/NARRATIVE_DUAL_FORMAT_MANIFEST_REQUIRED/);
   assert.match(engine,/NARRATIVE_DUAL_FORMAT_ART_BLOCKED/);
 });
+
+test('BATCH_ONLY verifies selected authored scenes and exact prior generated PNG hashes without episode promotion',t=>{
+  const {root,head,doc,save}=manifest(t);
+  delete doc.sceneAssets.S02;
+  save();
+  const outputs=Object.values(doc.assets.cg01).map(im=>({
+    path:path.resolve(root,im.path),sha256:im.sha256
+  }));
+  const batch=verifyNarrativeDualFormatArt(root,'art.json',{
+    currentHead:head,coverageMode:'BATCH_ONLY',expectedBatchOutputs:outputs
+  });
+  assert.equal(batch.status,'PASS_DUAL_FORMAT_ART_MECHANICAL',JSON.stringify(batch.errors));
+  assert.equal(batch.coverageMode,'BATCH_ONLY');
+  assert.equal(batch.fullEpisodeCovered,false);
+  assert.deepEqual(batch.coveredSceneIds,['S01']);
+  assert.equal(batch.requiredScenes,2);
+  assert.equal(batch.mappedScenes,1);
+  assert.equal(batch.episodeFinalAcceptance,'NOT_VERIFIED');
+  assert.equal(batch.releaseReady,false);
+  const full=verifyNarrativeDualFormatArt(root,'art.json',{currentHead:head});
+  assert.equal(full.status,'BLOCKED_DUAL_FORMAT_ART');
+  assert.ok(full.errors.some(e=>e.code==='ART_SCENE_UNMAPPED'));
+
+  const dropped=verifyNarrativeDualFormatArt(root,'art.json',{
+    currentHead:head,coverageMode:'BATCH_ONLY',expectedBatchOutputs:outputs.slice(0,1)
+  });
+  assert.ok(dropped.errors.some(e=>e.code==='ART_BATCH_VARIANT_NOT_GENERATED'));
+  const unexpected=verifyNarrativeDualFormatArt(root,'art.json',{
+    currentHead:head,coverageMode:'BATCH_ONLY',
+    expectedBatchOutputs:[...outputs,{path:path.join(root,'assets','extra.png'),sha256:'e'.repeat(64)}]
+  });
+  assert.ok(unexpected.errors.some(e=>e.code==='ART_BATCH_OUTPUT_COVERAGE_MISMATCH'));
+  doc.sceneAssets.FAKE_SCENE='cg01';
+  save();
+  const forged=verifyNarrativeDualFormatArt(root,'art.json',{
+    currentHead:head,coverageMode:'BATCH_ONLY',expectedBatchOutputs:outputs
+  });
+  assert.ok(forged.errors.some(e=>e.code==='ART_SCENE_EXTRA'));
+});
+
+test('BATCH_ONLY cannot be invoked without an immutable generator output set',t=>{
+  const {root,head,doc,save}=manifest(t);
+  delete doc.sceneAssets.S02;
+  save();
+  const r=verifyNarrativeDualFormatArt(root,'art.json',{
+    currentHead:head,coverageMode:'BATCH_ONLY'
+  });
+  assert.equal(r.status,'BLOCKED_DUAL_FORMAT_ART');
+  assert.ok(r.errors.some(e=>e.code==='ART_BATCH_EVIDENCE_REQUIRED'));
+});
