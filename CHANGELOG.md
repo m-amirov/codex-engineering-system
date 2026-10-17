@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.35 — 2026-10-17
+
+- Added bounded `BATCH_ONLY` dual-format verification for new narrative production-art integration. It still validates actual authored scenes in the graph, source HEAD, both independent portrait/desktop PNGs and exact full coverage of the hash-pinned GENERATING output set, but does not require the other 14 ungenerated EP2 scenes or imply final episode acceptance.
+- Full-episode verification remains the strict default and is required for explicit final-episode assertions and reuse. Unknown/out-of-scope scenes, missing variants, mismatched producer PNG set and release promotion remain blocked.
+- Narrow explicit same-run recovery for legacy `INTEGRATED / NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE` terminal outcome, after revalidating the real immutable GENERATING output set and unchanged source HEAD; historical checkpoints remain untouched.
+- `art-progress` now diagnoses historical dependency drift with old/current SHA-256 but does NOT bypass `DEPENDENCY_*_HASH_MISMATCH` or claim S19–S23 accepted against modified runtime asset mappings. Fresh independent source-currentness evidence is required to restore that claim.
+- No changes to user's game, PNGs, source graph, canon, rights manifest, historic ledger or Web acceptance.
+
+
 ## 0.5.34 — 2026-10-17
 
 - Extended the 0.5.33 `continue` evidence-only Git classification to include an untracked producer-batch JSON ledger **only** when hash-pinned as an artifact of the same successful `GENERATING` checkpoint whose full mechanical output gate is backed by real hashed PNGs.
