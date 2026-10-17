@@ -6,6 +6,7 @@ import { resumeRun, inspectBlockedRunRecovery, createLinkedSessionRecoveryRun, E
 import { readRuntimeContext } from './capability-attestation.mjs';
 import { discoverArtProgress, inspectArtProgress } from './art-progress.mjs';
 import { inspectRunRelocation } from './run-relocation.mjs';
+import { inspectCheckpointedArtDirt } from './checkpointed-art-dirt.mjs';
 
 const MODES = new Set(['inspect', 'guided', 'auto']);
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -46,11 +47,13 @@ function gitReadOnly(projectDir) {
   // CEOS writes run checkpoints and latest.json into .ceos-runs itself.
   // Their mutation must not block the next product-work step. Keep all
   // other tracked/untracked project changes visible to the Git preflight.
-  const dirty = git('status','--porcelain=v1','--untracked-files=normal',
+  const dirty = git('status','--porcelain=v1','-z','--untracked-files=all',
     '--','.',':(exclude).ceos-runs');
   if (head.status !== 0 || dirty.status !== 0 || branch.status !== 0)
     return {status:'BLOCKED_GIT', head:null, branch:null, dirty:null};
-  return {status:'READY', head:head.stdout.trim(), branch:branch.stdout.trim(), dirty:Boolean(dirty.stdout.trim())};
+  return {status:'READY', head:head.stdout.trim(), branch:branch.stdout.trim(),
+    dirty:Boolean(dirty.stdout), porcelain:dirty.stdout};
+
 }
 
 function availableRuns(projectDir) {
@@ -214,6 +217,16 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
   try { resumed = resumeRun(project, selection.id); }
   catch (error) { return makeBlocked('BLOCKED_RUN_UNREADABLE', {project, mode, runId:selection.id, detail:error.message}); }
   const run=resumed.run, git=gitReadOnly(project);
+  if (run.pipeline==='production-art' && git.status==='READY' &&
+      git.dirty && resumed.integrity?.ok && !TERMINAL.has(run.state)) {
+    const scoped=inspectCheckpointedArtDirt(project,resumed.runDir,git.porcelain);
+    git.checkpointedEvidenceOnly=scoped.evidenceOnlyDirty;
+    git.allowedEvidencePaths=scoped.allowedEvidencePaths;
+    git.blockedPaths=scoped.blockedPaths;
+  }
+  // Preserve the truthful raw dirty=true metadata but do not emit NUL Git
+  // protocol payload as UI data. No file/index is changed by this inspection.
+  delete git.porcelain;
   const summary={project,runId:run.runId,pipeline:run.pipeline,stage:run.nextStage,verdict:run.verdict,
     scopeSha256:run.scopeSha256,cycle:run.cycle,checkpointCount:run.checkpointCount,
     maxCycles:run.maxCycles,git,mode,...(progress ? {progress} : {})};
@@ -262,7 +275,8 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
     : action.kind === 'PREPARE_LINKED_RECOVERY_PLAN' ? 'NEEDS_RECOVERY_DECISION'
     : action.kind === 'VERIFY_RECOVERY_PREREQUISITES' ? 'RECOVERY_CHECK_REQUIRED'
     : (git.status !== 'READY' ? 'BLOCKED_GIT_PREFLIGHT'
-      : (git.dirty ? 'BLOCKED_DIRTY_WORKTREE' : 'READY_FOR_CODEX'));
+      : (git.dirty && git.checkpointedEvidenceOnly!==true
+          ? 'BLOCKED_DIRTY_WORKTREE' : 'READY_FOR_CODEX'));
   const executable=status === 'READY_FOR_CODEX';
   return {schemaVersion:1,status,executable,...summary,integrity:resumed.integrity,
     action:{...action,id:actionId},nextAction:resumed.nextAction,
