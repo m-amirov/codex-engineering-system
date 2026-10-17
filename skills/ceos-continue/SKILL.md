@@ -24,8 +24,14 @@ is a **Codex-host execution adapter**, not a separate model host or daemon.
 2. Before any Git-backed mutation, run CEOS fresh-remote git-preflight
    with the actual branch, expected repository and --fetch; do not assume
    the local-only Git snapshot proves remote synchronization. Stop on
-   diverged, dirty or behind state unless a safe fast-forward is explicitly
-   permitted. Preserve parallel worktrees.
+   diverged or behind state; never fast-forward a dirty tree. For production
+   art, `continue` may explicitly report `git.checkpointedEvidenceOnly=true`
+   even with `git.dirty=true`, but only for hash-pinned *untracked* PNGs and
+   output receipts from immutable checkpoints. If the remote is IN_SYNC and
+   those are the only changes, continue the already authorized bounded
+   action without forcing a Git commit or deleting evidence. Any other
+   dirty source, acceptance ledger or uncheckpointed file still blocks.
+   Preserve parallel worktrees.
 3. Respect BLOCKED, NEEDS_RECOVERY_DECISION, RECOVERY_CHECK_REQUIRED,
    STOP_TERMINAL and DONE results. Inspect never creates runs. Guided/auto
    may automatically create a linked session recovery only for verified
