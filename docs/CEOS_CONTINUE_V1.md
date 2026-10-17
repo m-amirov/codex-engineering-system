@@ -71,7 +71,15 @@ Expected statuses:
 - BLOCKED_ALREADY_CLAIMED / BLOCKED_STALE_ACTION.
 - RECOVERY_CHECK_REQUIRED: existing execution engine allows a type of
   explicit reopen; first obtain fresh evidence, then call supported
-  resume --reopen-blocked with reason/evidence. No silent reopen.
+  resume --reopen-blocked with reason/evidence. For the narrow terminal
+  `STAGE_BLOCKED: BLOCKED_ART_OUTPUT / ART_FILE_NOT_FOUND` case,
+  provide old failure receipt, fresh mechanical PASS receipt and
+  original real native generated_images PNG with matching SHA-256 using
+  `--art-output-failed-receipt`, `--art-output-pass-receipt`
+  and `--art-output-native-source`. The engine verifies the exact
+  terminal checkpoint and unchanged Git HEAD before appending a
+  new `RUN_REOPENED` checkpoint. It does not reuse Image Gen authority
+  or confer artistic PASS. No silent reopen.
 - NEEDS_RECOVERY_DECISION: existing blocked run cannot reopen; preserve
   immutable history and propose an authorized scoped fresh recovery run.
 - STOP_TERMINAL / DONE: stop; do not invent a next product milestone.
