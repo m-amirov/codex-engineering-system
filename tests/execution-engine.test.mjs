@@ -14,7 +14,8 @@ import {
   refreshRunCapabilities,
   reopenBlockedRun,
   inspectBlockedRunRecovery,
-  resumeRun
+  resumeRun,
+  resolveRun
 } from '../src/execution-engine.mjs';
 
 function tempProject() {
@@ -192,6 +193,22 @@ function passMetadata(overrides = {}) {
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
+
+test('run references resolve a unique suffix and fail closed on an ambiguous suffix', () => {
+  const project = tempProject();
+  const root = path.join(project, '.ceos-runs');
+  const writeRun = runId => {
+    const dir = path.join(root, runId);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'run.json'), JSON.stringify({ runId, pipeline: 'production-art' }));
+  };
+
+  writeRun('2026-10-16T15-16-26-992Z-production-art-f2c045');
+  assert.equal(resolveRun(project, 'f2c045').run.runId, '2026-10-16T15-16-26-992Z-production-art-f2c045');
+
+  writeRun('2026-10-17T15-16-26-992Z-production-art-f2c045');
+  assert.throws(() => resolveRun(project, 'f2c045'), /Ambiguous run reference: f2c045/);
+});
 
 function blockedProductionRun(project, { maxCycles = 3, reason = 'mandatory independent Web High art-direction review unavailable after transport failure' } = {}) {
   const result = createRun(project, 'production-art', {

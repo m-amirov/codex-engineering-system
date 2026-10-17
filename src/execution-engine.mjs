@@ -561,6 +561,16 @@ export function resolveRun(projectDir, runRef = 'latest') {
     runDir = fs.existsSync(candidate) && fs.existsSync(path.join(candidate, 'run.json'))
       ? candidate
       : path.join(root, runRef);
+    if (!fs.existsSync(path.join(runDir, 'run.json'))) {
+      const suffix = `-${runRef}`;
+      const matches = fs.readdirSync(root, { withFileTypes: true })
+        .filter(entry => entry.isDirectory() && (entry.name === runRef || entry.name.endsWith(suffix)))
+        .map(entry => path.join(root, entry.name))
+        .filter(dir => fs.existsSync(path.join(dir, 'run.json')));
+      if (matches.length > 1)
+        throw new Error(`Ambiguous run reference: ${runRef}`);
+      if (matches.length === 1) runDir = matches[0];
+    }
   }
   const file = path.join(runDir, 'run.json');
   if (!fs.existsSync(file)) throw new Error(`Run not found: ${runRef}`);
