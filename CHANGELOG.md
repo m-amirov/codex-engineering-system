@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — continue evidence-only handoff
+
+- `continue` now revalidates source-bound contract and mechanical receipt before exempting their exact untracked evidence from the Git dirty-worktree block; supported revalidation batch manifests must independently match the receipt's entire SHA-256-pinned PNG set.
+- Kept tracked/staged source edits, malformed or unknown evidence, stale source HEAD and missing artistic approval fail-closed. Added direct continuation regression tests. No implicit commit, publication or generation.
+
+
 ## 0.5.36 — 2026-10-17
 
 - Added source-bound historical art revalidation for dependency-drifted acceptance ledgers. The contract verifies the historical ledger, dependency snapshots, current graph mappings, PNG bytes and original Web/runtime/mechanical acceptance receipts without mutating historical evidence.
