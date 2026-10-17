@@ -266,7 +266,7 @@ function latestGeneratingBatchOutputChecks(runDir,cycle) {
   const checkpointsDir=path.join(runDir,'checkpoints');
   if (!fs.existsSync(checkpointsDir)) return null;
   const entries=fs.readdirSync(checkpointsDir)
-    .filter(name=>/^\\d{3,}-generating\\.json$/.test(name)).sort().reverse();
+    .filter(name=>/^\d{3,}-generating\.json$/.test(name)).sort().reverse();
   for (const name of entries) {
     const cp=readJson(path.join(checkpointsDir,name));
     if (cp.stage!=='GENERATING' || cp.cycle!==cycle ||
