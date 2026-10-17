@@ -35,3 +35,18 @@ pairs only when all of these checks pass. The original ledger remains the
 historical acceptance record, and the contract is a separate currentness
 proof. A tampered mapping, PNG, dependency comparison, ledger or deferred
 scope returns `BLOCKED_ART_PROGRESS`.
+
+## Continue with evidence-only Git changes
+
+`ceos continue RUN_ID --mode inspect` automatically recognizes **untracked**
+source-bound revalidation evidence only after full revalidation against the
+current product HEAD. It can exempt the exact revalidation contract, its
+SHA-256-bound mechanical receipt, and one or more batch manifests only when
+each manifest has precisely the same real image output set, bytes, dimensions
+and SHA-256 values as that receipt. The manifests themselves do not convey
+artistic acceptance.
+
+The response keeps `git.dirty=true` and reports `allowedEvidencePaths` and
+`blockedPaths`. Tracked/staged changes, mismatched hashes, other JSON files,
+unknown PNGs or conflicting progress indexes remain blocked. No file is
+committed, reset, deleted, regenerated or accepted by this inspection.
