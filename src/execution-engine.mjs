@@ -9,6 +9,7 @@ import { webReviewPlan, validateWebReview, verifyWebDelegation } from './web-del
 import { normalizeResolutionReceiptContract, validateResolutionReceipt } from './resolution-receipt.mjs';
 import { classifyWebTransportFailure } from './web-transport-failure.mjs';
 import { inspectArtBatch } from './art-output-gate.mjs';
+import {isArtOutputTransportBlocked,verifyArtOutputTransportRecovery} from './art-output-recovery.mjs';
 import { narrativeDualFormatEnabled, verifyNarrativeDualFormatArt } from './narrative-dual-format-art.mjs';
 import { inspectNativeProducerRoute, nativeProducerParentContext } from './native-producer-routing.mjs';
 import { readRunCapabilityAttestation } from './capability-attestation.mjs';
@@ -332,6 +333,10 @@ function isRecoverableBlocked(run) {
   if (run.verdict !== 'BLOCKED' || run.state !== 'BLOCKED') return false;
   const stopReason = run.stopReason ?? {};
   if (RECOVERABLE_BLOCK_CODES.has(stopReason.code)) return true;
+  // Only explicit output-transport failures can request a special verified
+  // reopen. The actual failed/PASS PNG receipt proofs are checked later
+  // inside the run lock; classification alone never authorizes reopening.
+  if (isArtOutputTransportBlocked(run)) return true;
   return stopReason.code === 'STAGE_BLOCKED' &&
     typeof stopReason.stage === 'string' &&
     Boolean(stageDefinition(run.pipeline, stopReason.stage)) &&
@@ -1163,7 +1168,8 @@ export function refreshRunCapabilities(projectDir, runRef, capabilities) {
 
 export function reopenBlockedRun(projectDir, runRef = 'latest', {
   reason,
-  evidence = []
+  evidence = [],
+  artOutputRecovery = null
 } = {}) {
   const resolvedProject = path.resolve(projectDir);
   const resolved = resolveRun(resolvedProject, runRef);
@@ -1179,7 +1185,29 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
       throw new Error(`Blocked run is not recoverable from an explicitly supported external condition: ${run.stopReason?.code ?? '(missing code)'}`);
     }
 
-    const artifactRecords = normalizeList(evidence).map(item => resolveArtifact(resolvedProject, resolved.runDir, item));
+    const needsNativeOutputProof=isArtOutputTransportBlocked(run);
+    if (!needsNativeOutputProof && artOutputRecovery)
+      throw new Error('ART_TRANSPORT_RECOVERY_WRONG_BLOCKER');
+    let outputRecovery=null;
+    if (needsNativeOutputProof) {
+      if (!artOutputRecovery)
+        throw new Error('ART_TRANSPORT_RECOVERY_EVIDENCE_REQUIRED: failed receipt, passing receipt and original native PNG');
+      outputRecovery=verifyArtOutputTransportRecovery(resolvedProject,resolved.runDir,run,artOutputRecovery);
+      const originalCheckpoint=readJson(checkpointFile(resolved.runDir,run.checkpointCount,'GENERATING'));
+      const currentSource=gitSourceSnapshot(resolvedProject);
+      if (!originalCheckpoint.source?.available || !currentSource.available ||
+          originalCheckpoint.source.head!==currentSource.head)
+        throw new Error('ART_TRANSPORT_RECOVERY_SOURCE_HEAD_CHANGED');
+    }
+    const artifactNames=normalizeList(evidence);
+    if (outputRecovery) {
+      for (const file of [
+        outputRecovery.failedReceipt,
+        outputRecovery.passReceipt,
+        outputRecovery.targetPath
+      ]) if (!artifactNames.includes(file)) artifactNames.push(file);
+    }
+    const artifactRecords=artifactNames.map(item => resolveArtifact(resolvedProject, resolved.runDir, item));
     const previousVerdict = run.verdict;
     const previousStopReason = structuredClone(run.stopReason ?? null);
     const target = reopenTarget(run, previousStopReason);
@@ -1192,6 +1220,9 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
       previousVerdict,
       previousStopReason,
       reopenReason,
+      ...(outputRecovery ? { artOutputRecovery: outputRecovery,
+        recoveryCategory:'NATIVE_IMAGE_OUTPUT_TRANSPORT_ONLY',
+        generationCandidateReused:true,artisticAcceptance:'NOT_VERIFIED' } : {}),
       artifacts: artifactRecords
     });
 

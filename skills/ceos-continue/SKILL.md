@@ -70,8 +70,15 @@ is a **Codex-host execution adapter**, not a separate model host or daemon.
   A chat preview or text describing pixels is not transport. Once
   imported, rerun `art-output-verify` with a **new receipt filename**.
   Never erase the failed receipt or rewrite an immutable terminal checkpoint.
-  Terminal recovery is a separate explicit decision; do not assume that
-  having a file reopens an unsupported run.
+  For a terminal production-art GENERATING `STAGE_BLOCKED` specifically
+  naming `BLOCKED_ART_OUTPUT / ART_FILE_NOT_FOUND`, CEOS 0.5.32
+  supports **explicit** `resume --reopen-blocked` with
+  `--art-output-failed-receipt`, `--art-output-pass-receipt`,
+  `--art-output-native-source`, and `--reason`. The native file and
+  target bytes, unchanged source HEAD and historical terminal checkpoint
+  are reverified; the same run opens at GENERATING with preserved
+  candidate spend. Do not assume that an ordinary missing-file or image
+  quality error qualifies. The command is never run automatically.
 
 
 - RECOVERY_CHECK_REQUIRED: verify that the external blocker truly changed
