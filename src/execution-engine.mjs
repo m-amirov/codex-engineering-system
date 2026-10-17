@@ -355,7 +355,7 @@ function isScopedDualFormatCoverageBlocked(run) {
     run.state==='BLOCKED' && run.verdict==='BLOCKED' &&
     run.stopReason?.code==='STAGE_BLOCKED' &&
     run.stopReason?.stage==='INTEGRATED' &&
-    /\\bNARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE\\b/.test(
+    /\bNARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE\b/.test(
       String(run.stopReason?.reason??'')
     );
 }
