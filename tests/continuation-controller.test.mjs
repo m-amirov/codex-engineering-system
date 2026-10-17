@@ -696,3 +696,92 @@ test('S24 recovered original PNG and failed+PASS receipts are checkpoint-pinned 
   assert.equal(planContinuation(project,{runRef:id,mode:'guided'}).status,
     'BLOCKED_INTEGRITY');
 });
+
+test('a SHA-pinned S24–S26 producer ledger from successful GENERATING does not block INTEGRATED',t=>{
+  const project=setup(t);
+  const canon=path.join(project,'approved-canon.json');
+  const inventory=path.join(project,'approved-manifest.json');
+  fs.writeFileSync(canon,'{"approved":true}\n');
+  fs.writeFileSync(inventory,'{"scenes":["S24","S25","S26"]}\n');
+  git(project,'add','approved-canon.json','approved-manifest.json');
+  git(project,'commit','-m','source locked for production');
+  const usable={...capabilities,imageGeneration:{
+    capabilityPresence:'PRESENT',serviceAvailability:'UNKNOWN',
+    trustedForGeneration:true,generationAllowed:true,status:'available'
+  }};
+  const run=createRun(project,'production-art',{
+    scope:{target:'S24-S26 production art',inScope:['S24','S25','S26'],
+      outOfScope:['release'],acceptanceContract:'real image gate PASS',
+      mutationBoundary:'production PNG evidence'},
+    capabilities:usable,maxCycles:1
+  }).run;
+  recordCheckpoint(project,run.runId,{stage:'INVENTORIED',artifacts:['approved-manifest.json']});
+  recordCheckpoint(project,run.runId,{stage:'CANON_READY',artifacts:['approved-canon.json']});
+  const original='assets/production/cg/ep2-dining-refusal-response-cg.png';
+  const originalAbsolute=path.join(project,original);
+  fs.mkdirSync(path.dirname(originalAbsolute),{recursive:true});
+  const pixels=Buffer.alloc(16*24*4);
+  for(let n=0;n<16*24;n++){
+    pixels[n*4]=50;pixels[n*4+1]=100;pixels[n*4+2]=150;pixels[n*4+3]=255;
+  }
+  fs.writeFileSync(originalAbsolute,encodeProductionPng({width:16,height:24,pixels}));
+  const verified=inspectArtOutput(originalAbsolute,{kind:'background',width:16,height:24});
+  assert.equal(verified.status,'PASS_ART_OUTPUT_MECHANICAL');
+  const receiptRel='artifacts/production-art/stage9.4/output-receipts/S24-portrait-verified.json';
+  const ledgerRel='artifacts/production-art/stage9.4/producer-batches/2026-10-17-ep2-s24-s26-native-batch.json';
+  const receiptAbsolute=path.join(project,receiptRel),ledgerAbsolute=path.join(project,ledgerRel);
+  fs.mkdirSync(path.dirname(receiptAbsolute),{recursive:true});
+  fs.mkdirSync(path.dirname(ledgerAbsolute),{recursive:true});
+  fs.writeFileSync(receiptAbsolute,JSON.stringify({...verified,recordedAt:new Date().toISOString()},null,2)+'\n');
+  fs.writeFileSync(ledgerAbsolute,JSON.stringify({
+    schemaVersion:1,batch:'EP2-S24-S26',producer:'ceos_asset_generator',
+    outputs:[{path:original,sha256:verified.sha256}]
+  },null,2)+'\n');
+  const done=recordCheckpoint(project,run.runId,{
+    stage:'GENERATING',
+    artifacts:[receiptRel,ledgerRel],
+    metadata:{artOutputs:[{path:original,kind:'background',width:16,height:24}]}
+  });
+  assert.equal(done.run.nextStage,'INTEGRATED');
+  assert.equal(done.integrity.ok,true);
+  const checked=planContinuation(project,{runRef:run.runId,mode:'inspect'});
+  assert.equal(checked.status,'READY_FOR_CODEX',JSON.stringify(checked));
+  assert.equal(checked.git.dirty,true);
+  assert.equal(checked.git.checkpointedEvidenceOnly,true);
+  assert.deepEqual(checked.git.allowedEvidencePaths.sort(),[original,receiptRel,ledgerRel].sort());
+  assert.deepEqual(checked.git.blockedPaths,[]);
+  assert.equal(checked.action.kind,'INTEGRATE_ASSET_BATCH');
+  const claim=claimContinuation(project,{runRef:run.runId,mode:'guided',expectedActionId:checked.action.id});
+  assert.equal(claim.status,'READY_FOR_CODEX');
+  assert.equal(releaseContinuation(project,{runRef:run.runId,token:claim.lease.token}).status,'RELEASED');
+
+  // Uncheckpointed JSON in the same folder is not a valid producer receipt.
+  const extra=path.join(project,'artifacts/production-art/stage9.4/producer-batches/rogue.json');
+  fs.writeFileSync(extra,'{"notCheckpointed":true}\n');
+  const blocked=planContinuation(project,{runRef:run.runId});
+  assert.equal(blocked.status,'BLOCKED_DIRTY_WORKTREE');
+  assert.ok(blocked.git.blockedPaths.includes('artifacts/production-art/stage9.4/producer-batches/rogue.json'));
+  fs.rmSync(extra);
+
+  // Tracked source drift is not masked by this evidence-only exemption.
+  fs.appendFileSync(path.join(project,'tracked.txt'),'edited story');
+  assert.equal(planContinuation(project,{runRef:run.runId}).status,'BLOCKED_DIRTY_WORKTREE');
+  fs.writeFileSync(path.join(project,'tracked.txt'),'original\n');
+
+  // The immutable checkpoint catches any later ledger modification.
+  fs.appendFileSync(ledgerAbsolute,'{"tampered":true}');
+  assert.equal(planContinuation(project,{runRef:run.runId}).status,'BLOCKED_INTEGRITY');
+});
+
+test('producer-batches JSON not included in a successful generating checkpoint is not allowlisted',t=>{
+  const project=setup(t);
+  const folder=path.join(project,'artifacts/production-art/stage9.4/producer-batches');
+  fs.mkdirSync(folder,{recursive:true});
+  fs.writeFileSync(path.join(folder,'unbound.json'),'{"producer":"terra"}\n');
+  const run=newRun(project);
+  const plan=planContinuation(project,{runRef:run.runId});
+  assert.equal(plan.status,'BLOCKED_DIRTY_WORKTREE');
+  assert.deepEqual(plan.git.allowedEvidencePaths,[]);
+  assert.ok(plan.git.blockedPaths.includes(
+    'artifacts/production-art/stage9.4/producer-batches/unbound.json'));
+});
