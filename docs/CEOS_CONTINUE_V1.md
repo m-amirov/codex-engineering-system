@@ -185,3 +185,9 @@ attestations or a cryptographic proof of which process issued a separate
 CLI command. Do not pass `--project` from another checkout to borrow
 a session. Generate from an authorized Codex session actually launched
 in the target worktree and retain capability/trace checks.
+
+## Scoped verified-art reuse (CEOS 0.5.40)
+
+Narrative `VERIFIED_EXISTING_ART_REUSE` can cover a positive subset of authored scenes while the whole episode remains incomplete. CEOS checks its dual-format manifest in `REUSE_SCOPE` using the exact PNG path/SHA-256 set from the validated `GENERATING` reuse contract, not a fabricated image-generation checkpoint. It rechecks independent Web/runtime/provenance receipts, the pinned scope and the underlying bytes at integration and final scoped acceptance. The `INTEGRATED` / `REAUDITED` metadata `dualFormatManifest` must match the original contract.
+
+`REUSE_SCOPE` **never** means episode-final or release approval. Only `FULL_EPISODE` can validate complete episode scene coverage. A previously terminal `BLOCKED` reuse run remains terminal and is not silently reopened; create a distinct bounded reuse run under explicit authorization if the original run cannot use a supported recovery mechanism.
