@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRun, recordCheckpoint, resumeRun, refreshRunCapabilities } from '../src/execution-engine.mjs';
+import { createRun, recordCheckpoint, resumeRun, refreshRunCapabilities, recoverLegacyCapabilityAttestation } from '../src/execution-engine.mjs';
 import {
   beginCapabilityChallenge,
   respondCapabilityChallenge,
@@ -364,4 +364,83 @@ test('a modified immutable attestation is rejected and never overwritten on anot
   });
   // A new valid challenge never modifies the first immutable proof.
   assert.equal(fs.readFileSync(output.file,'utf8'),'{"tampered":true}\n');
+});
+
+test('legacy overwritten singleton is repaired only by byte-exact consumed challenge plus checkpoint hash',t=>{
+  const project=tempProject();
+  t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
+  const codexHome=path.join(project,'.codex');
+  writeRuntime(codexHome,project);
+  const run=createRun(project,'production-art',{
+    scope:scope(),capabilities:caps(project),maxCycles:2
+  });
+  const id=run.run.runId;
+  reachGeneration(project,id);
+  fs.writeFileSync(path.join(project,'output.png'),encodeProductionPng({
+    width:16,height:16,pixels:Buffer.alloc(16*16*4,255)
+  }));
+  const ch1=beginCapabilityChallenge(project,id,{codexHome});
+  const first=respondCapabilityChallenge(project,id,{
+    codexHome,challengeId:ch1.challengeId,nonce:ch1.nonce,
+    presence:'PRESENT',serviceAvailability:'UNKNOWN'
+  });
+  const legacy=path.join(run.runDir,'capability-attestation','image-generation.json');
+  fs.copyFileSync(first.file,legacy);
+  const originalBytes=fs.readFileSync(legacy);
+  refreshRunCapabilities(project,id,{
+    ...caps(project),imageGeneration:{
+      trustedForGeneration:true,capabilityPresence:'PRESENT',generationAllowed:true,
+      attestationFile:legacy,trustScope:'run-session-window'
+    }
+  });
+  recordCheckpoint(project,id,{
+    stage:'GENERATING',artifacts:[legacy],
+    metadata:{artOutputs:[{path:'output.png',kind:'background',width:16,height:16}]}
+  });
+  recordCheckpoint(project,id,{stage:'INTEGRATED',artifacts:['canon.json']});
+  recordCheckpoint(project,id,{stage:'VISUAL_VERIFIED',artifacts:['canon.json'],outcome:'FAIL'});
+  assert.equal(resumeRun(project,id).run.nextStage,'GENERATING');
+
+  writeRuntime(codexHome,project,'session-1','second-turn');
+  const ch2=beginCapabilityChallenge(project,id,{codexHome});
+  const second=respondCapabilityChallenge(project,id,{
+    codexHome,challengeId:ch2.challengeId,nonce:ch2.nonce,
+    presence:'PRESENT',serviceAvailability:'UNKNOWN'
+  });
+  // Simulate the 0.5.37 bug (the old single mutable file was overwritten).
+  fs.copyFileSync(second.file,legacy);
+  const overwritten=fs.readFileSync(legacy);
+  assert.equal(resumeRun(project,id).integrity.ok,false);
+  assert.throws(()=>beginCapabilityChallenge(project,id,{codexHome}),/INTEGRITY_BLOCKED/);
+  const preview=recoverLegacyCapabilityAttestation(project,id,{dryRun:true});
+  assert.equal(preview.status,'READY_LEGACY_ATTESTATION_RECOVERY',JSON.stringify(preview));
+  assert.deepEqual(fs.readFileSync(legacy),overwritten,'dry-run is nonmutating');
+  const applied=recoverLegacyCapabilityAttestation(project,id,{dryRun:false});
+  assert.equal(applied.status,'PASS_LEGACY_ATTESTATION_RECOVERED',JSON.stringify(applied));
+  assert.equal(applied.integrity.ok,true);
+  assert.deepEqual(fs.readFileSync(legacy),originalBytes);
+  assert.deepEqual(fs.readFileSync(applied.overwrittenBackup),overwritten);
+  assert.equal(resumeRun(project,id).integrity.ok,true);
+  const ch3=beginCapabilityChallenge(project,id,{codexHome});
+  const newer=respondCapabilityChallenge(project,id,{
+    codexHome,challengeId:ch3.challengeId,nonce:ch3.nonce,
+    presence:'PRESENT',serviceAvailability:'UNKNOWN'
+  });
+  assert.notEqual(newer.file,legacy);
+  assert.deepEqual(fs.readFileSync(legacy),originalBytes);
+});
+
+test('legacy capability recovery refuses unexplained source damage, and never edits checkpoints',t=>{
+  const project=tempProject();
+  t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
+  const codexHome=path.join(project,'.codex');
+  writeRuntime(codexHome,project);
+  const run=createRun(project,'production-art',{scope:scope(),capabilities:caps(project)});
+  reachGeneration(project,run.run.runId);
+  // An intact run does not require or admit a repair.
+  assert.equal(recoverLegacyCapabilityAttestation(project,run.run.runId,{dryRun:true}).status,'ALREADY_INTACT');
+  fs.appendFileSync(path.join(project,'inventory.json'),'tampered');
+  const blocked=recoverLegacyCapabilityAttestation(project,run.run.runId,{dryRun:false});
+  assert.equal(blocked.status,'BLOCKED_LEGACY_RECOVERY_OTHER_INTEGRITY');
+  assert.equal(resumeRun(project,run.run.runId).integrity.ok,false);
 });
