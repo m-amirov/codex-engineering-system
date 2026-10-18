@@ -186,3 +186,35 @@ test('BATCH_ONLY cannot be invoked without an immutable generator output set',t=
   assert.equal(r.status,'BLOCKED_DUAL_FORMAT_ART');
   assert.ok(r.errors.some(e=>e.code==='ART_BATCH_EVIDENCE_REQUIRED'));
 });
+
+test('REUSE_SCOPE checks a positive scene subset against the exact reused PNG hashes without episode promotion',t=>{
+  const {root,head,doc,save}=manifest(t);
+  delete doc.sceneAssets.S02;
+  save();
+  const outputs=Object.values(doc.assets.cg01).map(asset=>({
+    path:path.resolve(root,asset.path),sha256:asset.sha256
+  }));
+  const check=items=>verifyNarrativeDualFormatArt(root,'art.json',{
+    currentHead:head,coverageMode:'REUSE_SCOPE',expectedReuseOutputs:items
+  });
+  const good=check(outputs);
+  assert.equal(good.status,'PASS_DUAL_FORMAT_ART_MECHANICAL',JSON.stringify(good.errors));
+  assert.equal(good.coverageMode,'REUSE_SCOPE');
+  assert.equal(good.fullEpisodeCovered,false);
+  assert.equal(good.episodeFinalAcceptance,'NOT_VERIFIED');
+  assert.equal(good.releaseReady,false);
+  assert.equal(good.mappedScenes,1);
+  assert.deepEqual(good.coveredSceneIds,['S01']);
+  assert.ok(check([]).errors.some(x=>x.code==='ART_REUSE_EVIDENCE_REQUIRED'));
+  assert.ok(check(outputs.slice(0,1)).errors.some(x=>x.code==='ART_REUSE_VARIANT_NOT_VERIFIED'));
+  assert.ok(check([...outputs,{path:path.join(root,'assets','unrelated.png'),sha256:'f'.repeat(64)}])
+    .errors.some(x=>x.code==='ART_REUSE_OUTPUT_COVERAGE_MISMATCH'));
+  const original=doc.assets.cg01.desktop.sha256;
+  doc.assets.cg01.desktop.sha256='a'.repeat(64);
+  save();
+  assert.ok(check(outputs).errors.some(x=>x.code==='ART_VARIANT_HASH_MISMATCH'));
+  doc.assets.cg01.desktop.sha256=original;
+  doc.sceneAssets.BAD='cg01';
+  save();
+  assert.ok(check(outputs).errors.some(x=>x.code==='ART_SCENE_EXTRA'));
+});
