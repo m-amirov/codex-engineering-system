@@ -268,7 +268,7 @@ test('two generating cycles pin separate immutable attestations without breaking
     width:16,height:16,pixels:Buffer.alloc(16*16*4,255)
   }));
   const canon=path.join(project,'canon.json');
-  const output={artOutputs:[{path:png,kind:'background',width:16,height:16}]};
+  const output={artOutputs:[{path:'output.png',kind:'background',width:16,height:16}]};
   function issueAndConsume(turn) {
     writeRuntime(codexHome,project,'session-1',turn);
     const ch=beginCapabilityChallenge(project,id,{codexHome});
