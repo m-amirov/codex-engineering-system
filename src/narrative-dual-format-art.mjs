@@ -56,7 +56,7 @@ function pngDimensions(bytes) {
 /** Mechanical contract only; independent Web High must review actual pixels of BOTH variants. */
 export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {
   currentHead, baseHead, dependencyBased = false, coverageMode = 'FULL_EPISODE',
-  expectedBatchOutputs = null
+  expectedBatchOutputs = null, expectedReuseOutputs = null
 } = {}) {
   const errors = [];
   const fail = (code, id = '') => errors.push({code, id});
@@ -73,7 +73,7 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {
     (dependencyBased && manifest.sourceHead === baseHead);
   if (!HEAD.test(head ?? '') || !sourceCurrent) fail('ART_SOURCE_HEAD_MISMATCH');
 
-  if (!['FULL_EPISODE','BATCH_ONLY'].includes(coverageMode)) fail('ART_COVERAGE_MODE_INVALID');
+  if (!['FULL_EPISODE','BATCH_ONLY','REUSE_SCOPE'].includes(coverageMode)) fail('ART_COVERAGE_MODE_INVALID');
 
   // Inventory is drawn from the real narrative graph. BATCH_ONLY checks a
   // positive set of actual authored scene IDs and all six-ish real outputs
@@ -90,9 +90,11 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {
     .filter(s => s?.episode === manifest.episode).map(s=>s.id);
   if (!required.length || new Set(required).size !== required.length) fail('ART_EPISODE_SCENES_MISSING');
   const declaredScenes=Object.keys(manifest.sceneAssets);
-  const scoped=coverageMode==='BATCH_ONLY';
-  if (scoped && (!declaredScenes.length || !Array.isArray(expectedBatchOutputs) ||
-      !expectedBatchOutputs.length)) fail('ART_BATCH_EVIDENCE_REQUIRED');
+  const scoped=coverageMode!=='FULL_EPISODE';
+  const reuseScope=coverageMode==='REUSE_SCOPE';
+  const scopedOutputs=reuseScope ? expectedReuseOutputs : expectedBatchOutputs;
+  if (scoped && (!declaredScenes.length || !Array.isArray(scopedOutputs) ||
+      !scopedOutputs.length)) fail(reuseScope?'ART_REUSE_EVIDENCE_REQUIRED':'ART_BATCH_EVIDENCE_REQUIRED');
   for (const id of (scoped?declaredScenes:required))
     if (!safeName(id) || !safeName(manifest.sceneAssets[id]))
       fail('ART_SCENE_UNMAPPED',String(id));
@@ -102,14 +104,14 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {
   for (const id of used) if (!Object.hasOwn(manifest.assets,id)) fail('ART_ASSET_UNDECLARED',id);
   for (const id of Object.keys(manifest.assets)) if (!used.has(id)) fail('ART_ASSET_ORPHAN',id);
 
-  const observedBatch=new Map();
+  const observedScope=new Map();
   const expected=new Map();
-  if (scoped && Array.isArray(expectedBatchOutputs)) {
-    for (const output of expectedBatchOutputs) {
+  if (scoped && Array.isArray(scopedOutputs)) {
+    for (const output of scopedOutputs) {
       const absolute=path.resolve(String(output?.path ?? ''));
       if (!SHA.test(output?.sha256 ?? '') ||
           expected.has(absolute) || !path.isAbsolute(output?.path ?? ''))
-        fail('ART_BATCH_EVIDENCE_INVALID',String(output?.path ?? ''));
+        fail(reuseScope?'ART_REUSE_EVIDENCE_INVALID':'ART_BATCH_EVIDENCE_INVALID',String(output?.path ?? ''));
       expected.set(absolute, String(output.sha256 ?? '').toLowerCase());
     }
   }
@@ -136,8 +138,8 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {
       if (scoped) {
         const abs=path.resolve(projectDir,variant.path);
         if (!expected.has(abs) || expected.get(abs)!==digest)
-          fail('ART_BATCH_VARIANT_NOT_GENERATED',id+':'+format);
-        else observedBatch.set(abs,digest);
+          fail(reuseScope?'ART_REUSE_VARIANT_NOT_VERIFIED':'ART_BATCH_VARIANT_NOT_GENERATED',id+':'+format);
+        else observedScope.set(abs,digest);
       }
       inspected++;
     }
@@ -145,9 +147,9 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {
         (signatures[0].path === signatures[1].path || signatures[0].sha256 === signatures[1].sha256))
       fail('ART_VARIANTS_NOT_INDEPENDENT',id);
   }
-  if (scoped && (expected.size!==observedBatch.size ||
-      [...expected].some(([f,h])=>observedBatch.get(f)!==h)))
-    fail('ART_BATCH_OUTPUT_COVERAGE_MISMATCH');
+  if (scoped && (expected.size!==observedScope.size ||
+      [...expected].some(([f,h])=>observedScope.get(f)!==h)))
+    fail(reuseScope?'ART_REUSE_OUTPUT_COVERAGE_MISMATCH':'ART_BATCH_OUTPUT_COVERAGE_MISMATCH');
   const fullEpisodeCovered=required.length>0 &&
     required.every(id=>safeName(manifest.sceneAssets[id]) &&
       used.has(manifest.sceneAssets[id])) &&
@@ -160,6 +162,6 @@ export function verifyNarrativeDualFormatArt(projectDir, manifestPath, {
     fullEpisodeCovered,episodeFinalAcceptance:'NOT_VERIFIED',releaseReady:false,
     uniqueAssets:used.size,variantFilesChecked:inspected,visualAcceptance:'NOT_VERIFIED',
     errors,
-    disclaimer:'Mechanical verification of these authored scenes only. BATCH_ONLY is never episode final acceptance; real runtime/Web High review remains mandatory.'
+    disclaimer:'Mechanical verification of authored scenes only. BATCH_ONLY and REUSE_SCOPE are never episode-final acceptance; real runtime/Web High review remains mandatory.'
   };
 }
