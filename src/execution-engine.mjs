@@ -1243,6 +1243,110 @@ export function refreshRunCapabilities(projectDir, runRef, capabilities) {
   });
 }
 
+
+/**
+ * CEOS <=0.5.37 wrote every capability challenge into one mutable path, then
+ * pinned its bytes in a GENERATING checkpoint. Reconstruct an overwritten
+ * legacy singleton ONLY when the original byte-for-byte serialized attestation
+ * can be proved against the checkpoint's original SHA-256 and an already
+ * consumed on-disk challenge. No checkpoint or acceptance state is modified.
+ *
+ * Recovery is intentionally narrow: positive native generation with UNKNOWN
+ * service availability and null service evidence. Other cases fail closed.
+ */
+export function recoverLegacyCapabilityAttestation(projectDir, runRef='latest', {dryRun=true}={}) {
+  const resolved=resolveRun(path.resolve(projectDir),runRef);
+  const execute=()=>{
+    const run=readJson(resolved.file);
+    const legacy=path.join(resolved.runDir,'capability-attestation','image-generation.json');
+    const requiredIssue='artifact changed after checkpoint GENERATING: '+legacy;
+    const integrity=assertRunIntegrity(resolved.runDir,run);
+    const blocked=(code,detail)=>({
+      schemaVersion:1,status:code,executable:false,runId:run.runId,
+      originalIntegrity:integrity,detail,legacyFile:legacy
+    });
+    if (integrity.ok) return blocked('ALREADY_INTACT','No pinned legacy attestation damage to repair');
+    if (run.pipeline!=='production-art' || run.verdict || run.nextStage!=='GENERATING')
+      return blocked('BLOCKED_LEGACY_RECOVERY_STAGE','Only nonterminal production-art runs at GENERATING may use this recovery');
+    if (!integrity.issues.length || integrity.issues.some(issue=>issue!==requiredIssue))
+      return blocked('BLOCKED_LEGACY_RECOVERY_OTHER_INTEGRITY','Integrity reports issues outside the exact overwritten singleton path');
+    const dir=path.join(resolved.runDir,'checkpoints');
+    const refs=[];
+    for (const file of fs.readdirSync(dir).filter(name=>/^\d{3,}-generating\.json$/.test(name))) {
+      const checkpoint=readJson(path.join(dir,file));
+      if (checkpoint.stage!=='GENERATING' || !['CONTINUE','PASS'].includes(checkpoint.outcome))
+        return blocked('BLOCKED_LEGACY_RECOVERY_CHECKPOINT','Generation checkpoint is not accepted');
+      for (const artifact of checkpoint.artifacts ?? [])
+        if (artifact.path===legacy) refs.push(artifact.sha256);
+    }
+    const distinct=[...new Set(refs)];
+    if (distinct.length!==1 || !/^[a-f0-9]{64}$/.test(distinct[0]??''))
+      return blocked('BLOCKED_LEGACY_RECOVERY_AMBIGUOUS_HASH','Expected exactly one historical SHA-256 for the singleton');
+    let overwritten;
+    try {
+      const stat=fs.lstatSync(legacy);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size<1 || stat.size>1024*1024 ||
+          fs.realpathSync(legacy)!==legacy)
+        throw new Error('Legacy attestation must be a regular bounded file');
+      overwritten=fs.readFileSync(legacy);
+    } catch (error) { return blocked('BLOCKED_LEGACY_RECOVERY_SOURCE',error.message); }
+    const challenged=path.join(resolved.runDir,'capability-attestation','challenges');
+    const matches=[];
+    for (const entry of fs.readdirSync(challenged).filter(name=>/^cap-[a-f0-9]{20}\.json$/.test(name)).slice(0,200)) {
+      let x;
+      try {
+        const file=path.join(challenged,entry);
+        if (!fs.lstatSync(file).isFile() || fs.lstatSync(file).isSymbolicLink()) continue;
+        x=readJson(file);
+      } catch { continue; }
+      if (x.schemaVersion!==1 || x.status!=='CONSUMED' || x.runId!==run.runId ||
+          x.capability!=='image-generation' ||
+          x.source!=='ceos-in-session-challenge' ||
+          x.challengeId+'.json'!==entry || !x.sessionId || !x.turnId ||
+          !Number.isFinite(Date.parse(x.consumedAt??'')) ||
+          Date.parse(x.consumedAt)<Date.parse(x.createdAt) ||
+          Date.parse(x.consumedAt)>Date.parse(x.expiresAt)) continue;
+      const attestation={
+        schemaVersion:1,runId:run.runId,capability:'image-generation',
+        challengeId:x.challengeId,sessionId:x.sessionId,turnId:x.turnId,
+        observedAt:x.consumedAt,source:'in-session-agent-observation',
+        trustScope:'run-session-window',presence:'PRESENT',
+        serviceAvailability:'UNKNOWN',observedTool:'image_gen.imagegen',
+        serviceEvidence:null
+      };
+      const bytes=Buffer.from(JSON.stringify(attestation,null,2)+'\n');
+      if (sha256(bytes)===distinct[0]) matches.push({challengeId:x.challengeId,bytes});
+    }
+    if (matches.length!==1)
+      return blocked('BLOCKED_LEGACY_RECOVERY_UNPROVEN',
+        'Original attestation bytes cannot be reconstructed uniquely from a consumed challenge and checkpoint hash');
+    const matched=matches[0];
+    const details={
+      schemaVersion:1,
+      status:dryRun?'READY_LEGACY_ATTESTATION_RECOVERY':'PASS_LEGACY_ATTESTATION_RECOVERED',
+      runId:run.runId,challengeId:matched.challengeId,
+      sha256:distinct[0],originalIntegrity:integrity,legacyFile:legacy,
+      historicalCheckpointsUnchanged:true
+    };
+    if (dryRun) return {...details,executable:false};
+    // Preserve the overwritten newer bytes as forensic data before restoring
+    // the exact prior bytes. The backup is NOT an authorization/acceptance.
+    const backupDir=path.join(resolved.runDir,'capability-attestation','overwritten-backups');
+    fs.mkdirSync(backupDir,{recursive:true});
+    const backup=path.join(backupDir,sha256(overwritten)+'.json');
+    if (fs.existsSync(backup)) {
+      if (!fs.readFileSync(backup).equals(overwritten))
+        return blocked('BLOCKED_LEGACY_RECOVERY_BACKUP','Backup path exists with different bytes');
+    } else fs.writeFileSync(backup,overwritten,{flag:'wx'});
+    atomicWriteJson(legacy,JSON.parse(matched.bytes.toString('utf8')));
+    const after=assertRunIntegrity(resolved.runDir,run);
+    if (!after.ok) throw new Error('LEGACY_RECOVERY_POSTCHECK_FAILED: '+after.issues.join('; '));
+    return {...details,integrity:after,overwrittenBackup:backup,executable:true,
+      nextAction:'Issue a new run-scoped capability challenge; never reuse the restored expired attestation'};
+  };
+  return dryRun ? execute() : withRunLock(resolved.runDir,execute);
+}
+
 export function reopenBlockedRun(projectDir, runRef = 'latest', {
   reason,
   evidence = [],

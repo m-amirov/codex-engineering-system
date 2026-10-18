@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.39 — 2026-10-18: Byte-exact legacy capability recovery
+
+- Add guarded `ceos capability-recover RUN_ID [--apply]` for the historical single-file multi-cycle attestation overwrite, with dry-run as default.
+- Reconstruct only from a consumed challenge whose canonical serialized attestation exactly matches the generating checkpoint SHA-256; fail closed on other integrity problems and incompatible evidence. Preserve overwritten bytes in a forensic backup before restoration; never rewrite checkpoints or grant art acceptance.
+- Add regression tests covering successful active two-cycle repair and unrelated integrity rejection.
+
+
 ## 0.5.38 — 2026-10-18: Immutable capability attestations
 
 - Store every image-generation capability attestation in a unique write-once challenge file. An independent latest pointer supports fresh multi-cycle attestations without rewriting historical evidence pinned by GENERATING checkpoints.
