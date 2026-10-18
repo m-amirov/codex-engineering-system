@@ -7,7 +7,7 @@ import { webPreflight } from '../src/web-preflight.mjs';
 import { gitPreflight } from '../src/git-preflight.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { webReviewPlan, validateWebReview } from '../src/web-delegation.mjs';
-import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES, preflightNativeProducerRoute } from '../src/execution-engine.mjs';
+import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES, preflightNativeProducerRoute, recoverLegacyCapabilityAttestation } from '../src/execution-engine.mjs';
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
@@ -147,7 +147,7 @@ Usage:
   ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--assurance strict|visual-content] [--json]
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
   ceos capability-challenge [run-id|latest] [--codex-home dir] [--json]
-  ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
+  ceos capability-recover [run-id|latest] [--apply] [--json]  # safe hash-exact legacy recovery\n  ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
   ceos producer-route-check [run-id|latest] --trace <actual-child-rollout.jsonl> [--codex-home dir] [--json]
   ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--art-mode NEW_GENERATION|VERIFIED_EXISTING_ART_REUSE] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--resolution-contract-file json] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
@@ -371,6 +371,13 @@ try {
         console.log(`Attestation: ${observed.file}`);
         if (refreshed.nextAction?.stage) console.log(`Next: ${refreshed.nextAction.stage}`);
       }
+      break;
+    }
+    case 'capability-recover': {
+      const runRef=args._[1] || 'latest';
+      const result=recoverLegacyCapabilityAttestation(project,runRef,{dryRun:!Boolean(args.apply)});
+      print(result,true);
+      process.exitCode = ['READY_LEGACY_ATTESTATION_RECOVERY','PASS_LEGACY_ATTESTATION_RECOVERED','ALREADY_INTACT'].includes(result.status) ? 0 : 2;
       break;
     }
     case 'art-brief-verify': {
