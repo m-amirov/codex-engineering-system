@@ -189,7 +189,7 @@ test('generation permits same-session follow-up turn but refuses other session a
   const checkpointDir=path.join(x.run.runDir,'checkpoints');
   const generatingFile=fs.readdirSync(checkpointDir).find(name=>name.endsWith('-generating.json'));
   const evidence=JSON.parse(fs.readFileSync(path.join(checkpointDir,generatingFile),'utf8'));
-  assert.ok(evidence.artifacts.some(a=>a.path.endsWith('image-generation.json')));
+  assert.ok(evidence.artifacts.some(a=>/capability-attestation[\\/]+attestations[\\/]+cap-[a-f0-9]{20}\.json$/.test(a.path)));
 });
 
 test('generic production-art runs are unaffected by novel-only routing gate',t=>{
@@ -271,7 +271,7 @@ test('CURRENT_TURN route CLI resolves parent through trusted run-scoped attestat
   assert.equal(route.status,'PASS_NATIVE_AGENT_ROUTE_HOST_OBSERVED',JSON.stringify(route));
   assert.equal(route.parentSessionId,x.parent);
   assert.equal(route.bindingMode,'CURRENT_TURN');
-  assert.match(route.attestationFile,/image-generation\.json$/);
+  assert.match(route.attestationFile,/capability-attestation[\\/]+attestations[\\/]+cap-[a-f0-9]{20}\.json$/);
   const cli=fileURLToPath(new URL('../bin/ceos.mjs',import.meta.url));
   const result=spawnSync(process.execPath,[cli,'producer-route-check',x.runId,
     '--project',x.game,'--trace',x.trace,'--codex-home',x.home,'--json'],{

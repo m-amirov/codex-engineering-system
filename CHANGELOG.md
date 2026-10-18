@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.38 — 2026-10-18: Immutable capability attestations
+
+- Store every image-generation capability attestation in a unique write-once challenge file. An independent latest pointer supports fresh multi-cycle attestations without rewriting historical evidence pinned by GENERATING checkpoints.
+- Keep legacy singleton compatibility and reject integrity-damaged runs before issuing/consuming further challenges; no automatic checkpoint rewrite or art acceptance.
+- Add multi-cycle, tampering and legacy-compatibility regression tests.
+
+
 ## 0.5.37 — 2026-10-17: Continue evidence-only handoff
 
 - `continue` now revalidates source-bound contract and mechanical receipt before exempting their exact untracked evidence from the Git dirty-worktree block; supported revalidation batch manifests must independently match the receipt's entire SHA-256-pinned PNG set.
