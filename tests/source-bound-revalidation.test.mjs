@@ -35,6 +35,10 @@ function fixture(t) {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'ceos-source-bound-revalidation-'));
   t.after(() => fs.rmSync(project, { recursive: true, force: true }));
   git(project, ['init', '--quiet']);
+  // This fixture hashes raw JSON bytes. Global Windows core.autocrlf=true
+  // must not turn LF into CRLF when checkout restores a tracked source file.
+  git(project, ['config', 'core.autocrlf', 'false']);
+  git(project, ['config', 'core.eol', 'lf']);
   git(project, ['config', 'user.email', 'ceos-test@example.invalid']);
   git(project, ['config', 'user.name', 'CEOS Test']);
 
