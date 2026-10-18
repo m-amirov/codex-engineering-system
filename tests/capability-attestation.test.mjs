@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRun, recordCheckpoint } from '../src/execution-engine.mjs';
+import { createRun, recordCheckpoint, resumeRun, refreshRunCapabilities } from '../src/execution-engine.mjs';
 import {
   beginCapabilityChallenge,
   respondCapabilityChallenge,
   readRunCapabilityAttestation
 } from '../src/capability-attestation.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
+import { encodeProductionPng } from '../src/art-output-gate.mjs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -251,4 +252,116 @@ test('a challenge cannot be consumed after a turn switch even within the same se
     codexHome,challengeId:challenge.challengeId,nonce:challenge.nonce,
     presence:'PRESENT'
   }),/different Codex session\/turn/);
+});
+
+test('two generating cycles pin separate immutable attestations without breaking previous checkpoints',t=>{
+  const project=tempProject();
+  t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
+  const codexHome=path.join(project,'.codex');
+  writeRuntime(codexHome,project);
+  const run=createRun(project,'production-art',{scope:scope(),capabilities:caps(project),maxCycles:2});
+  const id=run.run.runId;
+  reachGeneration(project,id);
+
+  const png=path.join(project,'output.png');
+  fs.writeFileSync(png,encodeProductionPng({
+    width:16,height:16,pixels:Buffer.alloc(16*16*4,255)
+  }));
+  const canon=path.join(project,'canon.json');
+  const output={artOutputs:[{path:png,kind:'background',width:16,height:16}]};
+  function issueAndConsume(turn) {
+    writeRuntime(codexHome,project,'session-1',turn);
+    const ch=beginCapabilityChallenge(project,id,{codexHome});
+    const response=respondCapabilityChallenge(project,id,{
+      codexHome,challengeId:ch.challengeId,nonce:ch.nonce,presence:'PRESENT',
+      serviceAvailability:'UNKNOWN'
+    });
+    const observed=readRunCapabilityAttestation(project,id,{codexHome});
+    assert.equal(observed.valid,true,observed.reason);
+    assert.equal(observed.file,response.file);
+    assert.match(response.file,/attestations[\\/]+cap-[a-f0-9]{20}\.json$/);
+    refreshRunCapabilities(project,id,{
+      ...caps(project),imageGeneration:{
+        trustedForGeneration:true,capabilityPresence:'PRESENT',generationAllowed:true,
+        attestationFile:response.file,trustScope:'run-session-window'
+      }
+    });
+    return response.file;
+  }
+
+  const first=issueAndConsume('turn-1');
+  const original=fs.readFileSync(first);
+  recordCheckpoint(project,id,{
+    stage:'GENERATING',artifacts:[first],
+    metadata:output
+  });
+  recordCheckpoint(project,id,{stage:'INTEGRATED',artifacts:[canon]});
+  const retry=recordCheckpoint(project,id,{
+    stage:'VISUAL_VERIFIED',artifacts:[canon],outcome:'FAIL'
+  });
+  assert.equal(retry.run.nextStage,'GENERATING');
+  assert.equal(retry.run.cycle,2);
+
+  const second=issueAndConsume('turn-2');
+  assert.notEqual(first,second);
+  assert.deepEqual(fs.readFileSync(first),original);
+  assert.equal(resumeRun(project,id).integrity.ok,true);
+  const completed=recordCheckpoint(project,id,{
+    stage:'GENERATING',artifacts:[second],metadata:output
+  });
+  assert.equal(completed.integrity.ok,true,JSON.stringify(completed.integrity));
+  const artifacts=fs.readdirSync(path.join(run.runDir,'checkpoints'))
+    .filter(name=>name.endsWith('-generating.json'))
+    .map(name=>JSON.parse(fs.readFileSync(path.join(run.runDir,'checkpoints',name),'utf8')))
+    .flatMap(cp=>cp.artifacts.map(a=>a.path));
+  assert.ok(artifacts.includes(first) && artifacts.includes(second));
+});
+
+test('legacy singleton remains readable but a fresh challenge never rewrites it',t=>{
+  const project=tempProject();
+  t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
+  const codexHome=path.join(project,'.codex');
+  writeRuntime(codexHome,project);
+  const run=createRun(project,'production-art',{scope:scope(),capabilities:caps(project)});
+  reachGeneration(project,run.run.runId);
+  const ch=beginCapabilityChallenge(project,run.run.runId,{codexHome});
+  const first=respondCapabilityChallenge(project,run.run.runId,{
+    codexHome,challengeId:ch.challengeId,nonce:ch.nonce,presence:'PRESENT'
+  });
+  const legacy=path.join(run.runDir,'capability-attestation','image-generation.json');
+  fs.copyFileSync(first.file,legacy);
+  const immutable=fs.readFileSync(legacy);
+  fs.unlinkSync(path.join(run.runDir,'capability-attestation','current.json'));
+  const old=readRunCapabilityAttestation(project,run.run.runId,{codexHome});
+  assert.equal(old.valid,true,old.reason);
+  assert.equal(old.file,legacy);
+  const next=beginCapabilityChallenge(project,run.run.runId,{codexHome});
+  const later=respondCapabilityChallenge(project,run.run.runId,{
+    codexHome,challengeId:next.challengeId,nonce:next.nonce,presence:'PRESENT'
+  });
+  assert.notEqual(later.file,legacy);
+  assert.deepEqual(fs.readFileSync(legacy),immutable);
+  assert.equal(readRunCapabilityAttestation(project,run.run.runId,{codexHome}).file,later.file);
+});
+
+test('a modified immutable attestation is rejected and never overwritten on another challenge',t=>{
+  const project=tempProject();
+  t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
+  const codexHome=path.join(project,'.codex');
+  writeRuntime(codexHome,project);
+  const run=createRun(project,'production-art',{scope:scope(),capabilities:caps(project)});
+  reachGeneration(project,run.run.runId);
+  const challenge=beginCapabilityChallenge(project,run.run.runId,{codexHome});
+  const output=respondCapabilityChallenge(project,run.run.runId,{
+    codexHome,challengeId:challenge.challengeId,nonce:challenge.nonce,presence:'PRESENT'
+  });
+  fs.writeFileSync(output.file,'{"tampered":true}\n');
+  const check=readRunCapabilityAttestation(project,run.run.runId,{codexHome});
+  assert.equal(check.valid,false);
+  const next=beginCapabilityChallenge(project,run.run.runId,{codexHome});
+  respondCapabilityChallenge(project,run.run.runId,{
+    codexHome,challengeId:next.challengeId,nonce:next.nonce,presence:'PRESENT'
+  });
+  // A new valid challenge never modifies the first immutable proof.
+  assert.equal(fs.readFileSync(output.file,'utf8'),'{"tampered":true}\n');
 });
