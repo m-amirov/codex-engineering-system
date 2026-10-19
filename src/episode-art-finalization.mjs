@@ -61,6 +61,14 @@ function sourceCurrentness(project, baseline, problems) {
     problems.push('SOURCE_HEAD_INVALID');
     return actualHead;
   }
+  // A source edit not reflected in the pinned dependency list is not safe:
+  // both tracked changes and untracked authored files outside artifacts block.
+  const dirty = spawnSync('git', ['status','--porcelain=v1','-z','--untracked-files=all',
+    '--','.',':(exclude)artifacts',':(exclude).ceos-runs'], {
+    cwd:project,timeout:15000,windowsHide:true
+  });
+  if (dirty.status !== 0) problems.push('SOURCE_WORKTREE_INSPECTION_FAILED');
+  else if (dirty.stdout.length) problems.push('SOURCE_WORKTREE_DIRTY');
   if (actualHead !== baseline) {
     const ancestry = spawnSync('git', ['merge-base', '--is-ancestor', baseline, actualHead],
       { cwd: project, encoding: 'utf8', timeout: 15000, windowsHide: true });
@@ -260,8 +268,10 @@ export function inspectEpisodeArtFinalization(projectDir, manifestPath) {
       }
       if (captureIds.has(cap.screenshot)) problems.push('RUNTIME_CAPTURE_DUPLICATE_' + i);
       captureIds.add(cap.screenshot);
-      readPinned(project, {path:cap.screenshot,sha256:cap.screenshotSha256}, problems,
+      const screenshot = readPinned(project, {path:cap.screenshot,sha256:cap.screenshotSha256}, problems,
         'RUNTIME_CAPTURE_' + i, {json:false});
+      if (screenshot && !screenshot.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex')))
+        problems.push('RUNTIME_CAPTURE_' + i + '_NOT_PNG');
       captureCount++;
     }
     if (!Number.isInteger(manifest.expectedRuntimeCaptures) ||
