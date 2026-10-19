@@ -255,6 +255,26 @@ test('source-bound revalidation proves unchanged S19-S23 mappings without rewrit
   assert.deepEqual(fs.readFileSync(abs(x.project, x.ledgerPath)), beforeLedger);
 });
 
+test('historical revalidation accepts an immutable receipt HEAD older than the ledger baseline', t => {
+  const x = fixture(t);
+  const ledger = readJson(x.project, x.ledgerPath);
+  const receiptPath = ledger.groups[0].webReceipt.path;
+  const receipt = readJson(x.project, receiptPath);
+  const historicalReceiptHead = 'a'.repeat(40);
+  assert.notEqual(historicalReceiptHead, ledger.currentHead);
+  receipt.sourceHead = historicalReceiptHead;
+  ledger.groups[0].webReceipt.sha256 = writeJson(x.project, receiptPath, receipt);
+  writeJson(x.project, x.ledgerPath, ledger);
+  const contract = createSourceBoundRevalidation(x.project, x.ledgerPath, {
+    deferredPairs: ['S24', 'S25', 'S26'],
+    mechanicalReceiptPath: x.mechanicalPath
+  });
+  writeJson(x.project, x.contractPath, contract);
+  const result = inspectSourceBoundRevalidation(x.project, x.contractPath);
+  assert.equal(result.status, 'PASS_ART_PROGRESS_REVALIDATED', JSON.stringify(result));
+  assert.equal(result.acceptedPairs, 5);
+});
+
 test('strict Web acceptance continues to require both provider trace and task identifiers', t => {
   const x = fixture(t);
   const ledger = readJson(x.project, x.ledgerPath);
