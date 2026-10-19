@@ -7,7 +7,7 @@ import { webPreflight } from '../src/web-preflight.mjs';
 import { gitPreflight } from '../src/git-preflight.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { webReviewPlan, validateWebReview } from '../src/web-delegation.mjs';
-import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES, preflightNativeProducerRoute } from '../src/execution-engine.mjs';
+import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES, preflightNativeProducerRoute, recoverLegacyCapabilityAttestation } from '../src/execution-engine.mjs';
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
@@ -15,6 +15,7 @@ import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/ar
 import { importArtOutput } from '../src/art-output-transport.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
 import { inspectArtProgress } from '../src/art-progress.mjs';
+import { createSourceBoundRevalidation } from '../src/source-bound-revalidation.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
 import { inspectRunRelocation, relocateRun } from '../src/run-relocation.mjs';
@@ -65,6 +66,14 @@ function saveArtOutputReceipt(project, name, result) {
     throw new Error('--receipt escapes project directory');
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
   fs.writeFileSync(resolved, JSON.stringify({ ...result, recordedAt: new Date().toISOString() }, null, 2) + '\n', { flag: 'wx' });
+}
+function saveProjectJson(project, name, value) {
+  if (typeof name !== 'string' || !name || path.isAbsolute(name) || name.includes('\\') || name.split('/').some(part => !part || part === '..' || part === '.'))
+    throw new Error('--output must be a project-relative new path');
+  const resolved = path.resolve(project, name);
+  if (!resolved.startsWith(path.resolve(project) + path.sep)) throw new Error('--output escapes project directory');
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, JSON.stringify(value, null, 2) + '\n', { flag: 'wx' });
 }
 function timeoutArg(args) {
   const timeoutMs = args['timeout-ms'] ? Number(args['timeout-ms']) : 1200;
@@ -132,6 +141,7 @@ Usage:
   ceos art-output-import --source <native-local.png> --target <project-relative.png> --sha256 <64 hex> --kind background|sprite|prop [--width N --height N] [--json]
   ceos art-output-verify --file <generated.png> --kind sprite|prop|background [--width N --height N] [--receipt <new.json>] [--json]
   ceos art-output-batch --manifest <assets.json> [--receipt <new.json>] [--json]
+  ceos art-progress-revalidate --ledger <historical-ledger.json> --mechanical-receipt <new-receipt.json> --deferred-pairs <id;id> --output <new-contract.json> [--project dir] [--json]
   ceos art-progress --index <project-relative-evidence-index.json|source-bound-ledger.json> [--project dir] [--json] (read-only; never invents acceptance)
   ceos art-output-normalize --file <prop.png> --output <new.png> [--width 512 --height 512] [--json]
   ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--assurance strict|visual-content] [--json]
@@ -139,7 +149,7 @@ Usage:
   ceos dev-web-review --request-file <json> --receipt <project-relative-new.json> [--raw-response <project-relative-new.txt>] [--project dir] [--dev-home dir] [--stable-home dir] [--head <sha>] [--min-attachment-interval-ms N] [--json]
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
   ceos capability-challenge [run-id|latest] [--codex-home dir] [--json]
-  ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
+  ceos capability-recover [run-id|latest] [--apply] [--json]  # safe hash-exact legacy recovery\n  ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
   ceos producer-route-check [run-id|latest] --trace <actual-child-rollout.jsonl> [--codex-home dir] [--json]
   ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--art-mode NEW_GENERATION|VERIFIED_EXISTING_ART_REUSE] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--resolution-contract-file json] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
@@ -365,6 +375,13 @@ try {
       }
       break;
     }
+    case 'capability-recover': {
+      const runRef=args._[1] || 'latest';
+      const result=recoverLegacyCapabilityAttestation(project,runRef,{dryRun:!Boolean(args.apply)});
+      print(result,true);
+      process.exitCode = ['READY_LEGACY_ATTESTATION_RECOVERY','PASS_LEGACY_ATTESTATION_RECOVERED','ALREADY_INTACT'].includes(result.status) ? 0 : 2;
+      break;
+    }
     case 'art-brief-verify': {
       if (!args.file || args.file === true) throw new Error('--file <art-brief.json> is required');
       const brief = JSON.parse(fs.readFileSync(path.resolve(project, String(args.file)), 'utf8'));
@@ -405,6 +422,18 @@ try {
       if (args.receipt) saveArtOutputReceipt(project, args.receipt, result);
       print(result, true);
       process.exitCode = result.status === 'PASS_ART_BATCH_MECHANICAL' ? 0 : 2;
+      break;
+    }
+    case 'art-progress-revalidate': {
+      if (typeof args.ledger !== 'string' || typeof args['mechanical-receipt'] !== 'string' ||
+          typeof args['deferred-pairs'] !== 'string' || typeof args.output !== 'string')
+        throw new Error('--ledger, --mechanical-receipt, --deferred-pairs and --output are required');
+      const result = createSourceBoundRevalidation(project, String(args.ledger), {
+        deferredPairs: listArg(args['deferred-pairs']),
+        mechanicalReceiptPath: String(args['mechanical-receipt'])
+      });
+      saveProjectJson(project, String(args.output), result);
+      print({ ...result, evidencePath: String(args.output) }, true);
       break;
     }
     case 'art-progress': {

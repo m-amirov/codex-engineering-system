@@ -79,9 +79,15 @@ function resolveSelection(projectDir, runRef, {preferredPipeline = null} = {}) {
   if (runRef && runRef !== 'latest') {
     if (typeof runRef !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(runRef) || runRef.includes('..'))
       return {status:'BLOCKED_RUN_REF_INVALID'};
-    const children=availableRuns(projectDir).filter(x=>x.linkedFrom===runRef);
+    const runs = availableRuns(projectDir);
+    const exact = runs.filter(x=>x.id===runRef);
+    const suffixMatches = exact.length ? exact : runs.filter(x=>x.id.endsWith(`-${runRef}`));
+    if (suffixMatches.length > 1)
+      return {status:'BLOCKED_AMBIGUOUS_RUN_REFERENCE',candidates:suffixMatches.map(x=>x.id)};
+    const resolvedRef = suffixMatches.length===1 ? suffixMatches[0].id : runRef;
+    const children=runs.filter(x=>x.linkedFrom===resolvedRef);
     if (children.length>1) return {status:'BLOCKED_AMBIGUOUS_RECOVERY',candidates:children.map(x=>x.id)};
-    return {id:children.length===1?children[0].id:runRef};
+    return {id:children.length===1?children[0].id:resolvedRef};
   }
   const runs = availableRuns(projectDir);
   if (!runs.length) return {status:'BLOCKED_NO_RUN'};
@@ -219,7 +225,10 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
   const run=resumed.run, git=gitReadOnly(project);
   if (run.pipeline==='production-art' && git.status==='READY' &&
       git.dirty && resumed.integrity?.ok && !TERMINAL.has(run.state)) {
-    const scoped=inspectCheckpointedArtDirt(project,resumed.runDir,git.porcelain);
+    const scoped=inspectCheckpointedArtDirt(project,resumed.runDir,git.porcelain,{
+      progressIndex:progress?.acceptanceSource==='STAGE9_4_SOURCE_BOUND_REVALIDATION'
+        ? progress.indexPath : null
+    });
     git.checkpointedEvidenceOnly=scoped.evidenceOnlyDirty;
     git.allowedEvidencePaths=scoped.allowedEvidencePaths;
     git.blockedPaths=scoped.blockedPaths;

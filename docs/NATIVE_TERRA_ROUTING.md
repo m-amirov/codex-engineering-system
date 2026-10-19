@@ -147,3 +147,57 @@ with the preserved evidence. Do not rewrite terminal `BLOCKED` checkpoints;
 use an explicitly authorized fresh run and CEOS-supported evidence reuse,
 retaining original PNG bytes and previous receipts. An accepted route trace is
 not a production-art or Web High artistic PASS.
+
+## Immutable multi-cycle capability evidence (CEOS 0.5.38)
+
+Each successful `capability-attest` writes its original JSON **once** to
+`.ceos-runs/<RUN_ID>/capability-attestation/attestations/<challengeId>.json`.
+The `current.json` file is only a discovery pointer to the latest issued
+challenge; the `GENERATING` checkpoint SHA-pins the immutable per-challenge
+file, never the mutable pointer.
+
+A new cycle requires a new challenge and a refreshed capability snapshot,
+but cannot rewrite the prior checkpoint's attestation. Existing pre-0.5.38
+`image-generation.json` records remain readable when `current.json`
+is absent; new challenges do **not** overwrite that legacy singleton.
+
+**Historical damage is not silently repaired.** If an old singleton was
+already overwritten after a checkpoint pinned its original SHA-256, CEOS
+continues to report `INTEGRITY_BLOCKED`. Recover the original *byte-identical*
+attestation from an authentic backup if available, verifying its checkpoint
+SHA-256 before restoration. Otherwise preserve the damaged run as evidence
+and use an explicitly authorized new scoped recovery run with independent
+revalidation of accepted PNGs. Do not edit checkpoint hashes or declare
+integrity PASS based only on a newer attestation.
+
+## CEOS 0.5.39: verified legacy attestation recovery
+
+Only the **pre-0.5.38** singleton overwrite defect can be repaired with the
+following supported, narrowly scoped procedure. It never changes checkpoints,
+ledger, generated PNG bytes, or their claims.
+
+```powershell
+ceos capability-recover 7acf22 --project "<GAME_WORKTREE>" --json
+# Inspect READY_LEGACY_ATTESTATION_RECOVERY and its exact checksum.
+ceos capability-recover 7acf22 --project "<GAME_WORKTREE>" --apply --json
+ceos resume 7acf22 --project "<GAME_WORKTREE>" --json
+```
+
+The repair is available only for an active production-art run at GENERATING,
+when **every integrity error** is precisely the changed historical
+`capability-attestation/image-generation.json`. The original consuming
+challenge metadata is reserialized in its known historical format; only an
+**exact SHA-256 match** to the historical GENERATING checkpoint permits
+restoration. The newer overwritten bytes are backed up separately under
+`capability-attestation/overwritten-backups/` before replacing the singleton
+with its mathematically verified original bytes.
+
+Multiple distinct historical checkpoint hashes for the same singleton path,
+missing/invalid consumption metadata, an UNKNOWN service-evidence payload that
+cannot be reconstructed, unrelated integrity failures, or any checksum
+mismatch **block recovery**. Do not guess old JSON or edit old checkpoints.
+
+After successful repair, issue/consume a **fresh** challenge via the immutable
+0.5.38+ per-challenge path. The restored historic attestation is not a fresh
+capability grant. If reconstruction is impossible, preserve the original run
+and follow explicitly authorized new scoped recovery with independent proof.

@@ -34,6 +34,7 @@ const EXTERNAL_RECOVERY_FAILURES = /\b(unavailable|not ready|disconnect(?:ed)?|f
 const NATIVE_PARENT_MISMATCH_REASON = /\bnative producer route failed trusted parent binding\b/i;
 const NATIVE_FALLBACK_STATUSES = new Set(['UNAVAILABLE', 'NOT_ACCEPTING_TURNS', 'RATE_LIMITED']);
 const NATIVE_FALLBACK_REASON = /\b(transport|backend|runtime|bridge|connect(?:ion)?|disconnect(?:ed)?|unavailable|not accepting|rate[_ -]?limit(?:ed)?|usage limit(?:ed)?|timeout|timed out|http\s+\d{3}|refused)\b/i;
+const LEGACY_DUAL_FORMAT_COVERAGE_BLOCKER = 'NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE';
 export const ART_MODES = Object.freeze({
   NEW_GENERATION: 'NEW_GENERATION',
   VERIFIED_EXISTING_ART_REUSE
@@ -253,6 +254,11 @@ function checkpointFile(runDir, index, stage) {
   return path.join(runDir, 'checkpoints', `${String(index).padStart(3, '0')}-${slug}.json`);
 }
 
+function readCheckpointIfPresent(runDir, index, stage) {
+  const file = checkpointFile(runDir, index, stage);
+  return fs.existsSync(file) ? readJson(file) : null;
+}
+
 function writeCheckpoint(runDir, run, checkpoint) {
   const index = (run.checkpointCount ?? 0) + 1;
   atomicWriteJson(checkpointFile(runDir, index, checkpoint.stage), { index, ...checkpoint });
@@ -348,25 +354,40 @@ function terminalize(run, verdict, reason) {
   run.stopReason = reason ?? null;
 }
 
-function isScopedDualFormatCoverageBlocked(run) {
+function isLegacyDualFormatCoverageCheckpoint(checkpoint) {
+  return checkpoint?.stage === 'INTEGRATED' &&
+    checkpoint.outcome === 'BLOCKED' &&
+    checkpoint.metadata?.blockerCode === LEGACY_DUAL_FORMAT_COVERAGE_BLOCKER &&
+    checkpoint.metadata?.dualFormatGate?.verificationMode === 'BATCH_INTEGRATION' &&
+    Array.isArray(checkpoint.metadata?.dualFormatGate?.errors) &&
+    checkpoint.metadata.dualFormatGate.errors.includes(LEGACY_DUAL_FORMAT_COVERAGE_BLOCKER);
+}
+
+function isScopedDualFormatCoverageBlocked(run, {
+  integratedCheckpoint = null,
+  requireCheckpoint = false
+} = {}) {
+  const reasonConfirmsLegacyBlocker = /\bNARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE\b/.test(
+    String(run?.stopReason?.reason ?? '')
+  );
+  const checkpointConfirmsLegacyBlocker = isLegacyDualFormatCoverageCheckpoint(integratedCheckpoint);
   return run?.pipeline==='production-art' &&
     run.artMode===ART_MODES.NEW_GENERATION &&
     run.narrativeDualFormatRequired===true &&
     run.state==='BLOCKED' && run.verdict==='BLOCKED' &&
     run.stopReason?.code==='STAGE_BLOCKED' &&
     run.stopReason?.stage==='INTEGRATED' &&
-    /\bNARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE\b/.test(
-      String(run.stopReason?.reason??'')
-    );
+    (requireCheckpoint ? checkpointConfirmsLegacyBlocker :
+      reasonConfirmsLegacyBlocker || checkpointConfirmsLegacyBlocker);
 }
 
-function isRecoverableBlocked(run) {
+function isRecoverableBlocked(run, recoveryContext = {}) {
   if (run.verdict !== 'BLOCKED' || run.state !== 'BLOCKED') return false;
   const stopReason = run.stopReason ?? {};
   if (RECOVERABLE_BLOCK_CODES.has(stopReason.code)) return true;
   // Exact legacy full-episode-at-batch-stage failure is recoverable only
   // after a fresh scoped dual-format verification against actual GEN outputs.
-  if (isScopedDualFormatCoverageBlocked(run)) return true;
+  if (isScopedDualFormatCoverageBlocked(run, recoveryContext)) return true;
   // Only explicit output-transport failures can request a special verified
   // reopen. The actual failed/PASS PNG receipt proofs are checked later
   // inside the run lock; classification alone never authorizes reopening.
@@ -379,11 +400,11 @@ function isRecoverableBlocked(run) {
 }
 
 /** Read-only recovery classification, sharing the exact allowlist used by reopenBlockedRun. */
-export function inspectBlockedRunRecovery(run) {
+export function inspectBlockedRunRecovery(run, recoveryContext = {}) {
   const blocked = run?.verdict === 'BLOCKED' && run?.state === 'BLOCKED';
   return {
     blocked,
-    reopenSupported: blocked && isRecoverableBlocked(run),
+    reopenSupported: blocked && isRecoverableBlocked(run, recoveryContext),
     reason: blocked ? (run.stopReason ?? null) : null,
     policy: 'Never reopen automatically; require fresh external evidence and an explicit reason.'
   };
@@ -540,6 +561,16 @@ export function resolveRun(projectDir, runRef = 'latest') {
     runDir = fs.existsSync(candidate) && fs.existsSync(path.join(candidate, 'run.json'))
       ? candidate
       : path.join(root, runRef);
+    if (!fs.existsSync(path.join(runDir, 'run.json'))) {
+      const suffix = `-${runRef}`;
+      const matches = fs.readdirSync(root, { withFileTypes: true })
+        .filter(entry => entry.isDirectory() && (entry.name === runRef || entry.name.endsWith(suffix)))
+        .map(entry => path.join(root, entry.name))
+        .filter(dir => fs.existsSync(path.join(dir, 'run.json')));
+      if (matches.length > 1)
+        throw new Error(`Ambiguous run reference: ${runRef}`);
+      if (matches.length === 1) runDir = matches[0];
+    }
   }
   const file = path.join(runDir, 'run.json');
   if (!fs.existsSync(file)) throw new Error(`Run not found: ${runRef}`);
@@ -553,7 +584,7 @@ export function resolveRun(projectDir, runRef = 'latest') {
  */
 function recoverResolutionReceiptContract(project, scope) {
   const allowed = ['target','inScope','outOfScope','acceptanceContract',
-    'mutationBoundary','resolutionReceiptContract'];
+    'mutationBoundary','resolutionReceiptContract','webReviewMode','webReviewAssurance'];
   if (Object.keys(scope).some(key => !allowed.includes(key)))
     throw new Error('BLOCKED_RECOVERY_SCOPE_UNSUPPORTED');
   if (!Object.hasOwn(scope,'resolutionReceiptContract')) return null;
@@ -707,6 +738,11 @@ export function createRun(projectDir, pipeline, {
     throw new Error('visual-content assurance requires enhanced Web review mode');
   const normalizedArtMode = normalizeArtMode(pipeline, artMode);
   const normalizedScope = normalizeScope(scope);
+  // Review assurance is part of the immutable run contract. Later
+  // source-bound consumers must not reinterpret a strict run as
+  // visual-content merely because a receipt omits provider identifiers.
+  normalizedScope.webReviewMode = webReviewMode;
+  normalizedScope.webReviewAssurance = webReviewAssurance;
   if (resolutionReceiptContract !== null) {
     const contract = normalizeResolutionReceiptContract(resolutionReceiptContract);
     const source = resolveArtifact(resolvedProject, resolvedProject, contract.sourceEvidence);
@@ -989,7 +1025,7 @@ export function recordCheckpoint(projectDir, runRef, {
     const currentSource = gitSourceSnapshot(resolvedProject);
     const existingArtReuse = usesExistingArtReuse(run);
     const existingArtReuseContract = existingArtReuse
-      ? (metadata?.existingArtReuse ?? priorExistingArtReuseContract(resolved.runDir))
+      ? (stage === 'GENERATING' ? metadata?.existingArtReuse : priorExistingArtReuseContract(resolved.runDir))
       : null;
     if (stage === 'GENERATING' && metadata?.existingArtReuse && !existingArtReuse) {
       throw new Error('EXISTING_ART_REUSE_MODE_REQUIRED: create the run with artMode=VERIFIED_EXISTING_ART_REUSE');
@@ -1017,6 +1053,18 @@ export function recordCheckpoint(projectDir, runRef, {
       if (existingReuseGate.status !== 'PASS_VERIFIED_EXISTING_ART_REUSE') {
         throw new Error('VERIFIED_EXISTING_ART_REUSE_BLOCKED: ' + existingReuseGate.errors.join(', '));
       }
+    }
+    // Recheck pinned, previously accepted reuse evidence at every integration
+    // or acceptance gate. An arbitrary later metadata payload cannot change
+    // the source contract recorded by GENERATING.
+    if (existingArtReuse && ['INTEGRATED','REAUDITED'].includes(stage) &&
+        (normalizedOutcome==='CONTINUE' || normalizedOutcome==='PASS')) {
+      existingReuseGate=verifyExistingArtReuse(resolvedProject,existingArtReuseContract,{
+        currentHead:currentSource.available ? currentSource.head : null,
+        narrativeDualFormatRequired:run.narrativeDualFormatRequired===true
+      });
+      if (existingReuseGate.status!=='PASS_VERIFIED_EXISTING_ART_REUSE')
+        throw new Error('VERIFIED_EXISTING_ART_REUSE_BLOCKED: '+existingReuseGate.errors.join(', '));
     }
     if (definition.requiresImageGeneration && !existingArtReuse) {
       const image = currentCapabilities.imageGeneration;
@@ -1063,14 +1111,18 @@ export function recordCheckpoint(projectDir, runRef, {
         throw new Error('NARRATIVE_DUAL_FORMAT_MANIFEST_REQUIRED: metadata.dualFormatManifest');
       const requestEpisodeFinal = metadata.episodeFinalAcceptance === true;
       const batchCoverage = !existingArtReuse && !requestEpisodeFinal;
+      const reuseScope = existingArtReuse && !requestEpisodeFinal;
+      if (existingArtReuse && metadata.dualFormatManifest !== existingArtReuseContract?.dualFormatManifest)
+        throw new Error('NARRATIVE_REUSE_MANIFEST_MISMATCH: use the original GENERATING reuse contract manifest');
       dualFormatGate = verifyNarrativeDualFormatArt(resolvedProject, metadata.dualFormatManifest, {
         currentHead: currentSource.available ? currentSource.head : undefined,
         baseHead: existingArtReuseContract?.sourceHead,
         dependencyBased: existingArtReuseContract?.currentness?.mode === 'DEPENDENCY_BASED_REUSE',
-        coverageMode:batchCoverage?'BATCH_ONLY':'FULL_EPISODE',
+        coverageMode:reuseScope?'REUSE_SCOPE':batchCoverage?'BATCH_ONLY':'FULL_EPISODE',
         expectedBatchOutputs:batchCoverage
           ? latestGeneratingBatchOutputChecks(resolved.runDir,run.cycle)
-          : null
+          : null,
+        expectedReuseOutputs:reuseScope ? existingReuseGate?.verifiedOutputs : null
       });
       if (dualFormatGate.status !== 'PASS_DUAL_FORMAT_ART_MECHANICAL')
         throw new Error('NARRATIVE_DUAL_FORMAT_ART_BLOCKED: ' +
@@ -1079,6 +1131,8 @@ export function recordCheckpoint(projectDir, runRef, {
         throw new Error('NARRATIVE_BATCH_CANNOT_ASSERT_EPISODE_FINAL_ACCEPTANCE');
       if (batchCoverage && metadata.releaseReady === true)
         throw new Error('NARRATIVE_BATCH_CANNOT_ASSERT_RELEASE_READY');
+      if (reuseScope && metadata.releaseReady === true)
+        throw new Error('NARRATIVE_REUSE_SCOPE_CANNOT_ASSERT_RELEASE_READY');
     }
 
     if (definition.requiresDefectCount) {
@@ -1212,6 +1266,110 @@ export function refreshRunCapabilities(projectDir, runRef, capabilities) {
   });
 }
 
+
+/**
+ * CEOS <=0.5.37 wrote every capability challenge into one mutable path, then
+ * pinned its bytes in a GENERATING checkpoint. Reconstruct an overwritten
+ * legacy singleton ONLY when the original byte-for-byte serialized attestation
+ * can be proved against the checkpoint's original SHA-256 and an already
+ * consumed on-disk challenge. No checkpoint or acceptance state is modified.
+ *
+ * Recovery is intentionally narrow: positive native generation with UNKNOWN
+ * service availability and null service evidence. Other cases fail closed.
+ */
+export function recoverLegacyCapabilityAttestation(projectDir, runRef='latest', {dryRun=true}={}) {
+  const resolved=resolveRun(path.resolve(projectDir),runRef);
+  const execute=()=>{
+    const run=readJson(resolved.file);
+    const legacy=path.join(resolved.runDir,'capability-attestation','image-generation.json');
+    const requiredIssue='artifact changed after checkpoint GENERATING: '+legacy;
+    const integrity=assertRunIntegrity(resolved.runDir,run);
+    const blocked=(code,detail)=>({
+      schemaVersion:1,status:code,executable:false,runId:run.runId,
+      originalIntegrity:integrity,detail,legacyFile:legacy
+    });
+    if (integrity.ok) return blocked('ALREADY_INTACT','No pinned legacy attestation damage to repair');
+    if (run.pipeline!=='production-art' || run.verdict || run.nextStage!=='GENERATING')
+      return blocked('BLOCKED_LEGACY_RECOVERY_STAGE','Only nonterminal production-art runs at GENERATING may use this recovery');
+    if (!integrity.issues.length || integrity.issues.some(issue=>issue!==requiredIssue))
+      return blocked('BLOCKED_LEGACY_RECOVERY_OTHER_INTEGRITY','Integrity reports issues outside the exact overwritten singleton path');
+    const dir=path.join(resolved.runDir,'checkpoints');
+    const refs=[];
+    for (const file of fs.readdirSync(dir).filter(name=>/^\d{3,}-generating\.json$/.test(name))) {
+      const checkpoint=readJson(path.join(dir,file));
+      if (checkpoint.stage!=='GENERATING' || !['CONTINUE','PASS'].includes(checkpoint.outcome))
+        return blocked('BLOCKED_LEGACY_RECOVERY_CHECKPOINT','Generation checkpoint is not accepted');
+      for (const artifact of checkpoint.artifacts ?? [])
+        if (artifact.path===legacy) refs.push(artifact.sha256);
+    }
+    const distinct=[...new Set(refs)];
+    if (distinct.length!==1 || !/^[a-f0-9]{64}$/.test(distinct[0]??''))
+      return blocked('BLOCKED_LEGACY_RECOVERY_AMBIGUOUS_HASH','Expected exactly one historical SHA-256 for the singleton');
+    let overwritten;
+    try {
+      const stat=fs.lstatSync(legacy);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size<1 || stat.size>1024*1024 ||
+          fs.realpathSync(legacy)!==legacy)
+        throw new Error('Legacy attestation must be a regular bounded file');
+      overwritten=fs.readFileSync(legacy);
+    } catch (error) { return blocked('BLOCKED_LEGACY_RECOVERY_SOURCE',error.message); }
+    const challenged=path.join(resolved.runDir,'capability-attestation','challenges');
+    const matches=[];
+    for (const entry of fs.readdirSync(challenged).filter(name=>/^cap-[a-f0-9]{20}\.json$/.test(name)).slice(0,200)) {
+      let x;
+      try {
+        const file=path.join(challenged,entry);
+        if (!fs.lstatSync(file).isFile() || fs.lstatSync(file).isSymbolicLink()) continue;
+        x=readJson(file);
+      } catch { continue; }
+      if (x.schemaVersion!==1 || x.status!=='CONSUMED' || x.runId!==run.runId ||
+          x.capability!=='image-generation' ||
+          x.source!=='ceos-in-session-challenge' ||
+          x.challengeId+'.json'!==entry || !x.sessionId || !x.turnId ||
+          !Number.isFinite(Date.parse(x.consumedAt??'')) ||
+          Date.parse(x.consumedAt)<Date.parse(x.createdAt) ||
+          Date.parse(x.consumedAt)>Date.parse(x.expiresAt)) continue;
+      const attestation={
+        schemaVersion:1,runId:run.runId,capability:'image-generation',
+        challengeId:x.challengeId,sessionId:x.sessionId,turnId:x.turnId,
+        observedAt:x.consumedAt,source:'in-session-agent-observation',
+        trustScope:'run-session-window',presence:'PRESENT',
+        serviceAvailability:'UNKNOWN',observedTool:'image_gen.imagegen',
+        serviceEvidence:null
+      };
+      const bytes=Buffer.from(JSON.stringify(attestation,null,2)+'\n');
+      if (sha256(bytes)===distinct[0]) matches.push({challengeId:x.challengeId,bytes});
+    }
+    if (matches.length!==1)
+      return blocked('BLOCKED_LEGACY_RECOVERY_UNPROVEN',
+        'Original attestation bytes cannot be reconstructed uniquely from a consumed challenge and checkpoint hash');
+    const matched=matches[0];
+    const details={
+      schemaVersion:1,
+      status:dryRun?'READY_LEGACY_ATTESTATION_RECOVERY':'PASS_LEGACY_ATTESTATION_RECOVERED',
+      runId:run.runId,challengeId:matched.challengeId,
+      sha256:distinct[0],originalIntegrity:integrity,legacyFile:legacy,
+      historicalCheckpointsUnchanged:true
+    };
+    if (dryRun) return {...details,executable:false};
+    // Preserve the overwritten newer bytes as forensic data before restoring
+    // the exact prior bytes. The backup is NOT an authorization/acceptance.
+    const backupDir=path.join(resolved.runDir,'capability-attestation','overwritten-backups');
+    fs.mkdirSync(backupDir,{recursive:true});
+    const backup=path.join(backupDir,sha256(overwritten)+'.json');
+    if (fs.existsSync(backup)) {
+      if (!fs.readFileSync(backup).equals(overwritten))
+        return blocked('BLOCKED_LEGACY_RECOVERY_BACKUP','Backup path exists with different bytes');
+    } else fs.writeFileSync(backup,overwritten,{flag:'wx'});
+    atomicWriteJson(legacy,JSON.parse(matched.bytes.toString('utf8')));
+    const after=assertRunIntegrity(resolved.runDir,run);
+    if (!after.ok) throw new Error('LEGACY_RECOVERY_POSTCHECK_FAILED: '+after.issues.join('; '));
+    return {...details,integrity:after,overwrittenBackup:backup,executable:true,
+      nextAction:'Issue a new run-scoped capability challenge; never reuse the restored expired attestation'};
+  };
+  return dryRun ? execute() : withRunLock(resolved.runDir,execute);
+}
+
 export function reopenBlockedRun(projectDir, runRef = 'latest', {
   reason,
   evidence = [],
@@ -1228,11 +1386,15 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
     }
     const integrity = assertRunIntegrity(resolved.runDir, run);
     if (!integrity.ok) throw new Error(`Run integrity check failed:\n- ${integrity.issues.join('\n- ')}`);
-    if (!isRecoverableBlocked(run)) {
+    const blockedCheckpoint = run.stopReason?.stage === 'INTEGRATED'
+      ? readCheckpointIfPresent(resolved.runDir, run.checkpointCount, 'INTEGRATED')
+      : null;
+    const recoveryContext = { integratedCheckpoint: blockedCheckpoint, requireCheckpoint: true };
+    if (!isRecoverableBlocked(run, recoveryContext)) {
       throw new Error(`Blocked run is not recoverable from an explicitly supported external condition: ${run.stopReason?.code ?? '(missing code)'}`);
     }
 
-    const needsScopedCoverageRecovery=isScopedDualFormatCoverageBlocked(run);
+    const needsScopedCoverageRecovery=isScopedDualFormatCoverageBlocked(run, recoveryContext);
     if (!needsScopedCoverageRecovery && dualFormatBatchRecovery)
       throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_WRONG_BLOCKER');
     let scopedRecovery=null;
@@ -1240,13 +1402,13 @@ export function reopenBlockedRun(projectDir, runRef = 'latest', {
       if (typeof dualFormatBatchRecovery?.manifest !== 'string' ||
           !dualFormatBatchRecovery.manifest.trim())
         throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_MANIFEST_REQUIRED');
-      const blockedCheckpoint=readJson(checkpointFile(
-        resolved.runDir,run.checkpointCount,'INTEGRATED'));
       const currentSource=gitSourceSnapshot(resolvedProject);
       if (blockedCheckpoint.stage!=='INTEGRATED' ||
           blockedCheckpoint.outcome!=='BLOCKED' ||
           blockedCheckpoint.note!==run.stopReason.reason ||
-          blockedCheckpoint.source?.head!==currentSource.head)
+          blockedCheckpoint.source?.head!==currentSource.head ||
+          !isLegacyDualFormatCoverageCheckpoint(blockedCheckpoint) ||
+          blockedCheckpoint.metadata?.dualFormatManifest!==dualFormatBatchRecovery.manifest)
         throw new Error('NARRATIVE_DUAL_FORMAT_RECOVERY_BLOCKED_CHECKPOINT_CHANGED');
       const expectedBatchOutputs=latestGeneratingBatchOutputChecks(resolved.runDir,run.cycle);
       scopedRecovery=verifyNarrativeDualFormatArt(

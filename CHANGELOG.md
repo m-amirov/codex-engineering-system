@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.5.40 — 2026-10-18: Scoped verified-art reuse
+
+- Correct narrative `VERIFIED_EXISTING_ART_REUSE`: independently accepted, SHA-256-verified dual-format art for a positive scene subset can pass `REUSE_SCOPE` without requiring full-episode coverage. This is explicitly **not** episode-final/release acceptance.
+- Check the exact reused PNG set against the immutable GENERATING reuse contract on every integration/acceptance; do not allow later checkpoints to swap reuse manifests or bypass pixel/provenance/source checks.
+- Continue rejecting stale/missing/extra assets, missing Web/runtime acceptance, unknown scene IDs and false release claims. Add regression coverage.
+
+
+## 0.5.39 — 2026-10-18: Byte-exact legacy capability recovery
+
+- Add guarded `ceos capability-recover RUN_ID [--apply]` for the historical single-file multi-cycle attestation overwrite, with dry-run as default.
+- Reconstruct only from a consumed challenge whose canonical serialized attestation exactly matches the generating checkpoint SHA-256; fail closed on other integrity problems and incompatible evidence. Preserve overwritten bytes in a forensic backup before restoration; never rewrite checkpoints or grant art acceptance.
+- Add regression tests covering successful active two-cycle repair and unrelated integrity rejection.
+
+
+## 0.5.38 — 2026-10-18: Immutable capability attestations
+
+- Store every image-generation capability attestation in a unique write-once challenge file. An independent latest pointer supports fresh multi-cycle attestations without rewriting historical evidence pinned by GENERATING checkpoints.
+- Keep legacy singleton compatibility and reject integrity-damaged runs before issuing/consuming further challenges; no automatic checkpoint rewrite or art acceptance.
+- Add multi-cycle, tampering and legacy-compatibility regression tests.
+
+
+## 0.5.37 — 2026-10-17: Continue evidence-only handoff
+
+- `continue` now revalidates source-bound contract and mechanical receipt before exempting their exact untracked evidence from the Git dirty-worktree block; supported revalidation batch manifests must independently match the receipt's entire SHA-256-pinned PNG set.
+- Kept tracked/staged source edits, malformed or unknown evidence, stale source HEAD and missing artistic approval fail-closed. Added direct continuation regression tests. No implicit commit, publication or generation.
+
+
+## 0.5.36 — 2026-10-17
+
+- Added source-bound historical art revalidation for dependency-drifted acceptance ledgers. The contract verifies the historical ledger, dependency snapshots, current graph mappings, PNG bytes and original Web/runtime/mechanical acceptance receipts without mutating historical evidence.
+- `art-progress` and `continue --mode inspect` treat one confirmed revalidation contract plus its historical ledger as one progress chain; conflicting revalidation indexes remain fail-closed and deferred S24–S26 stay `MECHANICAL_ONLY_NOT_ART_ACCEPTED`.
+- `ceos continue` and run status now resolve a unique short run-id suffix (for example `f2c045`) and fail closed when that suffix matches multiple runs.
+- Preserved checkpoint-qualified recovery classification for legacy `INTEGRATED` full-episode coverage blockers.
+
+## Unreleased
+
+- Added source-bound historical art revalidation for dependency-drifted
+  acceptance ledgers. The new contract compares old/current JSON records,
+  verifies current graph mappings and PNG bytes, keeps deferred pairs separate,
+  and fails closed on visual or evidence drift without mutating historical
+  ledgers or invoking generation.
+
 ## 0.5.35 — 2026-10-17
 
 - Added bounded `BATCH_ONLY` dual-format verification for new narrative production-art integration. It still validates actual authored scenes in the graph, source HEAD, both independent portrait/desktop PNGs and exact full coverage of the hash-pinned GENERATING output set, but does not require the other 14 ungenerated EP2 scenes or imply final episode acceptance.

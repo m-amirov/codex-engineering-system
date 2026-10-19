@@ -14,7 +14,8 @@ import {
   refreshRunCapabilities,
   reopenBlockedRun,
   inspectBlockedRunRecovery,
-  resumeRun
+  resumeRun,
+  resolveRun
 } from '../src/execution-engine.mjs';
 
 function tempProject() {
@@ -192,6 +193,22 @@ function passMetadata(overrides = {}) {
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
+
+test('run references resolve a unique suffix and fail closed on an ambiguous suffix', () => {
+  const project = tempProject();
+  const root = path.join(project, '.ceos-runs');
+  const writeRun = runId => {
+    const dir = path.join(root, runId);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'run.json'), JSON.stringify({ runId, pipeline: 'production-art' }));
+  };
+
+  writeRun('2026-10-16T15-16-26-992Z-production-art-f2c045');
+  assert.equal(resolveRun(project, 'f2c045').run.runId, '2026-10-16T15-16-26-992Z-production-art-f2c045');
+
+  writeRun('2026-10-17T15-16-26-992Z-production-art-f2c045');
+  assert.throws(() => resolveRun(project, 'f2c045'), /Ambiguous run reference: f2c045/);
+});
 
 function blockedProductionRun(project, { maxCycles = 3, reason = 'mandatory independent Web High art-direction review unavailable after transport failure' } = {}) {
   const result = createRun(project, 'production-art', {
@@ -745,7 +762,7 @@ test('narrative existing-art reuse also validates dual-format scene mapping', ()
   fs.writeFileSync(path.join(project, 'config', 'narrative-game.local.json'), JSON.stringify({
     profile: 'narrative-game', enabled: true, modelPath: 'narrative/graph.json'
   }));
-  fs.writeFileSync(path.join(project, 'narrative', 'graph.json'), JSON.stringify({ scenes: [{ id: 'S01', episode: 1 }] }));
+  fs.writeFileSync(path.join(project, 'narrative', 'graph.json'), JSON.stringify({ scenes: [{ id: 'S01', episode: 1 }, { id: 'S02', episode: 1 }] }));
 
   const portrait = path.join(project, 'art', 'scene-portrait.png');
   const desktop = path.join(project, 'art', 'scene-desktop.png');
@@ -785,6 +802,18 @@ test('narrative existing-art reuse also validates dual-format scene mapping', ()
     stage: 'GENERATING', metadata: { existingArtReuse: contract }
   });
   assert.equal(result.run.nextStage, 'INTEGRATED');
+  const integrated=recordCheckpoint(project,start.run.runId,{
+    stage:'INTEGRATED',artifacts:['dual-format.json'],
+    metadata:{dualFormatManifest:'dual-format.json'}
+  });
+  assert.equal(integrated.run.nextStage,'VISUAL_VERIFIED');
+  const cpFile=fs.readdirSync(path.join(start.runDir,'checkpoints'))
+    .find(name=>name.endsWith('-integrated.json'));
+  const cp=JSON.parse(fs.readFileSync(path.join(start.runDir,'checkpoints',cpFile),'utf8'));
+  assert.equal(cp.metadata.dualFormatGate.coverageMode,'REUSE_SCOPE');
+  assert.equal(cp.metadata.dualFormatGate.fullEpisodeCovered,false);
+  assert.equal(cp.metadata.dualFormatGate.episodeFinalAcceptance,'NOT_VERIFIED');
+  assert.equal(cp.metadata.dualFormatGate.variantFilesChecked,2);
 });
 
 test('narrative dependency-based reuse carries currentness through integration', () => {
@@ -954,4 +983,66 @@ test('only legacy scoped INTEGRATED coverage terminal qualifies for explicit dua
   ]) {
     assert.equal(inspectBlockedRunRecovery({...base,...mutation}).reopenSupported,false);
   }
+});
+
+test('legacy S24-S26-style coverage blocker is classified from the INTEGRATED checkpoint metadata',()=>{
+  const run={pipeline:'production-art',artMode:'NEW_GENERATION',
+    narrativeDualFormatRequired:true,state:'BLOCKED',verdict:'BLOCKED',
+    stopReason:{code:'STAGE_BLOCKED',stage:'INTEGRATED',
+      reason:'S24-S26 batch integration evidence is complete, but the full-EP2 coverage gate blocks INTEGRATED.'}};
+  const integratedCheckpoint={
+    stage:'INTEGRATED',outcome:'BLOCKED',note:run.stopReason.reason,
+    source:{head:'a'.repeat(40)},
+    metadata:{
+      blockerCode:'NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE',
+      dualFormatGate:{
+        verificationMode:'BATCH_INTEGRATION',
+        errors:['NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE']
+      }
+    }
+  };
+  assert.equal(inspectBlockedRunRecovery(run,{integratedCheckpoint}).reopenSupported,true);
+});
+
+test('checkpoint-qualified BATCH_ONLY recovery rejects unconfirmed legacy coverage metadata',()=>{
+  const run={pipeline:'production-art',artMode:'NEW_GENERATION',
+    narrativeDualFormatRequired:true,state:'BLOCKED',verdict:'BLOCKED',
+    stopReason:{code:'STAGE_BLOCKED',stage:'INTEGRATED',
+      reason:'S24-S26 batch integration evidence is complete, but the full-EP2 coverage gate blocks INTEGRATED.'}};
+  const checkpoint={
+    stage:'INTEGRATED',outcome:'BLOCKED',note:run.stopReason.reason,
+    source:{head:'a'.repeat(40)},
+    metadata:{
+      blockerCode:'NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE',
+      dualFormatManifest:'batch.json',
+      dualFormatGate:{verificationMode:'BATCH_INTEGRATION',errors:['NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE']}
+    }
+  };
+  for (const mutation of [
+    {metadata:{...checkpoint.metadata,blockerCode:'ART_SCENE_EXTRA'}},
+    {metadata:{...checkpoint.metadata,dualFormatGate:{...checkpoint.metadata.dualFormatGate,verificationMode:'FULL_EPISODE'}}},
+    {metadata:{...checkpoint.metadata,dualFormatGate:{...checkpoint.metadata.dualFormatGate,errors:['ART_SCENE_EXTRA']}}},
+    {stage:'GENERATING'}
+  ]) {
+    assert.equal(inspectBlockedRunRecovery(run,{integratedCheckpoint:{...checkpoint,...mutation},requireCheckpoint:true}).reopenSupported,false);
+  }
+});
+
+test('scoped recovery rejects a manifest that is not bound to the legacy checkpoint',()=>{
+  const project=gitProject();
+  fs.mkdirSync(path.join(project,'config'),{recursive:true});
+  fs.mkdirSync(path.join(project,'narrative'),{recursive:true});
+  fs.writeFileSync(path.join(project,'config','narrative-game.local.json'),JSON.stringify({profile:'narrative-game',enabled:true,modelPath:'narrative/graph.json'}));
+  fs.writeFileSync(path.join(project,'narrative','graph.json'),JSON.stringify({schemaVersion:1,scenes:[{id:'S01',episode:1}]}));
+  const start=createRun(project,'production-art',{scope:scope(),capabilities:caps(project,{image:'unknown'})});
+  const runFile=path.join(start.runDir,'run.json');
+  const run=JSON.parse(fs.readFileSync(runFile,'utf8'));
+  const reason='S24-S26 batch integration evidence is complete, but the full-EP2 coverage gate blocks INTEGRATED.';
+  run.state='BLOCKED'; run.verdict='BLOCKED'; run.nextStage=null; run.completedAt=new Date().toISOString(); run.checkpointCount=18;
+  run.stopReason={code:'STAGE_BLOCKED',stage:'INTEGRATED',reason};
+  const checkpoint={index:18,stage:'INTEGRATED',outcome:'BLOCKED',note:reason,source:{available:true,head:start.run.sourceAtStart.head},metadata:{blockerCode:'NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE',dualFormatManifest:'correct.json',dualFormatGate:{verificationMode:'BATCH_INTEGRATION',errors:['NARRATIVE_DUAL_FORMAT_FULL_EPISODE_COVERAGE']}},artifacts:[]};
+  fs.mkdirSync(path.join(start.runDir,'checkpoints'),{recursive:true});
+  fs.writeFileSync(path.join(start.runDir,'checkpoints','018-integrated.json'),JSON.stringify(checkpoint,null,2));
+  fs.writeFileSync(runFile,JSON.stringify(run,null,2));
+  assert.throws(()=>reopenBlockedRun(project,start.run.runId,{reason:'wrong manifest',dualFormatBatchRecovery:{manifest:'wrong.json'}}),/NARRATIVE_DUAL_FORMAT_RECOVERY_BLOCKED_CHECKPOINT_CHANGED/);
 });

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { decodeProductionPng } from './art-output-gate.mjs';
+import { inspectSourceBoundRevalidation, inspectWebHighAcceptance } from './source-bound-revalidation.mjs';
 
 const HASH = /^[a-f0-9]{64}$/i;
 const safeId = x => typeof x === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(x);
@@ -129,11 +130,16 @@ function inspectLegacyStage9Ledger(project, ledger) {
     usedEvidence.add(group?.webReceipt?.path);
     const web = readProjectJson(project, group?.webReceipt?.path, group?.webReceipt?.sha256, problems, tag + '_WEB_HIGH');
     if (!web) problems.push(tag + '_WEB_HIGH_MISSING');
-    else if (web.status !== 'PASS' || !text(web.reviewTraceId) || web.actualPixelsReceived !== true ||
-        !Array.isArray(web.evidenceRefs) || !web.evidenceRefs.length ||
-        !Array.isArray(web.receivedEvidenceRefs) ||
-        !web.evidenceRefs.every(ref => web.receivedEvidenceRefs.includes(ref)))
-      problems.push(tag + '_WEB_HIGH_NOT_ACCEPTED');
+    else {
+      const webCheck = inspectWebHighAcceptance(project, group.webReceipt, web, {
+        expectedSourceHead: ledger.currentHead,
+        expectedScopeGroups: (group.pairs ?? []).map(pair => [pair,
+          group.pairsDetail?.find(item => item?.id === pair)?.sceneId].filter(text)),
+        expectedAssets: (group.pairsDetail ?? []).flatMap(detail => detail?.assets ?? [])
+      });
+      if (!webCheck.ok)
+        problems.push(tag + '_WEB_HIGH_NOT_ACCEPTED', ...webCheck.errors.map(error => tag + '_' + error));
+    }
 
     if (usedEvidence.has(group?.runtimeReceipt?.path)) problems.push(tag + '_DUPLICATE_RUNTIME_RECEIPT');
     usedEvidence.add(group?.runtimeReceipt?.path);
@@ -202,6 +208,13 @@ export function discoverArtProgress(projectDir, requestedPath = null) {
   const project = fs.realpathSync(path.resolve(projectDir));
   if (requestedPath !== null && requestedPath !== undefined) return {indexPath:String(requestedPath),candidates:[String(requestedPath)]};
   const candidates = discoverProgressFiles(project);
+  const revalidations = candidates.filter(candidate => {
+    try {
+      const bytes = fs.readFileSync(path.resolve(project, candidate));
+      return JSON.parse(bytes.toString('utf8'))?.kind === 'STAGE9_4_SOURCE_BOUND_REVALIDATION';
+    } catch { return false; }
+  });
+  if (revalidations.length === 1) return { indexPath: revalidations[0], candidates };
   return {indexPath:candidates.length === 1 ? candidates[0] : null,candidates};
 }
 
@@ -235,6 +248,8 @@ export function inspectArtProgress(projectDir, indexPath) {
     if (!indexFile.startsWith(project + path.sep)) throw new Error('out of project');
     index = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
   } catch { problems.push('INDEX_UNREADABLE'); return block(); }
+  if (index?.kind === 'STAGE9_4_SOURCE_BOUND_REVALIDATION')
+    return inspectSourceBoundRevalidation(project, indexPath);
   if (index?.schemaVersion !== 1 || !index.plan || !Array.isArray(index.batches)) {
     if (index?.kind === 'STAGE9_4_SOURCE_BOUND_ACCEPTANCE_LEDGER')
       return inspectLegacyStage9Ledger(project,index);
@@ -282,20 +297,23 @@ export function inspectArtProgress(projectDir, indexPath) {
            !Array.isArray(receipt.unresolvedFindings) || receipt.unresolvedFindings.length)
         problems.push(tag + '_ART_ACCEPTANCE_INCOMPLETE');
       const web = receipt.webHighAcceptance;
-      if (web?.reviewTraceId && usedWebReviewIds.has(web.reviewTraceId))
-        problems.push(tag + '_WEB_HIGH_REVIEW_DUPLICATED');
-      if (web?.reviewTraceId) usedWebReviewIds.add(web.reviewTraceId);
-      if (!web || web.status !== 'PASS' || !text(web.reviewTraceId) || web.actualPixelsReceived !== true ||
-          !Array.isArray(web.evidenceRefs) || !web.evidenceRefs.length ||
-          !Array.isArray(web.receivedEvidenceRefs) ||
-          !web.evidenceRefs.every(ref => web.receivedEvidenceRefs.includes(ref)))
-        problems.push(tag + '_INDEPENDENT_WEB_HIGH_MISSING');
       const scoped = receipt.scope?.map(s => s.pair);
       if (!Array.isArray(scoped) || scoped.length !== pairs.length ||
           !unique(scoped) || scoped.some(x => !pairs.includes(x)))
         problems.push(tag + '_RECEIPT_SCOPE_MISMATCH');
       const verified = receipt.reviewedItems;
       const images = receipt.pixels?.assets;
+      const webCheck = inspectWebHighAcceptance(project, batch.receipt, web, {
+        expectedSourceHead: receipt.sourceBase,
+        expectedScopeGroups: Array.isArray(receipt.scope)
+          ? receipt.scope.map(item => [item?.sceneId, item?.pair].filter(text)) : [],
+        expectedAssets: Array.isArray(images) ? images : []
+      });
+      if (webCheck.identity && usedWebReviewIds.has(webCheck.identity))
+        problems.push(tag + '_WEB_HIGH_REVIEW_DUPLICATED');
+      if (webCheck.identity) usedWebReviewIds.add(webCheck.identity);
+      if (!webCheck.ok)
+        problems.push(tag + '_INDEPENDENT_WEB_HIGH_MISSING', ...webCheck.errors.map(error => tag + '_' + error));
       if (!Array.isArray(verified) || !Array.isArray(images)) {
         problems.push(tag + '_PIXEL_EVIDENCE_MISSING');
       } else {

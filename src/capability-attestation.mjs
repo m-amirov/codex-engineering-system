@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { resolveRun } from './execution-engine.mjs';
+import { resolveRun, resumeRun } from './execution-engine.mjs';
 import { runtimeContextPaths, readRuntimeContext } from './runtime-context.mjs';
 
 const PRESENCE = new Set(['PRESENT', 'ABSENT']);
@@ -54,8 +54,39 @@ function challengeFile(runDir, challengeId) {
   return path.join(challengeRoot(runDir), 'challenges', `${challengeId}.json`);
 }
 
-function attestationFile(runDir) {
+function legacyAttestationFile(runDir) {
   return path.join(challengeRoot(runDir), `${CAPABILITY}.json`);
+}
+
+function attestationsDir(runDir) {
+  return path.join(challengeRoot(runDir), 'attestations');
+}
+
+function immutableAttestationFile(runDir, challengeId) {
+  if (!/^cap-[a-f0-9]{20}$/.test(String(challengeId))) throw new Error('INVALID_CAPABILITY_CHALLENGE_ID');
+  return path.join(attestationsDir(runDir), `${challengeId}.json`);
+}
+
+function currentAttestationFile(runDir) {
+  return path.join(challengeRoot(runDir), 'current.json');
+}
+
+// Immutable attestations may be embedded in GENERATING checkpoint artifacts.
+// They must never be rewritten when a later cycle issues another challenge.
+function writeNewJson(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+}
+
+function latestAttestationPath(runDir) {
+  const pointer = currentAttestationFile(runDir);
+  if (!fs.existsSync(pointer)) return legacyAttestationFile(runDir);
+  const current = readJson(pointer);
+  if (current?.schemaVersion !== 1 ||
+      current.capability !== CAPABILITY ||
+      !/^cap-[a-f0-9]{20}$/.test(String(current.challengeId)))
+    throw new Error('invalid current capability attestation pointer');
+  return immutableAttestationFile(runDir,current.challengeId);
 }
 
 function normalizePresence(value) {
@@ -82,6 +113,8 @@ export function beginCapabilityChallenge(projectDir, runRef = 'latest', {
 
   const context = currentContext({ homeDir, codexHome, projectDir });
   const resolved = resolveRun(projectDir, runRef);
+  const integrity = resumeRun(projectDir,resolved.run.runId).integrity;
+  if (!integrity.ok) throw new Error('INTEGRITY_BLOCKED: ' + integrity.issues.join('; '));
   if (resolved.run.pipeline !== 'production-art') throw new Error('native image capability challenges are only valid for production-art runs');
   if (resolved.run.verdict) throw new Error(`run is already terminal: ${resolved.run.verdict}`);
   if (resolved.run.nextStage !== 'GENERATING') throw new Error(`capability challenge is valid only immediately before GENERATING; current next stage is ${resolved.run.nextStage}`);
@@ -137,6 +170,8 @@ export function respondCapabilityChallenge(projectDir, runRef = 'latest', {
 
   const context = currentContext({ homeDir, codexHome, projectDir });
   const resolved = resolveRun(projectDir, runRef);
+  const integrity = resumeRun(projectDir,resolved.run.runId).integrity;
+  if (!integrity.ok) throw new Error('INTEGRITY_BLOCKED: ' + integrity.issues.join('; '));
   const file = challengeFile(resolved.runDir, String(challengeId));
   if (!fs.existsSync(file)) throw new Error(`capability challenge not found: ${challengeId}`);
   const challenge = readJson(file);
@@ -173,9 +208,13 @@ export function respondCapabilityChallenge(projectDir, runRef = 'latest', {
     serviceEvidence: serviceEvidence ? String(serviceEvidence).trim() : null
   };
 
-  atomicWriteJson(attestationFile(resolved.runDir), attestation);
+  const immutableFile=immutableAttestationFile(resolved.runDir, challenge.challengeId);
+  writeNewJson(immutableFile, attestation);
   atomicWriteJson(file, { ...challenge, status: 'CONSUMED', consumedAt: observedAt });
-  return { file: attestationFile(resolved.runDir), attestation };
+  atomicWriteJson(currentAttestationFile(resolved.runDir), {
+    schemaVersion: 1, capability: CAPABILITY, challengeId: challenge.challengeId
+  });
+  return { file: immutableFile, attestation };
 }
 
 export function readRunCapabilityAttestation(projectDir, runRef = 'latest', {
@@ -191,7 +230,11 @@ export function readRunCapabilityAttestation(projectDir, runRef = 'latest', {
     return { valid: false, reason: error.message, file: null, attestation: null };
   }
 
-  const file = attestationFile(resolved.runDir);
+  let file;
+  try { file = latestAttestationPath(resolved.runDir); }
+  catch (error) {
+    return { valid:false, reason:error.message, file:null, attestation:null };
+  }
   if (!fs.existsSync(file)) return { valid: false, reason: 'no run-scoped image-generation attestation', file, attestation: null };
 
   let attestation;

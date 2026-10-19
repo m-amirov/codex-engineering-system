@@ -306,6 +306,9 @@ test('multiple active runs require explicit disambiguation',t=>{
   const selected=planContinuation(project,{runRef:first.runId,mode:'guided'});
   assert.equal(selected.runId,first.runId);
   assert.equal(selected.status,'READY_FOR_CODEX');
+  const suffix=planContinuation(project,{runRef:first.runId.slice(-6),mode:'inspect'});
+  assert.equal(suffix.runId,first.runId);
+  assert.equal(suffix.status,'READY_FOR_CODEX');
 });
 
 test('CLI continue --dry-run is stable, no mutation; explicit claim and release work',t=>{

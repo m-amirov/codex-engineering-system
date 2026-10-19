@@ -68,6 +68,8 @@ jobs:
         run: |
           node --test .\tests\run-relocation.test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test .\tests\source-bound-revalidation.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Pre-install worktree must be clean
         shell: powershell
         run: |
