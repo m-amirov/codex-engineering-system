@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
-import { assessNarrativeArtFindings, NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
+import { assessNarrativeArtFindings, NARRATIVE_ART_ACCEPTANCE_V2, NARRATIVE_ART_STORY_FIRST_GUIDANCE } from './narrative-art-acceptance.mjs';
 import { classifyWebTransportFailure } from './web-transport-failure.mjs';
 
 export const DEV_WEB_HIGH_MODEL = 'chatgpt-web/gpt-6-sol';
@@ -222,6 +222,8 @@ function buildPrompt(request) {
     'You have no local filesystem, terminal, MCP, Stable bridge, or repository access. Review only the supplied text and attached pixels.',
     'Do not claim to have used tools or inspected files. Do not invent missing pixels.',
     'This is a source-bound visual acceptance for NARRATIVE_ART_ACCEPTANCE_V2.',
+    'First determine whether the complete player-facing story is understandable with the supplied dialogue and runtime frame. Do not treat this as an illustration checklist.',
+    ...NARRATIVE_ART_STORY_FIRST_GUIDANCE,
     `Scene ID: ${request.sceneId}`,
     `Source HEAD: ${request.sourceHead}`,
     'Source-bound context:',
@@ -249,7 +251,7 @@ function buildPrompt(request) {
       findings: [],
       unresolved: []
     }),
-    'Observe both the original PNG and the runtime capture separately. Copy the supplied sourceHead, refs, paths and SHA-256 values exactly; never invent or infer an observation for pixels you did not actually see. For any finding use the NARRATIVE_ART_ACCEPTANCE_V2 fields: id, severity, status, impactCode, authoredCue, observation, playerImpact, evidenceRef, actualPixelsReceived, and materialPlayerImpact when relevant.'
+    'Observe both the original PNG and the runtime capture separately. Copy the supplied sourceHead, refs, paths and SHA-256 values exactly; never invent or infer an observation for pixels you did not actually see. For any finding use the NARRATIVE_ART_ACCEPTANCE_V2 fields: id, severity, status, impactCode, authoredCue, observation, playerImpact, evidenceRef, actualPixelsReceived, visualRequired (if directly relevant), and materialPlayerImpact when relevant. If the visuals do not need to depict a narrated action, classify that absence as nonblocking, not as a visual contradiction.'
   ].join('\n');
 }
 
