@@ -14,6 +14,34 @@ present, what they do, where/when the event happens, and what they need
 to notice**. It is *not* pixel-perfect consistency between incidental
 decorations, nor a competition for aesthetic preference.
 
+## Dialogue-first comprehension (narrative games)
+
+**Default artistic interpretation for future independent reviews:** assess the
+*combined player experience*, including source-bound dialogue, narration, the
+original CG and the player-facing runtime screenshot. A CG is not a literal
+illustration checklist. If the dialogue makes an action understandable, absence
+of a separate visual depiction is normally **not a P1 defect**.
+
+For example, a character removing a romantic label from a calendar while
+retaining work commitments may be explained in dialogue without a visible
+close-up of the edited calendar. It is blocking only if the authored scene
+requires the change to be *seen* or the CG actually contradicts the action in
+a way that materially misleads the player. Wrong actor/cast, meaningful
+location and genuine narrative contradictions remain blocking.
+
+Independent reviews should report P0-P3 exclusively, not major/minor.
+Advisory P2/P3 findings belong in `findings`, not `unresolved`, and
+permit an explicit independent `PASS`. Absence of a screenshot or image
+receipt never qualifies. The reviewer must not blindly accept the owner's
+opinion, and a previously recorded `REWORK` must not be overwritten.
+
+For a genuinely missing visual cue, a reviewer may explicitly record
+`visualRequired:false` and `materialPlayerImpact:false`; such a claim
+cannot coexist with an open blocking P1 for a missing prop or unillustrated
+action. CEOS rejects the inconsistent finding instead of manufacturing a
+PASS. This optional metadata applies to new findings only and does not
+retroactively invalidate historical reviews.
+
 ## Blocking classification (actual runtime first)
 
 - **P0:** wrong critical cast/action, unusable primary controls, broken
