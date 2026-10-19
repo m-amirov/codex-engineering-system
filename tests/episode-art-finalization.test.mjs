@@ -29,12 +29,26 @@ function fixture(t) {
   runGit(project,['init','-q']);
   runGit(project,['config','user.email','test@example.com']);
   runGit(project,['config','user.name','CEOS Test']);
-  const source = put(project,'narrative/assets.json',{schemaVersion:1,assets:[]});
-  runGit(project,['add','narrative/assets.json']);
-  runGit(project,['commit','-qm','baseline narrative sources']);
-  const head=runGit(project,['rev-parse','HEAD']);
   const original=put(project,'artifacts/images/S24-portrait.png',png(768,1152));
   const landscape=put(project,'artifacts/images/S24-landscape.png',png(1280,720));
+  const source = put(project,'narrative/assets.json',{schemaVersion:1,assets:{
+    ep2_s24_asset:{
+      kind:'production-cg',
+      variants:{
+        portrait:{src:'/artifacts/images/S24-portrait.png',sha256:original.sha256,dimensions:{width:768,height:1152}},
+        landscape:{src:'/artifacts/images/S24-landscape.png',sha256:landscape.sha256,dimensions:{width:1280,height:720}}
+      }
+    }
+  }});
+  const episode = put(project,'narrative/episodes/ep-02.json',{
+    episode:2,scenes:[{id:'S24',assetId:'ep2_s24_asset'}]
+  });
+  const graph = put(project,'narrative/graph.json',{
+    scenes:[{id:'S24',assetId:'ep2_s24_asset'}]
+  });
+  runGit(project,['add','narrative/assets.json','narrative/episodes/ep-02.json','narrative/graph.json']);
+  runGit(project,['commit','-qm','baseline narrative sources']);
+  const head=runGit(project,['rev-parse','HEAD']);
   const capture=put(project,'artifacts/runtime/S24-390x844.png',png(768,1152));
   const refs=['S24-original','S24-runtime'];
   const visualEvidence=[
@@ -53,26 +67,42 @@ function fixture(t) {
   const receipt=put(project,'artifacts/evidence/S24-review.json',review);
   const runtime=put(project,'artifacts/evidence/runtime.json',{
     status:'PASS_RUNTIME',sourceHead:head,consoleErrors:[],requestFailures:[],httpErrors:[],
-    captures:[{screenshot:capture.path,screenshotSha256:capture.sha256}]
+    captures:[{sceneId:'S24',assetId:'ep2_s24_asset',format:'portrait',source:original.path,
+      screenshot:capture.path,screenshotSha256:capture.sha256}]
   });
   const narrative=put(project,'artifacts/evidence/narrative.json',{
     status:'PASS',sourceHead:head,validatedScenes:['S24'],errors:[]
   });
   const reconciliation=put(project,'artifacts/evidence/reconciliation.json',{
-    status:'PASS',sourceHead:head
+    status:'PASS',sourceHead:head,acceptedScenes:[{
+      sceneId:'S24',assetId:'ep2_s24_asset',receipt:receipt.path,receiptSha256:receipt.sha256,
+      receiptSourceHead:head,provenance:'CURRENT_DEV_ONLY_WEB_HIGH'
+    }]
   });
+  const rights=put(project,'artifacts/evidence/rights.json',{
+    entries:[
+      {path:original.path,sha256:original.sha256,approvalStatus:'PASS',licenseOrPermission:'Owner-approved project use.'},
+      {path:landscape.path,sha256:landscape.sha256,approvalStatus:'PASS',licenseOrPermission:'Owner-approved project use.'}
+    ]
+  });
+  const narrativeInventory={
+    episode:{path:episode.path,sha256:episode.sha256},
+    graph:{path:graph.path,sha256:graph.sha256},
+    assets:{path:source.path,sha256:source.sha256}
+  };
   const manifest={
     schemaVersion:1,kind:'EPISODE_ART_FINALIZATION_V1',episodeId:'EP2',
-    sourceHead:head,sourceDependencies:[source],expectedScenes:1,expectedPairs:1,
-    expectedRuntimeCaptures:1,scenes:[{id:'S24',pairId:'ep2_s24'}],
-    pairs:[{id:'ep2_s24',portrait:original,landscape}],
+    sourceHead:head,sourceDependencies:[source,episode,graph],authoritativeInventory:narrativeInventory,
+    expectedScenes:1,expectedPairs:1,expectedRuntimeCaptures:1,
+    scenes:[{id:'S24',assetId:'ep2_s24_asset',pairId:'ep2_s24'}],
+    pairs:[{id:'ep2_s24',assetIds:['ep2_s24_asset'],portrait:original,landscape}],
     progressIndexes:[],reviews:[{receipt,raw}],runtimeReport:runtime,
-    narrativeReport:narrative,reconciliation
+    narrativeReport:narrative,reconciliation,rightsManifest:rights
   };
   const manifestPath='artifacts/episode-finalization.json';
   const save = () => put(project,manifestPath,manifest);
   save();
-  return {project,manifest,manifestPath,save,head,source,raw,receipt,original,landscape,capture,runtime,narrative};
+  return {project,manifest,manifestPath,save,head,source,episode,graph,raw,receipt,original,landscape,capture,runtime,narrative,reconciliation,rights,narrativeInventory};
 }
 
 test('read-only episode art finalization can pass from original bytes and independent reviewer receipts',t=>{
@@ -155,7 +185,59 @@ test('missing scene coverage cannot be inferred from manifest counts',t=>{
   f.save();
   const result=inspectEpisodeArtFinalization(f.project,f.manifestPath);
   assert.equal(result.status,'NOT_VERIFIED');
-  assert.ok(result.problems.some(p=>p.includes('SCENE_MISSING_INDEPENDENT_ACCEPTANCE_S25')));
+  assert.ok(result.problems.includes('MANIFEST_SCENE_INVENTORY_MISMATCH'));
+});
+
+test('authoritative authored inventory rejects a signed-looking manifest subset',t=>{
+  const f=fixture(t);
+  const episode=JSON.parse(fs.readFileSync(rel(f.project,f.episode.path),'utf8'));
+  episode.scenes.push({id:'S25',assetId:'ep2_s24_asset'});
+  const graph=JSON.parse(fs.readFileSync(rel(f.project,f.graph.path),'utf8'));
+  graph.scenes.push({id:'S25',assetId:'ep2_s24_asset'});
+  fs.writeFileSync(rel(f.project,f.episode.path),JSON.stringify(episode));
+  fs.writeFileSync(rel(f.project,f.graph.path),JSON.stringify(graph));
+  runGit(f.project,['add',f.episode.path,f.graph.path]);
+  runGit(f.project,['commit','-qm','authoritative inventory expands']);
+  f.manifest.sourceHead=runGit(f.project,['rev-parse','HEAD']);
+  const episodeRef={path:f.episode.path,sha256:sha(fs.readFileSync(rel(f.project,f.episode.path)))};
+  const graphRef={path:f.graph.path,sha256:sha(fs.readFileSync(rel(f.project,f.graph.path)))};
+  f.manifest.sourceDependencies=[f.source,episodeRef,graphRef];
+  f.manifest.authoritativeInventory={episode:f.manifest.sourceDependencies[1],graph:f.manifest.sourceDependencies[2],assets:f.source};
+  f.save();
+  const result=inspectEpisodeArtFinalization(f.project,f.manifestPath);
+  assert.equal(result.status,'NOT_VERIFIED');
+  assert.ok(result.problems.includes('MANIFEST_SCENE_INVENTORY_MISMATCH'));
+});
+
+test('runtime asset mapping is checked against the authored inventory',t=>{
+  const f=fixture(t);
+  f.manifest.runtimeReport=put(f.project,f.runtime.path,{
+    status:'PASS_RUNTIME',sourceHead:f.head,consoleErrors:[],requestFailures:[],httpErrors:[],
+    captures:[{sceneId:'S24',assetId:'wrong-asset',format:'portrait',source:f.original.path,
+      screenshot:f.capture.path,screenshotSha256:f.capture.sha256}]
+  });
+  f.save();
+  const result=inspectEpisodeArtFinalization(f.project,f.manifestPath);
+  assert.equal(result.status,'NOT_VERIFIED');
+  assert.ok(result.problems.includes('RUNTIME_CAPTURE_0_ASSET_MAPPING_MISMATCH'));
+});
+
+test('production rights must be hash-bound for every accepted image',t=>{
+  const f=fixture(t);
+  f.manifest.rightsManifest=undefined;
+  f.save();
+  const result=inspectEpisodeArtFinalization(f.project,f.manifestPath);
+  assert.equal(result.status,'NOT_VERIFIED');
+  assert.ok(result.problems.includes('RIGHTS_MANIFEST_REQUIRED'));
+});
+
+test('evidence-only commits after the pinned source head remain acceptable',t=>{
+  const f=fixture(t);
+  put(f.project,'artifacts/evidence/post-head-note.json',{kind:'evidence-only'});
+  runGit(f.project,['add','artifacts/evidence/post-head-note.json']);
+  runGit(f.project,['commit','-qm','evidence-only finalization note']);
+  const result=inspectEpisodeArtFinalization(f.project,f.manifestPath);
+  assert.equal(result.status,'PASS_EPISODE_ART_FINALIZATION',result.problems.join('; '));
 });
 
 test('malformed manifests and unsafe paths return NOT_VERIFIED without filesystem mutations',t=>{

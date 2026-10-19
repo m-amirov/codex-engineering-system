@@ -34,17 +34,25 @@ The artifact author must pin **actual** file hashes, not invented values.
   "episodeId": "EP2",
   "sourceHead": "<40-hex narrative baseline HEAD>",
   "sourceDependencies": [
+    {"path":"narrative/episodes/ep-02.json","sha256":"<sha256>"},
+    {"path":"narrative/graph.json","sha256":"<sha256>"},
     {"path":"narrative/assets.json","sha256":"<sha256>"}
   ],
+  "authoritativeInventory": {
+    "episode":{"path":"narrative/episodes/ep-02.json","sha256":"<same sha256>"},
+    "graph":{"path":"narrative/graph.json","sha256":"<same sha256>"},
+    "assets":{"path":"narrative/assets.json","sha256":"<same sha256>"}
+  },
   "expectedScenes": 17,
   "expectedPairs": 16,
   "expectedRuntimeCaptures": 111,
   "scenes": [
-    {"id":"S24","pairId":"ep2_s24"}
+    {"id":"ep2_refusal_response","assetId":"ep2-refusal-response-cg","pairId":"ep2_s24"}
   ],
   "pairs": [
     {
       "id":"ep2_s24",
+      "assetIds":["ep2-refusal-response-cg"],
       "portrait":{"path":"assets/ep2/s24-portrait.png","sha256":"<sha256>"},
       "landscape":{"path":"assets/ep2/s24-landscape.png","sha256":"<sha256>"}
     }
@@ -55,42 +63,55 @@ The artifact author must pin **actual** file hashes, not invented values.
   "reviews": [
     {
       "receipt":{"path":"artifacts/evidence/S24-review.json","sha256":"<sha256>"},
+      "sceneIds":["ep2_refusal_response"],
       "raw":{"path":"artifacts/evidence/S24-review.raw.txt","sha256":"<sha256>"}
     }
   ],
   "runtimeReport":{"path":"artifacts/evidence/runtime.json","sha256":"<sha256>"},
   "narrativeReport":{"path":"artifacts/evidence/narrative-validation.json","sha256":"<sha256>"},
+  "rightsManifest":{"path":"artifacts/evidence/rights-manifest.json","sha256":"<sha256>"},
   "reconciliation":{"path":"artifacts/evidence/ep2-reconciliation.json","sha256":"<sha256>"}
 }
 ```
 
-The snippet is **schematic**; provide all expected scenes and pairs rather
-than just S24. In `sourceDependencies`, include every relevant narrative
-source file (including `narrative/assets.json`). If no historical accepted
-pairs are needed because all scenes have independent current reviews,
-`progressIndexes:[]` is valid. When supplied, each historical progress
-index is revalidated from actual files by the existing `art-progress`
-inspector and contributes only individually verified batch pair IDs.
+The snippet is **schematic**; provide every scene and unique binary pair from
+the authored episode inventory. `authoritativeInventory` pins the episode
+script, graph and assets document; counts or IDs supplied only by the
+finalization manifest are never an authoritative scope. The graph scene ID,
+scene asset ID, asset variant paths and variant SHA-256 values must agree.
+Both `landscape` and legacy `desktop` asset variant names are supported, but
+the logical runtime mapping is always portrait/landscape.
+
+`rightsManifest` is required and must contain a hash-bound permission entry
+for every accepted production PNG. A pending visual-review status is separate
+from rights; denied, blocked, revoked or missing permission is not accepted.
 
 Each `reviews[]` receipt must be a real independent V2 production-art
-acceptance decision with `PASS`, `actualPixelsReceived:true`, complete
-per-image `visualEvidence`, matching source HEAD and refs, and valid P0-P3
-findings. The raw reviewer response must parse as the same decision and
-observations; a made-up JSON wrapper is not a substitute for delivered
-reviewer output. Historical accepted pairs may be covered by separately
-revalidated art-progress; remaining scenes require explicit independent
-reviews. A scene mapped to a historical accepted pair is considered covered
-only because that original pair's batch gate already independently passed.
+acceptance decision linked to the current reconciliation by path and SHA-256.
+Current DEV receipts require the raw reviewer response and exact selected-field
+equality. Existing historical batch formats are supported only when their
+original receipt is hash-pinned by reconciliation, retains provenance, has
+`PASS`, actual-pixel and empty-unresolved evidence, and links to the current
+canonical production bytes. A historical `REWORK`, `BLOCKED`, damaged receipt
+or origin run is never promoted to PASS. `pixelEvidence` is accepted only as
+the existing aggregate receipt format and every item must itself be PASS.
 
 `runtimeReport` requires a machine-readable `status` starting with PASS,
 matching `sourceHead`, empty consoleErrors/requestFailures/httpErrors arrays,
 and one `captures[]` record per expected screenshot. Each record has
-`screenshot` and `screenshotSha256` and points to real PNG bytes.
+`sceneId`, `assetId`, `format`, `source`, `screenshot` and
+`screenshotSha256`; the scene/asset/source tuple is compared with the
+authoritative inventory and points to real PNG bytes.
 
 `narrativeReport` must contain
-`{"status":"PASS","sourceHead":"...","validatedScenes":["Sxx"],"errors":[]}`
-for exactly all inventory scenes. `reconciliation` must be an existing
-hash-pinned PASS artifact, not a fabricated substitute for scene coverage.
+`{"status":"PASS","sourceHead":"...","validatedScenes":["scene-id"],"errors":[]}`
+for exactly all inventory scenes, or a reconciliation artifact with equivalent
+current narrative technical evidence. `reconciliation` must be an existing
+hash-pinned artifact whose accepted scene records link every authoritative
+scene to its original receipt, receipt source HEAD and provenance. The allowed
+`SCENE_LEVEL_ACCEPTANCE_COMPLETE_EPISODE_WIDE_NOT_VERIFIED` status records
+that the old episode-wide gate was not verified; it is not itself a final
+PASS and cannot bypass the per-scene receipt checks.
 The manifest does **not** create these reports automatically: produce them
 with existing game-specific validators, then pin their exact output.
 
