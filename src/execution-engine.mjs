@@ -584,7 +584,7 @@ export function resolveRun(projectDir, runRef = 'latest') {
  */
 function recoverResolutionReceiptContract(project, scope) {
   const allowed = ['target','inScope','outOfScope','acceptanceContract',
-    'mutationBoundary','resolutionReceiptContract'];
+    'mutationBoundary','resolutionReceiptContract','webReviewMode','webReviewAssurance'];
   if (Object.keys(scope).some(key => !allowed.includes(key)))
     throw new Error('BLOCKED_RECOVERY_SCOPE_UNSUPPORTED');
   if (!Object.hasOwn(scope,'resolutionReceiptContract')) return null;
@@ -738,6 +738,11 @@ export function createRun(projectDir, pipeline, {
     throw new Error('visual-content assurance requires enhanced Web review mode');
   const normalizedArtMode = normalizeArtMode(pipeline, artMode);
   const normalizedScope = normalizeScope(scope);
+  // Review assurance is part of the immutable run contract. Later
+  // source-bound consumers must not reinterpret a strict run as
+  // visual-content merely because a receipt omits provider identifiers.
+  normalizedScope.webReviewMode = webReviewMode;
+  normalizedScope.webReviewAssurance = webReviewAssurance;
   if (resolutionReceiptContract !== null) {
     const contract = normalizeResolutionReceiptContract(resolutionReceiptContract);
     const source = resolveArtifact(resolvedProject, resolvedProject, contract.sourceEvidence);

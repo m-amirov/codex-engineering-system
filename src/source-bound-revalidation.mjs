@@ -3,6 +3,9 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { decodeProductionPng } from './art-output-gate.mjs';
+import { executionStatus } from './execution-engine.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
+import { validateWebReview } from './web-delegation.mjs';
 
 const HASH = /^[a-f0-9]{64}$/i;
 const HEAD = /^[a-f0-9]{40}$/i;
@@ -41,6 +44,158 @@ function currentHead(project) {
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: project, encoding: 'utf8' }).trim();
   if (!HEAD.test(head)) throw new Error('CURRENT_HEAD_INVALID');
   return head;
+}
+
+function normalizedProjectPath(project, value) {
+  if (!text(value)) return null;
+  const absolute = path.resolve(project, value);
+  const relative = path.relative(path.resolve(project), absolute).split(path.sep).join('/');
+  return safeRelative(relative) ? relative : null;
+}
+
+function artifactPathFromReview(review) {
+  const artifact = review?.evidenceArtifact;
+  return typeof artifact === 'string' ? artifact : artifact?.path;
+}
+
+function visualContentRunContext(project, receiptPath, review) {
+  const artifactPath = artifactPathFromReview(review);
+  const candidatePaths = [...new Set([receiptPath, artifactPath].filter(text))];
+  const runIds = new Set();
+  for (const candidate of candidatePaths) {
+    const relative = normalizedProjectPath(project, candidate);
+    const match = relative && /^\.ceos-runs\/([A-Za-z0-9][A-Za-z0-9._-]*)\/evidence\/.+/.exec(relative);
+    if (match) runIds.add(match[1]);
+  }
+  if (runIds.size > 1) return { error: 'WEB_HIGH_RUN_REFERENCE_MISMATCH' };
+  if (!runIds.size) return { run: null, runId: null, reviewPath: null, integrity: null };
+
+  const runId = [...runIds][0];
+  let status;
+  try { status = executionStatus(project, runId); }
+  catch { return { error: 'WEB_HIGH_RUN_INTEGRITY_INVALID' }; }
+  if (!status.integrity?.ok) return { error: 'WEB_HIGH_RUN_INTEGRITY_INVALID' };
+
+  const reviewRelative = normalizedProjectPath(project, artifactPath || receiptPath);
+  if (!reviewRelative || !reviewRelative.startsWith(`.ceos-runs/${runId}/evidence/`))
+    return { error: 'WEB_HIGH_RUN_REFERENCE_MISMATCH' };
+  const reviewSha256 = digest(projectBytes(project, reviewRelative));
+  const linked = (status.run.routingTrace?.webReviews ?? []).filter(item => {
+    const eventPath = normalizedProjectPath(project, item?.evidenceArtifact?.path);
+    return eventPath === reviewRelative && String(item?.evidenceArtifact?.sha256 ?? '').toLowerCase() === reviewSha256;
+  });
+  if (linked.length !== 1) return { error: 'WEB_HIGH_RUN_TRACE_MISMATCH', run: status.run,
+    runId, runDir: status.runDir, scopePath: `.ceos-runs/${runId}/scope.json`,
+    reviewPath: reviewRelative, reviewSha256, integrity: status.integrity };
+
+  const trackedFields = [
+    'phase', 'agent', 'taskId', 'reviewTraceId', 'sourceHead', 'status',
+    'artAcceptanceProfile', 'reviewedItems', 'evidenceRefs', 'receivedEvidenceRefs',
+    'actualPixelsReceived', 'decision', 'findings', 'unresolved', 'resolvedFindings', 'visualEvidence'
+  ];
+  for (const key of trackedFields) {
+    if (Object.hasOwn(review, key) && stable(review[key]) !== stable(linked[0][key]))
+      return { error: 'WEB_HIGH_RUN_TRACE_MISMATCH' };
+  }
+  return { run: status.run, runId, runDir: status.runDir, scopePath: `.ceos-runs/${runId}/scope.json`,
+    reviewPath: reviewRelative, reviewSha256, linkedReview: linked[0], integrity: status.integrity };
+}
+
+/**
+ * Validate a persisted Web acceptance without conflating provider-attested strict
+ * reviews with visual-content reviews. Trace-free visual reviews are accepted
+ * only when the receipt is the exact review artifact of an intact, scope-locked
+ * CEOS production-art run whose persisted review mode was visual-content.
+ */
+export function inspectWebHighAcceptance(projectDir, receiptRef, review, {
+  expectedSourceHead = null,
+  expectedScopeGroups = [],
+  expectedAssets = []
+} = {}) {
+  const project = fs.realpathSync(path.resolve(projectDir));
+  const receiptPath = typeof receiptRef === 'string' ? receiptRef : receiptRef?.path;
+  const errors = [];
+  if (!review || typeof review !== 'object' || Array.isArray(review))
+    return { ok: false, assurance: null, identity: null, errors: ['WEB_HIGH_RECEIPT_INVALID'] };
+
+  const linked = visualContentRunContext(project, receiptPath, review);
+  if (linked.error) errors.push(linked.error);
+  const run = linked.run;
+  const assurance = run?.webReviewAssurance ?? review.assurance ?? review.webReviewAssurance ?? 'strict';
+  const explicitlyVisualContent = review.assurance === 'visual-content' || review.webReviewAssurance === 'visual-content';
+  if (!['strict', 'visual-content'].includes(assurance)) errors.push('WEB_HIGH_ASSURANCE_INVALID');
+  if (explicitlyVisualContent && assurance !== 'visual-content') errors.push('WEB_HIGH_ASSURANCE_MISMATCH');
+  if (assurance === 'visual-content' && !run) errors.push('WEB_HIGH_CONTENT_RUN_REQUIRED');
+
+  if (review.status !== 'PASS' || review.actualPixelsReceived !== true ||
+      !HEAD.test(String(review.sourceHead ?? '')) ||
+      (expectedSourceHead && review.sourceHead !== expectedSourceHead) ||
+      !Array.isArray(review.evidenceRefs) || !review.evidenceRefs.length ||
+      !Array.isArray(review.receivedEvidenceRefs) ||
+      !review.evidenceRefs.every(reference => review.receivedEvidenceRefs.includes(reference)))
+    errors.push('WEB_HIGH_RECEIPT_INCOMPLETE');
+
+  if (assurance === 'strict') {
+    if (!text(review.reviewTraceId) || !text(review.taskId)) errors.push('WEB_HIGH_TRACE_OR_TASK_ID_MISSING');
+  } else if (assurance === 'visual-content' && run) {
+    let scope = null;
+    try { scope = JSON.parse(projectBytes(project, linked.scopePath).toString('utf8')); }
+    catch { errors.push('WEB_HIGH_ASSURANCE_NOT_SCOPE_LOCKED'); }
+    if (run.pipeline !== 'production-art' || run.webReviewMode !== 'enhanced' ||
+        run.webDelegationPlan?.pipeline !== 'production-art' ||
+        run.webDelegationPlan?.visual !== true || run.webDelegationPlan?.assurance !== 'visual-content' ||
+        scope?.webReviewMode !== 'enhanced' || scope?.webReviewAssurance !== 'visual-content')
+      errors.push('WEB_HIGH_ASSURANCE_NOT_SCOPE_LOCKED');
+    if (review.phase !== 'acceptance' || review.artAcceptanceProfile !== NARRATIVE_ART_ACCEPTANCE_V2)
+      errors.push('WEB_HIGH_ART_ACCEPTANCE_PROFILE_INVALID');
+    const validation = validateWebReview(review, {
+      pipeline: 'production-art', phase: 'acceptance',
+      currentHead: expectedSourceHead ?? run.sourceAtStart?.head ?? null,
+      visual: true, assurance: 'visual-content',
+      artAcceptanceProfile: NARRATIVE_ART_ACCEPTANCE_V2
+    });
+    for (const issue of validation) errors.push(`WEB_HIGH_REVIEW_INVALID:${issue}`);
+
+    const inScope = new Set(Array.isArray(scope?.inScope) ? scope.inScope : []);
+    if (!expectedScopeGroups.length || expectedScopeGroups.some(group =>
+      !Array.isArray(group) || !group.length || !group.some(id => inScope.has(id))))
+      errors.push('WEB_HIGH_SCOPE_MISMATCH');
+
+    const frames = Array.isArray(review.visualEvidence) ? review.visualEvidence : [];
+    const frameByPath = new Map(frames.map(frame => [normalizedProjectPath(project, frame?.path), frame]));
+    for (const frame of frames) {
+      const relative = normalizedProjectPath(project, frame?.path);
+      if (!relative || !HASH.test(String(frame?.sha256 ?? '')) || !text(frame?.observation) ||
+          frame.observation.trim().length < 20) {
+        errors.push('WEB_HIGH_PIXEL_OBSERVATION_INVALID');
+        continue;
+      }
+      try {
+        if (digest(projectBytes(project, relative)) !== frame.sha256.toLowerCase())
+          errors.push('WEB_HIGH_PIXEL_HASH_MISMATCH');
+      } catch { errors.push('WEB_HIGH_PIXEL_SOURCE_MISSING'); }
+    }
+    for (const asset of expectedAssets) {
+      const relative = normalizedProjectPath(project, asset?.path);
+      const frame = relative && frameByPath.get(relative);
+      if (!frame || String(frame.sha256).toLowerCase() !== String(asset?.sha256 ?? '').toLowerCase())
+        errors.push('WEB_HIGH_PIXEL_SOURCE_MISMATCH');
+    }
+  }
+
+  if (run && !linked.error) {
+    if (assurance === 'visual-content' &&
+        (run.webReviewAssurance !== 'visual-content' || run.webDelegationPlan?.assurance !== 'visual-content'))
+      errors.push('WEB_HIGH_ASSURANCE_MISMATCH');
+    if (assurance === 'strict' && run.webReviewAssurance && run.webReviewAssurance !== 'strict')
+      errors.push('WEB_HIGH_ASSURANCE_MISMATCH');
+  }
+
+  const identity = assurance === 'visual-content' && linked.runId
+    ? `${linked.runId}:${linked.reviewPath}:${linked.reviewSha256}`
+    : text(review.reviewTraceId) ? review.reviewTraceId : null;
+  return { ok: errors.length === 0, assurance, identity, runId: linked.runId ?? null,
+    errors: [...new Set(errors)] };
 }
 
 function readJson(bytes, label) {
@@ -272,11 +427,13 @@ function validateHistoricalAcceptanceReceipts(project, ledger, acceptedPairs) {
       throw new Error(`${label}_PAIR_DETAILS_INVALID`);
 
     const web = readEvidenceJson(project, group.webReceipt, `${label}_WEB_HIGH`).value;
-    if (web.status !== 'PASS' || !text(web.reviewTraceId) || web.actualPixelsReceived !== true ||
-        !HEAD.test(String(web.sourceHead ?? '')) || !Array.isArray(web.evidenceRefs) || !web.evidenceRefs.length ||
-        !Array.isArray(web.receivedEvidenceRefs) ||
-        !web.evidenceRefs.every(reference => web.receivedEvidenceRefs.includes(reference)))
-      throw new Error(`${label}_WEB_HIGH_NOT_ACCEPTED`);
+    const webCheck = inspectWebHighAcceptance(project, group.webReceipt, web, {
+      expectedSourceHead: ledger.currentHead,
+      expectedScopeGroups: group.pairs.map(pair => [pair, details.get(pair)?.sceneId].filter(text)),
+      expectedAssets: group.pairs.flatMap(pair => details.get(pair)?.assets ?? [])
+    });
+    if (!webCheck.ok)
+      throw new Error(`${label}_${webCheck.errors[0] ?? 'WEB_HIGH_NOT_ACCEPTED'}`);
 
     const runtime = readEvidenceJson(project, group.runtimeReceipt, `${label}_RUNTIME`).value;
     if (!String(runtime.status).startsWith('PASS') || !HEAD.test(String(runtime.sourceHead ?? '')) ||
