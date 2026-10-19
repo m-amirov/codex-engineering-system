@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { decodeProductionPng } from './art-output-gate.mjs';
 import { inspectArtProgress } from './art-progress.mjs';
 import { validateWebReview } from './web-delegation.mjs';
+import { extractStructuredResponse } from './dev-web-high-transport.mjs';
 import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
 
 export const EPISODE_ART_FINALIZATION_V1 = 'EPISODE_ART_FINALIZATION_V1';
@@ -122,8 +123,22 @@ function verifyReview(project, descriptor, sourceHead, problems, index) {
     if (!nonempty(frame.observation) || frame.observation.trim().length < 20)
       problems.push(label + '_OBSERVATION_INVALID');
   }
-  if (!descriptor?.raw || !readPinned(project, descriptor.raw, problems, label + '_RAW', { json:false }))
+  const raw = descriptor?.raw && readPinned(project, descriptor.raw, problems, label + '_RAW', { json:false });
+  if (!raw) {
     problems.push(label + '_RAW_RESPONSE_REQUIRED');
+    return [];
+  }
+  const extraction = extractStructuredResponse(raw.toString('utf8'));
+  if (extraction.error || !extraction.parsed ||
+      ['status','sourceHead','reviewedItems','evidenceRefs','receivedEvidenceRefs',
+       'actualPixelsReceived','decision','findings','unresolved','visualEvidence'].some(
+        key => JSON.stringify(extraction.parsed[key]) !== JSON.stringify(review[key]))) {
+    problems.push(label + '_RAW_RECEIPT_MISMATCH');
+    return [];
+  }
+  if (review.normalization?.rawResponseSha256 &&
+      review.normalization.rawResponseSha256 !== digest(raw))
+    problems.push(label + '_RAW_DIGEST_MISMATCH');
   // Reviewer receipts can cover multiple scenes. Do not accept arbitrary claims
   // about which scenes were reviewed from the user-authored finalization manifest.
   return review.reviewedItems.filter(scene => SCENE.test(scene));
