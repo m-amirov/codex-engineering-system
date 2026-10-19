@@ -416,7 +416,17 @@ function notVerified(request, reasonCode, responseText, transportEvidence, {
     reasonCode,
     sceneId: request.sceneId,
     sourceHead: request.sourceHead,
-    transport: { status: 'COMPLETED', ...transportEvidence },
+    transport: {
+      status: 'COMPLETED',
+      provider: 'codex-chatgpt-web-dev',
+      releaseVersion: DEV_WEB_HIGH_RELEASE,
+      mode: 'browser-only',
+      model: DEV_WEB_HIGH_MODEL,
+      reasoning: 'high',
+      stableBridgeUsed: false,
+      attachmentRefs: request.images.map(image => image.ref),
+      ...transportEvidence
+    },
     responseSha256: digest(String(responseText ?? '')),
     validationErrors,
     responseFormat: extraction?.format ?? null,
@@ -643,6 +653,12 @@ export class DevWebHighTransport {
         sourceHead: prepared.sourceHead,
         transport: {
           status: 'BLOCKED',
+          provider: 'codex-chatgpt-web-dev',
+          releaseVersion: DEV_WEB_HIGH_RELEASE,
+          mode: 'browser-only',
+          model: DEV_WEB_HIGH_MODEL,
+          reasoning: 'high',
+          stableBridgeUsed: false,
           classification: 'PROVENANCE_FAILURE',
           detail: `Could not persist raw reviewer response ${artifact}: ${asError(error).message}`,
           attempts: 1
@@ -724,6 +740,13 @@ export class DevWebHighTransport {
               sourceHead: prepared.sourceHead,
               transport: {
                 status: 'BLOCKED',
+                provider: 'codex-chatgpt-web-dev',
+                releaseVersion: DEV_WEB_HIGH_RELEASE,
+                mode: 'browser-only',
+                model: DEV_WEB_HIGH_MODEL,
+                reasoning: 'high',
+                stableBridgeUsed: false,
+                attachmentRefs: prepared.images.map(image => image.ref),
                 classification: failure.classification,
                 detail: failure.detail,
                 attempts: attempt + 1,
@@ -743,7 +766,18 @@ export class DevWebHighTransport {
         failureType: failure.classification === 'PROVENANCE_FAILURE' ? 'PROVENANCE_FAILURE' : 'CAPABILITY_BLOCKER',
         sceneId: request?.sceneId ?? null,
         sourceHead: request?.sourceHead ?? null,
-        transport: { status: 'BLOCKED', classification: failure.classification, detail: failure.detail, attempts: 0 }
+        transport: {
+          status: 'BLOCKED',
+          provider: 'codex-chatgpt-web-dev',
+          releaseVersion: DEV_WEB_HIGH_RELEASE,
+          mode: 'browser-only',
+          model: DEV_WEB_HIGH_MODEL,
+          reasoning: 'high',
+          stableBridgeUsed: false,
+          classification: failure.classification,
+          detail: failure.detail,
+          attempts: 0
+        }
       };
     }
   }
