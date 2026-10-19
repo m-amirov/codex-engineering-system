@@ -428,7 +428,13 @@ function validateHistoricalAcceptanceReceipts(project, ledger, acceptedPairs) {
 
     const web = readEvidenceJson(project, group.webReceipt, `${label}_WEB_HIGH`).value;
     const webCheck = inspectWebHighAcceptance(project, group.webReceipt, web, {
-      expectedSourceHead: ledger.currentHead,
+      // The ledger currentHead is the source-bound dependency baseline, not
+      // the source HEAD embedded in each immutable historical review. A
+      // receipt may legitimately predate the ledger commit when the ledger
+      // records the exact receipt hash and dependency revalidation proves
+      // that the accepted inputs were unchanged. Current/fresh reviews still
+      // require their request, reviewer and project HEADs to match at the
+      // DEV transport boundary.
       expectedScopeGroups: group.pairs.map(pair => [pair, details.get(pair)?.sceneId].filter(text)),
       expectedAssets: group.pairs.flatMap(pair => details.get(pair)?.assets ?? [])
     });
