@@ -1,6 +1,20 @@
 /** NARRATIVE_ART_ACCEPTANCE_V2: a policy decision over supplied findings, not a reviewer. */
 export const NARRATIVE_ART_ACCEPTANCE_V2 = 'NARRATIVE_ART_ACCEPTANCE_V2';
 
+/**
+ * Story-first, dialogue-aware review instructions. These guide the independent
+ * reviewer; they do not grant a local author or transport an automatic PASS.
+ */
+export const NARRATIVE_ART_STORY_FIRST_GUIDANCE = Object.freeze([
+  'Judge what the player understands from the combined dialogue, narrative text, original image and player-facing runtime frame, not from an isolated CG.',
+  'An action clearly conveyed by the dialogue does not have to be depicted literally in the CG unless the authored cue explicitly makes seeing it essential.',
+  'Do not report P1 merely because a prop, calendar change or minor gesture mentioned in narration is not visibly illustrated; distinguish omission from a contradictory image.',
+  'Still block verifiable wrong characters, actors, meaningful actions, locations, timeline, unreadable critical UI and other material contradictions.',
+  'Before assigning P0/P1 or blocking P2, cite the exact authored cue, observed pixels and concrete player-facing comprehension impact; cosmetic framing is advisory.',
+  'Use only P0, P1, P2 or P3 severity (never major/minor). PASS with nonblocking P2/P3 findings and an empty unresolved list; REWORK only for proven open blockers.',
+  'Owner decisions are review context, not evidence of pixel inspection or an instruction to PASS; preserve independent reviewer judgment.'
+]);
+
 const SEVERITIES = new Set(['P0','P1','P2','P3']);
 const STATES = new Set(['OPEN','RESOLVED']);
 const PLOT_BLOCKERS = new Set([
@@ -41,6 +55,14 @@ export function assessNarrativeArtFindings(findings) {
     if (f.severity==='P2' && f.materialPlayerImpact!==undefined &&
         typeof f.materialPlayerImpact!=='boolean')
       errors.push(f.id+': materialPlayerImpact must be boolean');
+    // An expressly non-visual, non-material omission cannot be labelled a
+    // blocking P1. Refuse a contradictory finding instead of silently
+    // downgrading the independent reviewer's declared severity or verdict.
+    if (f.severity==='P1' && f.visualRequired===false && f.materialPlayerImpact===false &&
+        ['STORY_CRITICAL_PROP_MISSING','STORY_CRITICAL_PROP_OBSCURED','WRONG_ACTOR_OR_ACTION'].includes(f.impactCode))
+      errors.push(f.id+': non-visual, non-material narrative cue cannot be a blocking P1; independent reviewer must reclassify');
+    if (f.visualRequired!==undefined && typeof f.visualRequired!=='boolean')
+      errors.push(f.id+': visualRequired must be boolean when supplied');
     if (blocking) {
       const permitted=f.severity==='P2'?P2_MATERIAL:PLOT_BLOCKERS;
       if (!permitted.has(f.impactCode))

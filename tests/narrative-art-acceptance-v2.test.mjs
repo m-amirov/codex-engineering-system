@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { NARRATIVE_ART_ACCEPTANCE_V2 as V2, assessNarrativeArtFindings } from '../src/narrative-art-acceptance.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V2 as V2, NARRATIVE_ART_STORY_FIRST_GUIDANCE, assessNarrativeArtFindings } from '../src/narrative-art-acceptance.mjs';
 import { authorizeArtRework } from '../src/art-rework-budget.mjs';
 import { summarizeArtReviewQueue } from '../src/art-review-queue.mjs';
 import { validateWebReview } from '../src/web-delegation.mjs';
@@ -58,6 +58,29 @@ test('P1 plot/action contradictions block, but cannot be asserted without actual
   assert.equal(assessNarrativeArtFindings([p1(),p3()]).blockingFindings.length,1);
   assert.equal(assessNarrativeArtFindings([{...p1(),actualPixelsReceived:false}]).verdict,'INVALID_FINDINGS');
   assert.equal(assessNarrativeArtFindings([{...p1(),impactCode:'COSMETIC_DIFFERENCE'}]).verdict,'INVALID_FINDINGS');
+});
+
+test('story-first policy rejects a P1 for a narrated nonvisual action with explicitly no player impact',()=>{
+  const unillustrated={
+    ...p1(), id:'S24-calendar',
+    impactCode:'STORY_CRITICAL_PROP_MISSING',
+    authoredCue:'Matteo narrates the change of the shared calendar label',
+    observation:'The image shows a planning sheet, not a visible edit to the calendar',
+    playerImpact:'The dialogue makes the decision clear, so the missing close-up is nonmaterial',
+    visualRequired:false, materialPlayerImpact:false
+  };
+  const result=assessNarrativeArtFindings([unillustrated]);
+  assert.equal(result.ok,false);
+  assert.equal(result.verdict,'INVALID_FINDINGS');
+  assert.match(result.errors.join(' '),/non-visual.*non-material/);
+  assert.equal(assessNarrativeArtFindings([{...unillustrated,severity:'P2'}]).verdict,'ACCEPTABLE_WITH_NOTES');
+});
+
+test('story-first does not demote actual wrong actor or material P1, and still requires evidence',()=>{
+  assert.equal(assessNarrativeArtFindings([p1()]).verdict,'REWORK_REQUIRED');
+  assert.equal(assessNarrativeArtFindings([{...p1(),visualRequired:true}]).verdict,'REWORK_REQUIRED');
+  assert.equal(assessNarrativeArtFindings([{...p1(),visualRequired:'no'}]).verdict,'INVALID_FINDINGS');
+  assert.ok(NARRATIVE_ART_STORY_FIRST_GUIDANCE.some(rule=>rule.includes('dialogue')));
 });
 
 test('P2 requires explicit material impact and allowed impact code to block',()=>{

@@ -59,6 +59,14 @@ the same retained conversation (`prepareResume`/`requireRetainedConversation`)
 with no re-uploaded images. A missing or incomplete pixel observation never
 qualifies for this repair and can never be promoted to `PASS`.
 
+The independent reviewer prompt now applies the `NARRATIVE_ART_ACCEPTANCE_V2`
+dialogue-first rubric: it must judge scene comprehension using story text
+and runtime pixels together. Literal CG depiction of a narrated action is
+not mandatory unless source-bound cues require it. P0/P1 blocking findings
+still require material, observed contradictions; advisory P2/P3 issues
+are not grounds for automatic regeneration. The owner cannot force
+reviewer PASS, and an earlier REWORK remains immutable.
+
 The adapter never fills in a missing observation or reviewer verdict. Missing
 or malformed observations return `NOT_VERIFIED`; a valid reviewer `PASS`,
 `REWORK`, or `BLOCKED` is preserved as-is. The browser helper's host trace is
