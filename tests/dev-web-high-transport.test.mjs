@@ -148,6 +148,25 @@ test('DEV helper acknowledges prompt selection and send activation', async () =>
   ]);
 });
 
+test('DEV review prompt applies dialogue-first narrative rubric without prescribing PASS', async () => {
+  const f = fixture();
+  let prompt = null;
+  const t = transport(f, {
+    run: async call => {
+      prompt = call.prompt;
+      return { text: reviewerResponse(f.request), submitted: true, attachmentAccepted: true };
+    }
+  });
+  const result = await t.review(f.request);
+  assert.equal(result.status, 'PASS');
+  assert.match(prompt, /combined dialogue, narrative text, original image/);
+  assert.match(prompt, /does not have to be depicted literally/);
+  assert.match(prompt, /never major\/minor/);
+  assert.match(prompt, /Owner decisions are review context, not evidence/);
+  assert.match(prompt, /Do not treat this as an illustration checklist/i);
+  await t.close();
+});
+
 test('fenced JSON is accepted without relaxing source-bound pixel validation', async () => {
   const f = fixture();
   const result = await transport(f, {
