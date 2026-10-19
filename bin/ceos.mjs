@@ -18,7 +18,7 @@ import { inspectArtProgress } from '../src/art-progress.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
 import { inspectRunRelocation, relocateRun } from '../src/run-relocation.mjs';
-import { DevWebHighTransport, writeDevWebReceipt } from '../src/dev-web-high-transport.mjs';
+import { DEFAULT_DEV_WEB_HIGH_INTERVAL_MS, DevWebHighTransport, writeDevWebReceipt } from '../src/dev-web-high-transport.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -457,7 +457,9 @@ try {
       if (!request || typeof request !== 'object' || Array.isArray(request)) throw new Error('--request-file must contain one review request object');
       const interval = args['min-attachment-interval-ms'] === undefined
         ? 20_000 : Number(args['min-attachment-interval-ms']);
-      if (!Number.isInteger(interval) || interval < 0 || interval > 60_000) throw new Error('--min-attachment-interval-ms must be an integer from 0 to 60000');
+      if (!Number.isInteger(interval) || interval < DEFAULT_DEV_WEB_HIGH_INTERVAL_MS || interval > 60_000) {
+        throw new Error(`--min-attachment-interval-ms must be an integer from ${DEFAULT_DEV_WEB_HIGH_INTERVAL_MS} to 60000`);
+      }
       const transport = new DevWebHighTransport({
         projectDir: project,
         devHome: args['dev-home'] || undefined,
@@ -466,7 +468,7 @@ try {
       });
       try {
         const result = await transport.review(request, {
-          currentHead: args.head === true ? undefined : (args.head || undefined),
+          expectedHead: args.head === true ? undefined : (args.head || undefined),
           evidenceArtifact: String(args.receipt).replaceAll('\\', '/'),
           rawResponseArtifact: args['raw-response']
             ? String(args['raw-response']).replaceAll('\\', '/')

@@ -32,9 +32,12 @@ new CDP endpoint, copy cookies/tokens, read the Stable profile, or use
 - at least one `original` and one `runtime` image;
 - project-relative image paths and caller-supplied SHA-256 values.
 
-Before a browser turn it verifies the current Git HEAD, recomputes every image
-hash, checks PNG signatures and byte limits, and converts the bytes to inline
-data URLs. A mismatch is a `PROVENANCE_FAILURE` and no DEV turn is started.
+Before a browser turn it resolves the real project `git rev-parse HEAD` itself.
+An optional CLI `--head` is only an assertion against that value; it cannot
+replace it. The request HEAD, actual project HEAD and reviewer HEAD must all
+match. It then recomputes every image hash, checks PNG signatures and byte
+limits, and converts the bytes to inline data URLs. A mismatch is a
+`PROVENANCE_FAILURE` and no DEV turn is started.
 
 Each turn selects `chatgpt-web/gpt-6-sol` with `reasoning=high`,
 `modelFamily=6`, and `localToolsEnabled=false`. The prompt requires exactly one
@@ -60,6 +63,9 @@ The adapter never fills in a missing observation or reviewer verdict. Missing
 or malformed observations return `NOT_VERIFIED`; a valid reviewer `PASS`,
 `REWORK`, or `BLOCKED` is preserved as-is. The browser helper's host trace is
 stored as transport evidence, not as a provider-signed CEOS `reviewTraceId`.
+An open P0/P1 or material P2 V2 finding is incompatible with reviewer `PASS`
+and returns `NOT_VERIFIED` with `NARRATIVE_VERDICT_CONTRADICTION` rather than
+creating a false acceptance receipt.
 
 Successful complete observations produce a receipt consumable by the existing
 `web-review-verify` and `routing-trace` paths. The receipt uses
@@ -81,10 +87,21 @@ The adapter keeps semantic outcomes separate from transport outcomes:
   two failed retries stop the operation;
 - explicit attachment quota and rate-limit errors are not silently retried as
   ordinary upload failures;
-- batch reviews are sequential and wait at least 20 s between attachment turns.
+- batch reviews are sequential and wait at least 20 s between attachment turns;
+- the same minimum is persisted in a DEV-profile runtime pacing state shared by
+  separate CLI processes. An atomic lease serializes concurrent uploads,
+  heartbeats while a turn is active, and expires safely after a crashed/stale
+  owner. Lease wait timeout returns `ATTACHMENT_PACING_BLOCKED` rather than
+  overlapping turns.
 
 No semantic `REWORK` is retried by the adapter, and no delegated-agent retry
 cycle is created.
+
+Schema repair is text-only and is attempted at most once. It sets
+`requireRetainedConversation:true`, reuses the same conversation key, and
+sends no images. If the DEV host cannot restore that conversation, the result
+is `BLOCKED` with `RETAINED_CONVERSATION_UNAVAILABLE`; the adapter never starts
+a replacement image review or presents a new conversation as a continuation.
 
 ## CEOS and `continue`
 

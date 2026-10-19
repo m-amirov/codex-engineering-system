@@ -13,6 +13,10 @@ export const DEV_WEB_HIGH_RELEASE = '6.1.11';
 export const DEV_WEB_HIGH_AGENT = 'ceos_art_director_web';
 export const DEFAULT_DEV_WEB_HIGH_INTERVAL_MS = 20_000;
 export const DEFAULT_DEV_WEB_HIGH_RETRY_DELAYS_MS = Object.freeze([30_000, 60_000]);
+export const DEFAULT_DEV_WEB_HIGH_LEASE_TTL_MS = 120_000;
+export const DEFAULT_DEV_WEB_HIGH_PACING_WAIT_TIMEOUT_MS = 120_000;
+export const DEV_WEB_HIGH_ATTACHMENT_LEASE_FILE = '.dev-web-high-attachment.lease.json';
+export const DEV_WEB_HIGH_ATTACHMENT_STATE_FILE = '.dev-web-high-attachment.pacing.json';
 
 const HEAD = /^[a-f0-9]{7,64}$/i;
 const SHA256 = /^[a-f0-9]{64}$/i;
@@ -31,6 +35,20 @@ const PNG_SIGNATURE = Buffer.from('89504e470d0a1a0a', 'hex');
 const nonempty = value => typeof value === 'string' && value.trim().length > 0;
 const sleepDefault = ms => new Promise(resolve => setTimeout(resolve, ms));
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
+
+function readOptionalJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}
+
+function writeAtomicJson(file, value) {
+  const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(value, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
+    fs.renameSync(temporary, file);
+  } finally {
+    try { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); } catch {}
+  }
+}
 
 function asError(error) {
   return error instanceof Error ? error : new Error(String(error));
@@ -471,6 +489,7 @@ function buildReceipt(request, parsed, responseText, delivery, evidenceArtifact)
       model: DEV_WEB_HIGH_MODEL,
       reasoning: 'high',
       stableBridgeUsed: false,
+      actualProjectHead: delivery.actualProjectHead ?? request.sourceHead,
       responseSha256: digest(String(responseText ?? '')),
       attachmentRefs: request.images.map(image => image.ref),
       submitted: delivery.submitted === true,
@@ -484,6 +503,7 @@ function parseResponse(request, response, { evidenceArtifact, rawResponseArtifac
   const responseText = response?.text;
   const transportEvidence = {
     traceId: response?.traceId ?? null,
+    actualProjectHead: response?.actualProjectHead ?? request.sourceHead,
     submitted: response?.submitted === true,
     attachmentAccepted: response?.attachmentAccepted !== false
   };
@@ -520,6 +540,14 @@ function parseResponse(request, response, { evidenceArtifact, rawResponseArtifac
     rawResponseArtifacts,
     normalization: { schemaRepairAttempted }
   });
+  if (parsed.status === 'PASS' && findingCheck.blockingFindings.length > 0) {
+    return notVerified(request, 'NARRATIVE_VERDICT_CONTRADICTION', responseText, transportEvidence, {
+      validationErrors: ['PASS cannot contain open blocking NARRATIVE_ART_ACCEPTANCE_V2 findings'],
+      extraction,
+      rawResponseArtifacts,
+      normalization: { schemaRepairAttempted }
+    });
+  }
   const normalized = {
     ...parsed,
     normalization: {
@@ -569,6 +597,7 @@ function normalizeFailure(error) {
   });
   if (value.code === 'DEV_UNAVAILABLE') return { classification: 'DEV_UNAVAILABLE', retryAllowed: false, detail: value.message };
   if (value.code === 'PROVENANCE_FAILURE') return { classification: 'PROVENANCE_FAILURE', retryAllowed: false, detail: value.message };
+  if (value.code === 'DEV_ATTACHMENT_PACING_BLOCKED') return { classification: 'ATTACHMENT_PACING_BLOCKED', retryAllowed: false, detail: value.message };
   return { ...classified, detail: value.message };
 }
 
@@ -584,7 +613,11 @@ export class DevWebHighTransport {
     sleep = sleepDefault,
     now = () => Date.now(),
     minAttachmentIntervalMs = DEFAULT_DEV_WEB_HIGH_INTERVAL_MS,
-    retryDelaysMs = DEFAULT_DEV_WEB_HIGH_RETRY_DELAYS_MS
+    retryDelaysMs = DEFAULT_DEV_WEB_HIGH_RETRY_DELAYS_MS,
+    headResolver = null,
+    attachmentPacingDir = null,
+    attachmentLeaseTtlMs = DEFAULT_DEV_WEB_HIGH_LEASE_TTL_MS,
+    attachmentPacingWaitTimeoutMs = DEFAULT_DEV_WEB_HIGH_PACING_WAIT_TIMEOUT_MS
   } = {}) {
     this.projectDir = path.resolve(projectDir || process.cwd());
     this.profile = profile;
@@ -596,8 +629,13 @@ export class DevWebHighTransport {
     this.minAttachmentIntervalMs = Number.isInteger(minAttachmentIntervalMs) && minAttachmentIntervalMs >= 0
       ? minAttachmentIntervalMs : DEFAULT_DEV_WEB_HIGH_INTERVAL_MS;
     this.retryDelaysMs = [...retryDelaysMs];
+    this.headResolver = headResolver || (() => readGitHead(this.projectDir));
+    this.attachmentPacingDir = attachmentPacingDir ? path.resolve(attachmentPacingDir) : null;
+    this.attachmentLeaseTtlMs = Number.isInteger(attachmentLeaseTtlMs) && attachmentLeaseTtlMs >= 1_000
+      ? attachmentLeaseTtlMs : DEFAULT_DEV_WEB_HIGH_LEASE_TTL_MS;
+    this.attachmentPacingWaitTimeoutMs = Number.isInteger(attachmentPacingWaitTimeoutMs) && attachmentPacingWaitTimeoutMs >= 0
+      ? attachmentPacingWaitTimeoutMs : DEFAULT_DEV_WEB_HIGH_PACING_WAIT_TIMEOUT_MS;
     this.helper = null;
-    this.lastAttachmentTurnAt = null;
   }
 
   async getProfile() {
@@ -614,23 +652,131 @@ export class DevWebHighTransport {
     return this.helper;
   }
 
-  async waitForPacing() {
-    if (this.lastAttachmentTurnAt === null) return;
-    const waitMs = this.minAttachmentIntervalMs - (this.now() - this.lastAttachmentTurnAt);
-    if (waitMs > 0) await this.sleep(waitMs);
+  pacingPaths(profile) {
+    const directory = this.attachmentPacingDir || path.join(profile.home, 'runtime', 'dev-chat');
+    return {
+      directory,
+      lease: path.join(directory, DEV_WEB_HIGH_ATTACHMENT_LEASE_FILE),
+      state: path.join(directory, DEV_WEB_HIGH_ATTACHMENT_STATE_FILE)
+    };
+  }
+
+  async acquireAttachmentLease(profile) {
+    const paths = this.pacingPaths(profile);
+    fs.mkdirSync(paths.directory, { recursive: true });
+    const startedAt = this.now();
+    const deadline = startedAt + this.attachmentPacingWaitTimeoutMs;
+    const token = crypto.randomUUID();
+    for (;;) {
+      const now = this.now();
+      if (now > deadline) {
+        throw fail('DEV_ATTACHMENT_PACING_BLOCKED', 'Timed out waiting for the global DEV attachment pacing lease');
+      }
+      let descriptor = null;
+      try {
+        descriptor = fs.openSync(paths.lease, 'wx');
+        fs.writeFileSync(descriptor, JSON.stringify({
+          schemaVersion: 1,
+          token,
+          pid: process.pid,
+          createdAt: now,
+          expiresAt: now + this.attachmentLeaseTtlMs
+        }) + '\n', 'utf8');
+        fs.closeSync(descriptor);
+        descriptor = null;
+
+        const pacing = readOptionalJson(paths.state);
+        const lastAttachmentTurnAt = Number.isFinite(pacing?.lastAttachmentTurnAt)
+          ? pacing.lastAttachmentTurnAt : null;
+        const waitMs = lastAttachmentTurnAt === null
+          ? 0 : Math.max(0, lastAttachmentTurnAt + this.minAttachmentIntervalMs - this.now());
+        if (waitMs > 0) await this.sleep(waitMs);
+        writeAtomicJson(paths.state, {
+          schemaVersion: 1,
+          lastAttachmentTurnAt: this.now(),
+          lastLeaseToken: token
+        });
+        let released = false;
+        const renew = () => {
+          if (released) return;
+          const current = readOptionalJson(paths.lease);
+          if (current?.token !== token) return;
+          try {
+            writeAtomicJson(paths.lease, {
+              ...current,
+              renewedAt: this.now(),
+              expiresAt: this.now() + this.attachmentLeaseTtlMs
+            });
+          } catch {}
+        };
+        const heartbeat = setInterval(renew, Math.max(1_000, Math.floor(this.attachmentLeaseTtlMs / 3)));
+        heartbeat.unref?.();
+        return {
+          async release() {
+            if (released) return;
+            released = true;
+            clearInterval(heartbeat);
+            const current = readOptionalJson(paths.lease);
+            if (current?.token === token) {
+              try { fs.unlinkSync(paths.lease); } catch (error) {
+                if (error.code !== 'ENOENT') throw error;
+              }
+            }
+          }
+        };
+      } catch (error) {
+        if (descriptor !== null) {
+          try { fs.closeSync(descriptor); } catch {}
+        }
+        if (error.code !== 'EEXIST') {
+          try { fs.unlinkSync(paths.lease); } catch {}
+          throw error;
+        }
+        const current = readOptionalJson(paths.lease);
+        const stale = Number.isFinite(current?.expiresAt)
+          ? current.expiresAt <= this.now()
+          : (() => {
+            try { return this.now() - fs.statSync(paths.lease).mtimeMs >= this.attachmentLeaseTtlMs; }
+            catch { return true; }
+          })();
+        if (stale) {
+          try { fs.unlinkSync(paths.lease); } catch (unlinkError) {
+            if (unlinkError.code !== 'ENOENT') throw unlinkError;
+          }
+          continue;
+        }
+        const remaining = Number.isFinite(current?.expiresAt)
+          ? Math.max(50, Math.min(current.expiresAt - this.now(), 1_000)) : 250;
+        await this.sleep(remaining);
+      }
+    }
+  }
+
+  async runAttachmentTurn(profile, helper, request) {
+    const lease = await this.acquireAttachmentLease(profile);
+    try {
+      return await helper.run(request);
+    } finally {
+      await lease.release();
+    }
   }
 
   async review(request, {
     currentHead,
+    expectedHead,
     evidenceArtifact = 'artifacts/evidence/dev-web-high-review.json',
     rawResponseArtifact = null
   } = {}) {
     let prepared;
+    let actualHead = null;
     try {
       const profile = await this.getProfile();
-      const head = currentHead || readGitHead(this.projectDir);
-      prepared = prepareDevWebReviewRequest(request, { projectDir: this.projectDir, currentHead: head });
-      await this.waitForPacing();
+      actualHead = this.headResolver();
+      const suppliedHead = expectedHead ?? currentHead;
+      if (suppliedHead && String(suppliedHead).toLowerCase() !== String(actualHead).toLowerCase()) {
+        throw fail('PROVENANCE_FAILURE', `Supplied HEAD ${suppliedHead} does not match the actual project HEAD ${actualHead}`);
+      }
+      prepared = prepareDevWebReviewRequest(request, { projectDir: this.projectDir, currentHead: actualHead });
       const helper = await this.getHelper();
       const traceId = `devweb_${crypto.randomUUID().replaceAll('-', '')}`;
       const prompt = buildPrompt(prepared);
@@ -657,9 +803,10 @@ export class DevWebHighTransport {
           releaseVersion: DEV_WEB_HIGH_RELEASE,
           mode: 'browser-only',
           model: DEV_WEB_HIGH_MODEL,
-          reasoning: 'high',
-          stableBridgeUsed: false,
-          classification: 'PROVENANCE_FAILURE',
+           reasoning: 'high',
+           stableBridgeUsed: false,
+           actualProjectHead: actualHead,
+           classification: 'PROVENANCE_FAILURE',
           detail: `Could not persist raw reviewer response ${artifact}: ${asError(error).message}`,
           attempts: 1
         }
@@ -667,8 +814,7 @@ export class DevWebHighTransport {
       let attempt = 0;
       for (;;) {
         try {
-          this.lastAttachmentTurnAt = this.now();
-          const response = await helper.run({
+          const response = await this.runAttachmentTurn(profile, helper, {
             traceId,
             sceneId: prepared.sceneId,
             sourceHead: prepared.sourceHead,
@@ -683,7 +829,7 @@ export class DevWebHighTransport {
             prepareResume: false,
             conversationKey
           });
-          const firstResponse = { ...response, traceId };
+          const firstResponse = { ...response, traceId, actualProjectHead: actualHead };
           const persistError = persistResponse(firstResponse.text, initialRawArtifact);
           if (persistError) return rawPersistenceFailure(persistError, initialRawArtifact);
           const initialExtraction = extractStructuredResponse(firstResponse.text);
@@ -702,7 +848,9 @@ export class DevWebHighTransport {
           const repairRawArtifact = rawResponseArtifact
             ? `${rawResponseArtifact}.repair.txt`
             : deriveRawResponseArtifact(evidenceArtifact, `.${prepared.sceneId}.repair`);
-          const repairResponse = await helper.run({
+          let repairResponse;
+          try {
+            repairResponse = await helper.run({
             traceId: repairTraceId,
             sceneId: prepared.sceneId,
             sourceHead: prepared.sourceHead,
@@ -720,8 +868,38 @@ export class DevWebHighTransport {
             requireRetainedConversation: true,
             prepareResume: true,
             conversationKey
-          });
-          const finalResponse = { ...repairResponse, traceId: repairTraceId };
+            });
+          } catch (error) {
+            const value = asError(error);
+            return {
+              schemaVersion: 1,
+              status: 'BLOCKED',
+              failureType: 'INFRA_FAILURE',
+              reasonCode: 'RETAINED_CONVERSATION_UNAVAILABLE',
+              sceneId: prepared.sceneId,
+              sourceHead: prepared.sourceHead,
+              transport: {
+                status: 'BLOCKED',
+                provider: 'codex-chatgpt-web-dev',
+                releaseVersion: DEV_WEB_HIGH_RELEASE,
+                mode: 'browser-only',
+                model: DEV_WEB_HIGH_MODEL,
+                reasoning: 'high',
+                stableBridgeUsed: false,
+                actualProjectHead: actualHead,
+                attachmentRefs: prepared.images.map(image => image.ref),
+                classification: 'RETAINED_CONVERSATION_UNAVAILABLE',
+                detail: `DEV retained conversation could not be resumed: ${value.message}`,
+                schemaRepairAttempted: true,
+                replacementImageReviewStarted: false,
+                initialReviewStatus: initialResult.status,
+                initialReasonCode: initialResult.reasonCode ?? null,
+                responseSha256: digest(String(firstResponse.text ?? '')),
+                rawResponseArtifacts: [initialRawArtifact]
+              }
+            };
+          }
+          const finalResponse = { ...repairResponse, traceId: repairTraceId, actualProjectHead: actualHead };
           const repairPersistError = persistResponse(finalResponse.text, repairRawArtifact);
           if (repairPersistError) return rawPersistenceFailure(repairPersistError, repairRawArtifact);
           return parseResponse(prepared, finalResponse, {
@@ -744,9 +922,10 @@ export class DevWebHighTransport {
                 releaseVersion: DEV_WEB_HIGH_RELEASE,
                 mode: 'browser-only',
                 model: DEV_WEB_HIGH_MODEL,
-                reasoning: 'high',
-                stableBridgeUsed: false,
-                attachmentRefs: prepared.images.map(image => image.ref),
+                 reasoning: 'high',
+                 stableBridgeUsed: false,
+                 actualProjectHead: actualHead,
+                 attachmentRefs: prepared.images.map(image => image.ref),
                 classification: failure.classification,
                 detail: failure.detail,
                 attempts: attempt + 1,
@@ -772,9 +951,10 @@ export class DevWebHighTransport {
           releaseVersion: DEV_WEB_HIGH_RELEASE,
           mode: 'browser-only',
           model: DEV_WEB_HIGH_MODEL,
-          reasoning: 'high',
-          stableBridgeUsed: false,
-          classification: failure.classification,
+           reasoning: 'high',
+           stableBridgeUsed: false,
+           actualProjectHead: actualHead,
+           classification: failure.classification,
           detail: failure.detail,
           attempts: 0
         }
