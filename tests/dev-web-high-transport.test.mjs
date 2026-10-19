@@ -169,6 +169,7 @@ test('missing required reviewer envelope fields is NOT_VERIFIED and is not synth
   }).review(f.request, { currentHead: HEAD });
   assert.equal(result.status, 'NOT_VERIFIED');
   assert.equal(result.reasonCode, 'REVIEW_ENVELOPE_INVALID');
+  assert.equal(result.transport.stableBridgeUsed, false);
   assert.match(result.validationErrors.join('; '), /receivedEvidenceRefs/);
 });
 
