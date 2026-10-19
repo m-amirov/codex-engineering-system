@@ -19,6 +19,7 @@ import { createSourceBoundRevalidation } from '../src/source-bound-revalidation.
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
 import { inspectRunRelocation, relocateRun } from '../src/run-relocation.mjs';
+import { DEFAULT_DEV_WEB_HIGH_INTERVAL_MS, DevWebHighTransport, writeDevWebReceipt } from '../src/dev-web-high-transport.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -145,6 +146,7 @@ Usage:
   ceos art-output-normalize --file <prop.png> --output <new.png> [--width 512 --height 512] [--json]
   ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--assurance strict|visual-content] [--json]
   ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--assurance strict|visual-content] [--json]
+  ceos dev-web-review --request-file <json> --receipt <project-relative-new.json> [--raw-response <project-relative-new.txt>] [--project dir] [--dev-home dir] [--stable-home dir] [--head <sha>] [--min-attachment-interval-ms N] [--json]
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
   ceos capability-challenge [run-id|latest] [--codex-home dir] [--json]
   ceos capability-recover [run-id|latest] [--apply] [--json]  # safe hash-exact legacy recovery\n  ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
@@ -475,6 +477,38 @@ try {
       const result = { status: issues.length ? 'WEB_REVIEW_NOT_VERIFIED' : 'PASS', issues };
       print(result, true);
       process.exitCode = issues.length ? 2 : 0;
+      break;
+    }
+    case 'dev-web-review': {
+      if (!args['request-file'] || !args.receipt) throw new Error('--request-file and --receipt are required');
+      const requestFile = path.resolve(String(args['request-file']));
+      const request = JSON.parse(fs.readFileSync(requestFile, 'utf8'));
+      if (!request || typeof request !== 'object' || Array.isArray(request)) throw new Error('--request-file must contain one review request object');
+      const interval = args['min-attachment-interval-ms'] === undefined
+        ? 20_000 : Number(args['min-attachment-interval-ms']);
+      if (!Number.isInteger(interval) || interval < DEFAULT_DEV_WEB_HIGH_INTERVAL_MS || interval > 60_000) {
+        throw new Error(`--min-attachment-interval-ms must be an integer from ${DEFAULT_DEV_WEB_HIGH_INTERVAL_MS} to 60000`);
+      }
+      const transport = new DevWebHighTransport({
+        projectDir: project,
+        devHome: args['dev-home'] || undefined,
+        stableHome: args['stable-home'] || undefined,
+        minAttachmentIntervalMs: interval
+      });
+      try {
+        const result = await transport.review(request, {
+          expectedHead: args.head === true ? undefined : (args.head || undefined),
+          evidenceArtifact: String(args.receipt).replaceAll('\\', '/'),
+          rawResponseArtifact: args['raw-response']
+            ? String(args['raw-response']).replaceAll('\\', '/')
+            : null
+        });
+        if (result.receipt) writeDevWebReceipt(project, String(args.receipt), result.receipt);
+        print(result, Boolean(args.json));
+        process.exitCode = result.status === 'PASS' ? 0 : result.status === 'REWORK' ? 1 : 2;
+      } finally {
+        await transport.close();
+      }
       break;
     }
     case 'run': {
