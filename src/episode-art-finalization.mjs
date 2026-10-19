@@ -61,14 +61,11 @@ function sourceCurrentness(project, baseline, problems) {
     return actualHead;
   }
   if (actualHead !== baseline) {
-    if (git(project, ['merge-base', '--is-ancestor', baseline, actualHead]) === null) {
-      // merge-base --is-ancestor succeeds without stdout. Inspect exit status separately.
-      const ancestry = spawnSync('git', ['merge-base', '--is-ancestor', baseline, actualHead],
-        { cwd: project, encoding: 'utf8', timeout: 15000, windowsHide: true });
-      if (ancestry.status !== 0) {
-        problems.push('SOURCE_HEAD_NOT_ANCESTOR');
-        return actualHead;
-      }
+    const ancestry = spawnSync('git', ['merge-base', '--is-ancestor', baseline, actualHead],
+      { cwd: project, encoding: 'utf8', timeout: 15000, windowsHide: true });
+    if (ancestry.status !== 0) {
+      problems.push('SOURCE_HEAD_NOT_ANCESTOR');
+      return actualHead;
     }
     const diff = spawnSync('git', ['diff', '--name-only', '-z', baseline, actualHead, '--'],
       { cwd: project, timeout: 15000, windowsHide: true });
@@ -176,24 +173,29 @@ export function inspectEpisodeArtFinalization(projectDir, manifestPath) {
   else for (const [i, ref] of manifest.sourceDependencies.entries())
     readPinned(project, ref, problems, 'SOURCE_DEPENDENCY_' + i, {json:false});
 
-  const sceneIds = manifest.scenes?.map(item => item?.id) ?? [];
-  const pairIds = manifest.pairs?.map(item => item?.id) ?? [];
+  const scenes = Array.isArray(manifest.scenes) ? manifest.scenes : [];
+  const pairs = Array.isArray(manifest.pairs) ? manifest.pairs : [];
+  const sceneIds = scenes.map(item => item?.id);
+  const pairIds = pairs.map(item => item?.id);
   if (!ownArray(manifest.scenes) || !ownArray(manifest.pairs) ||
       !sceneIds.every(id => SCENE.test(id)) || !unique(sceneIds) ||
       !pairIds.every(id => ID.test(id)) || !unique(pairIds) ||
       manifest.expectedScenes !== sceneIds.length || manifest.expectedPairs !== pairIds.length ||
       manifest.expectedPairs < 1) problems.push('INVENTORY_INVALID');
   const pairSet = new Set(pairIds);
-  if (!manifest.scenes?.every(item => pairSet.has(item.pairId)) ||
-      pairIds.some(id => !manifest.scenes?.some(scene => scene.pairId === id)))
+  if (!scenes.every(item => item && pairSet.has(item.pairId)) ||
+      pairIds.some(id => !scenes.some(scene => scene?.pairId === id)))
     problems.push('SCENE_PAIR_MAPPING_INCOMPLETE');
   if (ownArray(manifest.pairs)) verifyImages(project, manifest.pairs, problems);
 
   const historicalAcceptedPairs = new Set();
-  if (!ownArray(manifest.progressIndexes)) problems.push('PROGRESS_INDEXES_REQUIRED');
+  if (!Array.isArray(manifest.progressIndexes) || manifest.progressIndexes.length > 50)
+    problems.push('PROGRESS_INDEXES_INVALID');
   else for (const [i, ref] of manifest.progressIndexes.entries()) {
     if (!readPinned(project, ref, problems, 'PROGRESS_INDEX_' + i)) continue;
-    const progress = inspectArtProgress(project, ref.path);
+    let progress;
+    try { progress = inspectArtProgress(project, ref.path); }
+    catch { problems.push('PROGRESS_INDEX_' + i + '_INSPECTION_FAILED'); continue; }
     if (progress.status !== 'PASS_ART_PROGRESS_REVALIDATED' || progress.problems?.length) {
       problems.push('PROGRESS_INDEX_' + i + '_NOT_REVALIDATED');
       continue;
@@ -217,7 +219,7 @@ export function inspectEpisodeArtFinalization(projectDir, manifestPath) {
     }
   }
   const acceptedPairs = new Set(historicalAcceptedPairs);
-  for (const scene of manifest.scenes ?? []) {
+  for (const scene of scenes) {
     if (independentScenes.has(scene.id)) acceptedPairs.add(scene.pairId);
     else if (!historicalAcceptedPairs.has(scene.pairId))
       problems.push('SCENE_MISSING_INDEPENDENT_ACCEPTANCE_' + String(scene.id));
@@ -236,7 +238,7 @@ export function inspectEpisodeArtFinalization(projectDir, manifestPath) {
           list => Array.isArray(list) && list.length === 0))
       problems.push('RUNTIME_REPORT_INVALID');
     const captureIds = new Set();
-    for (const [i, cap] of (runtime.captures ?? []).entries()) {
+    for (const [i, cap] of (Array.isArray(runtime.captures) ? runtime.captures : []).entries()) {
       if (!cap?.screenshot || !cap?.screenshotSha256) {
         problems.push('RUNTIME_CAPTURE_' + i + '_REFERENCE_MISSING');
         continue;
@@ -268,7 +270,7 @@ export function inspectEpisodeArtFinalization(projectDir, manifestPath) {
   return finish({
     episodeId:manifest.episodeId,sourceHead:manifest.sourceHead,currentHead,
     coverage:{scenes:sceneIds.length,reviewedScenes:sceneIds.filter(id=>independentScenes.has(id) ||
-      historicalAcceptedPairs.has(manifest.scenes.find(s=>s.id===id)?.pairId)).length,
+      historicalAcceptedPairs.has(scenes.find(s=>s?.id===id)?.pairId)).length,
       pairs:pairIds.length,acceptedPairs:pairIds.filter(id=>acceptedPairs.has(id)).length,
       productionPng:pairIds.length * 2,runtimeCaptures:captureCount},
     historicalRunsSelected:false,historicalRunsModified:false
