@@ -15,6 +15,7 @@ import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/ar
 import { importArtOutput } from '../src/art-output-transport.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
 import { inspectArtProgress } from '../src/art-progress.mjs';
+import { inspectEpisodeArtFinalization } from '../src/episode-art-finalization.mjs';
 import { createSourceBoundRevalidation } from '../src/source-bound-revalidation.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
@@ -143,6 +144,7 @@ Usage:
   ceos art-output-batch --manifest <assets.json> [--receipt <new.json>] [--json]
   ceos art-progress-revalidate --ledger <historical-ledger.json> --mechanical-receipt <new-receipt.json> --deferred-pairs <id;id> --output <new-contract.json> [--project dir] [--json]
   ceos art-progress --index <project-relative-evidence-index.json|source-bound-ledger.json> [--project dir] [--json] (read-only; never invents acceptance)
+  ceos episode-art-finalize --manifest <artifacts/episode-finalization-v1.json> [--project dir] [--json] (read-only, independent of historical run selection; never grants release readiness)
   ceos art-output-normalize --file <prop.png> --output <new.png> [--width 512 --height 512] [--json]
   ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--assurance strict|visual-content] [--json]
   ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--assurance strict|visual-content] [--json]
@@ -441,6 +443,13 @@ try {
       const result = inspectArtProgress(project,String(args.index));
       print(result,true);
       process.exitCode = result.status === 'PASS_ART_PROGRESS_REVALIDATED' ? 0 : 2;
+      break;
+    }
+    case 'episode-art-finalize': {
+      if (typeof args.manifest !== 'string') throw new Error('--manifest is required');
+      const result = inspectEpisodeArtFinalization(project, String(args.manifest));
+      print(result, true);
+      process.exitCode = result.status === 'PASS_EPISODE_ART_FINALIZATION' ? 0 : 2;
       break;
     }
     case 'art-output-normalize': {

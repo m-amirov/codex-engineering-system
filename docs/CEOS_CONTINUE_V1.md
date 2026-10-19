@@ -43,6 +43,30 @@ capability-challenge and existing verified recovery actions. It then calls
 continue again. CEOS cannot invoke host-native models, Web High or Image Gen
 from Node alone, and the CLI never pretends to.
 
+## Episode-wide art finalization without run selection
+
+A completed episode may have multiple historical active/blocked runs with
+unusable scope provenance. The **read-only** `ceos episode-art-finalize` path
+does not select a run and cannot repair or waive any run's missing
+`scope.json`, source drift or broken checkpoint:
+
+```text
+ceos episode-art-finalize --project <game> \
+  --manifest artifacts/episode-finalization-v1.json --json
+```
+
+It separately checks the source Git ancestry (only evidence-file commits may
+follow the pinned baseline), clean authored source, pinned narrative files,
+independent raw reviewer responses and per-image observations, revalidated
+historical art-progress where supplied, real portrait/landscape PNGs,
+runtime screenshots, narrative validation and reconciliation. Missing
+evidence returns `NOT_VERIFIED`. Its distinct
+`PASS_EPISODE_ART_FINALIZATION` verdict means **episode artwork only**:
+it is not a CEOS historical run `PASS`, platform release approval or
+`releaseReady=true`. This path never mutates historical evidence or calls
+Image Gen/Web High. See `docs/EPISODE_ART_FINALIZATION_V1.md` for the
+manifest contract.
+
 ## Deterministic behavior
 
 A single active run is selected automatically. If a source-bound production-art
