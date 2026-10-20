@@ -7,7 +7,7 @@ export const PROJECT_CONTINUE_V1 = 'CEOS_PROJECT_CONTINUE_V1';
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const safePath = value => typeof value === 'string' && value.length > 0 &&
   value.length < 512 && !path.isAbsolute(value) && !/^[A-Za-z]:[\\/]/.test(value) &&
-  !value.includes('\\') && !value.includes('\\0') &&
+  !value.includes('\\') && !value.includes('\0') &&
   value.split('/').every(part => part && part !== '.' && part !== '..');
 
 function git(project, ...args) {
@@ -31,10 +31,10 @@ function discover(project, planPath) {
   }
   const folder = path.join(project,'artifacts','audit');
   const matches = fs.existsSync(folder) ? fs.readdirSync(folder)
-    .filter(name => /(?:COMPLETION_PLAN|PROJECT_PLAN)_\\d{8}\\.md$/i.test(name))
+    .filter(name => /(?:COMPLETION_PLAN|PROJECT_PLAN)_\d{8}\.md$/i.test(name))
     .sort().reverse() : [];
   if (matches.length) {
-    const dates = matches.map(name => name.match(/_(\\d{8})\\.md$/)?.[1]);
+    const dates = matches.map(name => name.match(/_(\d{8})\.md$/)?.[1]);
     if (dates[0] === dates[1]) return {error:'BLOCKED_AMBIGUOUS_PROJECT_PLANS',
       candidates:matches.filter(name => name.includes('_'+dates[0]+'.md')).map(name=>'artifacts/audit/'+name)};
     return {path:'artifacts/audit/'+matches[0],discovered:true};
@@ -47,9 +47,9 @@ function discover(project, planPath) {
 
 function planWorkUnit(content) {
   // Checkboxes are explicit ordering hints, never evidence that a prior stage passed.
-  const lines=content.split(/\\r?\\n/);
+  const lines=content.split(/\r?\n/);
   for (let i=0;i<lines.length;i++) {
-    const hit=/^\\s*[-*]\\s*\\[ \\]\\s*(.{8,280})\\s*$/.exec(lines[i]);
+    const hit=/^\s*[-*]\s*\[ \]\s*(.{8,280})\s*$/.exec(lines[i]);
     if (hit) return {kind:'VALIDATE_NEXT_PROJECT_TASK',candidate:hit[1].trim(),line:i+1};
   }
   // A free-form plan is interpreted by the Codex host. The CLI does not
@@ -91,11 +91,11 @@ export function planProjectContinuation(projectDir,{planPath=null,goal=null}={})
   if (checked.status!==0 || checked.stdout.trim())
     return blocked('BLOCKED_PROJECT_PLAN_DIRTY',{planPath:plan.path,planSha256:plan.sha256});
   const body=plan.bytes.toString('utf8');
-  if (!/^\\s*#\\s+\\S/m.test(body) || body.length<40)
+  if (!/^\s*#\s+\S/m.test(body) || body.length<40)
     return blocked('BLOCKED_PROJECT_PLAN_EMPTY',{planPath:plan.path});
   const unit=planWorkUnit(body);
-  const matrixPath=plan.path.replace(/(?:COMPLETION_PLAN|PROJECT_PLAN)(?=_\\d{8}\\.md$)/i,'READINESS_MATRIX')
-    .replace(/\\.md$/i,'.json');
+  const matrixPath=plan.path.replace(/(?:COMPLETION_PLAN|PROJECT_PLAN)(?=_\d{8}\.md$)/i,'READINESS_MATRIX')
+    .replace(/\.md$/i,'.json');
   let audit=null;
   try {
     const matrix=checkedFile(projectReal,matrixPath);
