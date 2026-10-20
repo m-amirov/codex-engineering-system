@@ -19,6 +19,7 @@ import { inspectEpisodeArtFinalization } from '../src/episode-art-finalization.m
 import { createSourceBoundRevalidation } from '../src/source-bound-revalidation.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
 import { planProjectContinuation } from '../src/project-continuation.mjs';
+import { inspectDirectWorkflow } from '../src/direct-workflow.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
 import { inspectRunRelocation, relocateRun } from '../src/run-relocation.mjs';
 import { DEFAULT_DEV_WEB_HIGH_INTERVAL_MS, DevWebHighTransport, writeDevWebReceipt } from '../src/dev-web-high-transport.mjs';
@@ -156,6 +157,7 @@ Usage:
   ceos producer-route-check [run-id|latest] --trace <actual-child-rollout.jsonl> [--codex-home dir] [--json]
   ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--art-mode NEW_GENERATION|VERIFIED_EXISTING_ART_REUSE] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--resolution-contract-file json] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
+  ceos direct [--project dir] [--json] (read-only optional development context; no runs/checkpoints)
   ceos continue --scope project [--plan <project-relative-completion-plan.md>] [--goal <short goal>] [--mode inspect|guided|auto] [--json]  (read-only project handoff)
   ceos continue [run-id|latest] [--project dir] [--progress-index path] [--mode inspect|guided|auto] [--dry-run] [--claim --action-id HASH | --release TOKEN] [--json] (guided default; inspect/dry-run read-only)
   ceos run-relocate [run-id|latest] --project <new-worktree> [--apply --expect-sha <original-run-sha256>] [--json] (read-only preview by default)
@@ -587,6 +589,12 @@ try {
       }
       if (args.json) print(result, true); else printExecution(result);
       process.exitCode = executionExitCode(result.run, result.integrity);
+      break;
+    }
+    case 'direct': {
+      const result = inspectDirectWorkflow(project);
+      print(result, true);
+      process.exitCode = result.status === 'READY_FOR_DIRECT_DEVELOPMENT' ? 0 : 2;
       break;
     }
     case 'continue': {

@@ -1,5 +1,19 @@
 # CEOS Continue V1 — bounded host-directed continuation
 
+## Optional orchestration: direct mode is the everyday default
+
+`ceos direct --project . --json` is a non-gating read-only context helper.
+A Codex task can proceed without running CEOS at all. Existing run state,
+checkpoints, parent markers, broken scope or historical `BLOCKED_AMBIGUOUS_RUNS`
+are **not prerequisites** for ordinary user-authorized source work.
+
+Use `ceos continue` only when opting into a CEOS-specific project
+planning inspection or strictly gated named-run lifecycle. Neither mode
+bypasses real art provenance, independent review, actual tool delivery,
+rights checks or release approval.
+
+See `docs/DIRECT_DEVELOPMENT_MODE.md`.
+
 ## Why
 
 A multi-stage CEOS run already records scope, evidence, nextStage, cycles,
