@@ -33,6 +33,35 @@ CEOS adds a persistent control plane around Codex. It does not replace the agent
 
 > **The operating principle:** evidence determines acceptance. Missing or stale proof produces a blocker, not an optimistic success message.
 
+## Default: direct development (no CEOS run required)
+
+For everyday Codex tasks, **CEOS is optional**, not a blocking workflow
+controller. Give Codex a short task; it reads the project instructions,
+makes changes, runs the project's own tests and records the result in Git.
+
+```text
+Continue developing the game from its project plan. Work directly,
+run the relevant tests, preserve accepted evidence and report blockers.
+```
+
+Optionally inspect Git context and available project check commands:
+
+```powershell
+ceos direct --project . --json
+```
+
+This command only **observes** a project. It does not start or resume a
+run, create a checkpoint, make edits, invoke Image Gen, attest capabilities,
+check off tasks or claim QA/release success. Dirty worktrees are reported,
+not silently reset or blocked from *inspection*. Normal Git safety remains
+the Codex host's responsibility.
+
+Use the stricter CEOS `run`, `continue`, producer attestations and
+checkpoint model only when your project actually requires those controls.
+Independent art review, actual asset provenance, licensing and platform
+release gates still apply whether or not you choose a CEOS run. An old
+broken run does not determine whether unrelated new code can be developed.
+
 ## What you get
 
 | Capability | What it does |
