@@ -10,8 +10,35 @@ CEOS Continue V1 is a **single-next-action planner** and **exclusive work claim*
 It is not an autonomous daemon, another model host, generic workflow language,
 nor a substitute for the existing run/checkpoint/verdict engine.
 
+## Project-level continuation from short user goals
+
+Run `ceos continue --scope project --mode inspect --json` in the project
+worktree when the task is "continue project", not "resume RUN_ID".
+
+- Auto-discovers the most recent **committed** `artifacts/audit/*COMPLETION_PLAN_YYYYMMDD.md`,
+  then `docs/PROJECT_PLAN.md` or `PLAN.md`. Same-date ambiguity blocks
+  unless an explicit `--plan` is provided.
+- Optionally accepts `--goal "short user goal"` without requiring lengthy
+  repetition of project constraints.
+- Checks project Git HEAD, actual worktree root, source plan bytes and
+  unmodified plan state; associates a matching readiness matrix if present.
+- Returns `READY_FOR_PROJECT_PLANNING` with a deterministic plan/action
+  digest and at most one unchecked checklist candidate, or requests a
+  host-side bounded task selection from free-form plans.
+- **R0 planning only.** No run is selected, created, reopened or resumed;
+  no claim, image generation, Git mutation or independent PASS is performed.
+  Host Codex must verify actual evidence and apply normal preflight,
+  permissions, capability and acceptance gates before doing any work.
+  A historical `BLOCKED_AMBIGUOUS_RUNS` is preserved, not repaired.
+- `--scope project` cannot be combined with RUN_ID, claim/release or a
+  run-specific art-progress index. An explicit `--scope run` leaves V1
+  behavior unchanged.
+- Missing, dirty or ambiguously selected project plans fail closed.
+
 ## Commands
 
+- ceos continue --scope project [--plan path] [--goal text] --mode inspect --json
+  - Read-only project-plan handoff, independent of legacy run-selection state.
 - ceos continue --mode inspect --json
   - Read-only explicit inspection mode. Inspect only; does not create runs, lock, refresh,
     reopen, check out Git, generate assets or accept evidence.
