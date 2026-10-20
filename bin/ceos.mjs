@@ -18,6 +18,7 @@ import { inspectArtProgress } from '../src/art-progress.mjs';
 import { inspectEpisodeArtFinalization } from '../src/episode-art-finalization.mjs';
 import { createSourceBoundRevalidation } from '../src/source-bound-revalidation.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
+import { planProjectContinuation } from '../src/project-continuation.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
 import { inspectRunRelocation, relocateRun } from '../src/run-relocation.mjs';
 import { DEFAULT_DEV_WEB_HIGH_INTERVAL_MS, DevWebHighTransport, writeDevWebReceipt } from '../src/dev-web-high-transport.mjs';
@@ -155,6 +156,7 @@ Usage:
   ceos producer-route-check [run-id|latest] --trace <actual-child-rollout.jsonl> [--codex-home dir] [--json]
   ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--art-mode NEW_GENERATION|VERIFIED_EXISTING_ART_REUSE] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--resolution-contract-file json] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
+  ceos continue --scope project [--plan <project-relative-completion-plan.md>] [--goal <short goal>] [--mode inspect|guided|auto] [--json]  (read-only project handoff)
   ceos continue [run-id|latest] [--project dir] [--progress-index path] [--mode inspect|guided|auto] [--dry-run] [--claim --action-id HASH | --release TOKEN] [--json] (guided default; inspect/dry-run read-only)
   ceos run-relocate [run-id|latest] --project <new-worktree> [--apply --expect-sha <original-run-sha256>] [--json] (read-only preview by default)
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
@@ -593,23 +595,33 @@ try {
       if (args.claim && args.release) throw new Error('Cannot claim and release simultaneously');
       if (args['dry-run'] && (args.claim || args.release))
         throw new Error('--dry-run cannot claim/release');
-      const result = args.release
-        ? releaseContinuation(project,{runRef,token:args.release === true ? null : args.release})
-        : args.claim
-          ? claimContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null,expectedActionId:args['action-id']})
-          : (args['dry-run'] || mode === 'inspect')
-            ? planContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null})
-            : recoverContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null});
+      const projectScope = args.scope === 'project' || (args.scope === undefined && args.plan !== undefined);
+      if (args.scope !== undefined && !['project','run'].includes(args.scope))
+        throw new Error('--scope must be project or run');
+      if (projectScope && (runRef || args.claim || args.release || args['progress-index']))
+        throw new Error('Project continuation is read-only; do not pass a run ID, claim, release or progress-index');
+      if (projectScope && !['guided','inspect','auto'].includes(mode))
+        throw new Error('Invalid project continuation mode');
+      const result = projectScope
+        ? planProjectContinuation(project,{planPath:args.plan ?? null,goal:args.goal ?? null})
+        : args.release
+          ? releaseContinuation(project,{runRef,token:args.release === true ? null : args.release})
+          : args.claim
+            ? claimContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null,expectedActionId:args['action-id']})
+            : (args['dry-run'] || mode === 'inspect')
+              ? planContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null})
+              : recoverContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null});
       if (args.json) print(result,true);
       else {
         console.log('CONTINUE: ' + result.status);
         if (result.runId) console.log('Run: ' + result.runId);
+        if (result.plan?.path) console.log('Project plan: ' + result.plan.path);
         if (result.action) console.log('Next: ' + result.action.kind + ' | ' + result.action.instruction);
         if (result.recovery?.status) console.log('Recovery: ' + result.recovery.status + ' from ' + result.recovery.sourceRunId);
         if (result.lease) console.log('Lease: ' + result.lease.token);
         if (!result.executable) console.log('No host work authorized by this response.');
       }
-      process.exitCode = ['READY_FOR_CODEX','DONE','RELEASED'].includes(result.status) ? 0 : 2;
+      process.exitCode = ['READY_FOR_CODEX','READY_FOR_PROJECT_PLANNING','DONE','RELEASED'].includes(result.status) ? 0 : 2;
       break;
     }
     case 'run-status': {

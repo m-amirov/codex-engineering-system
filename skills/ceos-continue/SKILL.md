@@ -1,8 +1,8 @@
 ---
 name: ceos-continue
-description: Continue an existing CEOS project workflow from persisted runs and checkpoints with a bounded next action, safe claim, verified execution, and evidence-based checkpointing.
+description: Continue a CEOS project from its persisted plan/audit or resume a specific run, with a bounded next action, verified execution, and evidence-based checkpointing.
 metadata:
-  ceos-version: "0.5.35"
+  ceos-version: "0.5.41"
 ---
 
 # Skill: ceos-continue
@@ -10,6 +10,44 @@ metadata:
 Use when the user says "continue", "продолжи", "go on", or asks to resume
 an existing CEOS run without repeating a long technical brief. This skill
 is a **Codex-host execution adapter**, not a separate model host or daemon.
+
+## Short project-goal workflow (default when no specific run is named)
+
+For requests such as "продолжай разработку сезона", "сделай следующий этап",
+"continue the project", **do not ask the user to paste a long project prompt**.
+Start in the actual project worktree:
+
+```text
+ceos continue --scope project --mode inspect --json
+```
+
+Project continuation automatically discovers the newest committed
+`artifacts/audit/*COMPLETION_PLAN_YYYYMMDD.md` (or `docs/PROJECT_PLAN.md`,
+`PLAN.md`), pins its SHA-256/current HEAD and, when present, links the
+corresponding readiness matrix. For a short user-specific goal use
+`--goal "Prepare EP3 art inventory"`; if multiple plans exist for the same
+date, select an explicit `--plan PROJECT_RELATIVE_PATH` after inspecting
+the project; never guess.
+
+The result `READY_FOR_PROJECT_PLANNING` is an **R0 handoff, not an authorized
+run, verified PASS or checkpoint**. Read the pinned plan and audit; validate
+the first incomplete proposed task against actual source/evidence before
+acting. If the plan is free-form, identify exactly one bounded unfinished
+work unit instead of inventing a stage or auto-marking DONE. If an existing
+accepted episode or asset appears in the plan, reuse its real source-bound
+evidence and do not regenerate it. Obey actual project instructions and
+the user goal; keep results in the project and re-inspect after a verified
+completed task. For any code, Git or model work, use regular CEOS
+preflight, native-capability requirements, independent evidence gates and
+permission boundaries. Project mode never invokes model tools by itself.
+A historical `BLOCKED_AMBIGUOUS_RUNS` remains a real historical-run
+blocker; project planning does not repair it or confer its authority.
+
+If there is **no** committed plan, report `BLOCKED_NO_PROJECT_PLAN`
+and locate the existing project plan from the user's task context.
+Do not silently switch to an unrelated old run. If the request explicitly
+names a run/checkpoint or asks to resume its GENERATING stage, use the
+original run-scoped procedure below.
 
 ## One action at a time
 
