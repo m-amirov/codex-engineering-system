@@ -1,6 +1,6 @@
 ---
 name: ceos-continue
-description: Continue a CEOS project from its persisted plan/audit or resume a specific run, with a bounded next action, verified execution, and evidence-based checkpointing.
+description: Continue a project directly from project instructions and tests by default; opt into legacy CEOS run/checkpoint orchestration when explicitly requested.
 metadata:
   ceos-version: "0.5.41"
 ---
@@ -11,43 +11,54 @@ Use when the user says "continue", "продолжи", "go on", or asks to resum
 an existing CEOS run without repeating a long technical brief. This skill
 is a **Codex-host execution adapter**, not a separate model host or daemon.
 
-## Short project-goal workflow (default when no specific run is named)
+## Default: direct development, no orchestration overhead
 
-For requests such as "продолжай разработку сезона", "сделай следующий этап",
-"continue the project", **do not ask the user to paste a long project prompt**.
-Start in the actual project worktree:
+For ordinary Codex instructions such as "продолжи", "следующий этап",
+"подготовь EP3", "implement this" or "fix tests", **do the requested
+project work directly**. Do not require any CEOS run, checkpoint, claim,
+recovery, capability-challenge, audit receipt or `ceos continue` as a
+prerequisite just to edit code, write narrative, prepare art briefs,
+run tests, or commit intended files.
 
-```text
-ceos continue --scope project --mode inspect --json
-```
+1. Read the project's `AGENTS.md`, actual user request, relevant source,
+   current plan and existing accepted evidence. Do not make the user repeat
+   their previous technical brief.
+2. Inspect the actual Git worktree and active parallel work; preserve dirty
+   and untracked files. Direct workflow does not silently reset, clean,
+   cherry-pick or force-push.
+3. Execute the bounded user-authorized task using the host's normal tools.
+   Run relevant project-owned tests/validators. Record real results and
+   commit only intended files when authorized. Report remaining blockers.
+4. Optional context helper: `ceos direct --json`. It is **read-only,
+   never a gate**, does not inspect old runs, never claims PASS and does not
+   grant permission to generate, merge or publish. A missing CEOS binary
+   must not block ordinary Codex project development.
+5. If a particular CEOS validator lacks support for a new episode, do not
+   falsify IDs or evidence or force production through the old validator.
+   Use the project's real source-bound art workflow; report missing
+   verification separately and propose a narrowly scoped validator repair
+   only when needed for an actual acceptance/release requirement.
 
-Project continuation automatically discovers the newest committed
-`artifacts/audit/*COMPLETION_PLAN_YYYYMMDD.md` (or `docs/PROJECT_PLAN.md`,
-`PLAN.md`), pins its SHA-256/current HEAD and, when present, links the
-corresponding readiness matrix. For a short user-specific goal use
-`--goal "Prepare EP3 art inventory"`; if multiple plans exist for the same
-date, select an explicit `--plan PROJECT_RELATIVE_PATH` after inspecting
-the project; never guess.
+For actual image generation, call a real host-native authorized generator,
+persist the original pixels and SHA-256, respect rights/provenance and
+bounded retries, and obtain independent artistic review of final images.
+For release/publishing, run the platform's real QA and permission gates.
+**No story, visual, media, episode or release PASS is inferred from a
+completed Codex task or unit tests alone.** CEOS-independent work is not
+an excuse to fabricate receipts or to reclassify an old blocker.
 
-The result `READY_FOR_PROJECT_PLANNING` is an **R0 handoff, not an authorized
-run, verified PASS or checkpoint**. Read the pinned plan and audit; validate
-the first incomplete proposed task against actual source/evidence before
-acting. If the plan is free-form, identify exactly one bounded unfinished
-work unit instead of inventing a stage or auto-marking DONE. If an existing
-accepted episode or asset appears in the plan, reuse its real source-bound
-evidence and do not regenerate it. Obey actual project instructions and
-the user goal; keep results in the project and re-inspect after a verified
-completed task. For any code, Git or model work, use regular CEOS
-preflight, native-capability requirements, independent evidence gates and
-permission boundaries. Project mode never invokes model tools by itself.
-A historical `BLOCKED_AMBIGUOUS_RUNS` remains a real historical-run
-blocker; project planning does not repair it or confer its authority.
+## Opt-in: strict historical CEOS run lifecycle
 
-If there is **no** committed plan, report `BLOCKED_NO_PROJECT_PLAN`
-and locate the existing project plan from the user's task context.
-Do not silently switch to an unrelated old run. If the request explicitly
-names a run/checkpoint or asks to resume its GENERATING stage, use the
-original run-scoped procedure below.
+Use the strict instructions below **only** when the user explicitly requests
+a CEOS run, a named historical run/checkpoint recovery, a source-bound CEOS
+producer challenge, or another project's binding rule expressly requires it.
+Do not start a new strict run merely because an old run exists or is blocked.
+If an old `BLOCKED_AMBIGUOUS_RUNS` pertains only to historical workflows,
+it must not hold up unrelated direct development. Preserve it for audit.
+
+For an explicitly requested project planning inspection, the read-only
+`ceos continue --scope project --mode inspect --json` remains available.
+That command provides suggestions and does not authorize any mutating action.
 
 ## One action at a time
 
