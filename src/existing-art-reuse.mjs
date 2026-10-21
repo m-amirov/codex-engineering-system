@@ -192,8 +192,14 @@ export function verifyExistingArtReuse(projectDir, contract, {
     if (typeof contract.dualFormatManifest !== 'string' || !contract.dualFormatManifest.trim()) {
       issues.push('EXISTING_ART_DUAL_FORMAT_MANIFEST_MISSING');
     } else {
+      // REUSE_SCOPE is backed by the exact real PNG set already checked against
+      // the SHA-pinned reuse manifest, never by a fabricated GENERATING batch.
+      const expectedReuseOutputs=(manifest?.assets ?? []).map(asset=>({
+        path:path.resolve(resolvedProject,asset.path),sha256:asset.sha256
+      }));
       const dual = verifyNarrativeDualFormatArt(resolvedProject, contract.dualFormatManifest, {
-        currentHead, baseHead: sourceHead, dependencyBased
+        currentHead, baseHead: sourceHead, dependencyBased,
+        coverageMode:'REUSE_SCOPE', expectedReuseOutputs
       });
       artifacts.add(contract.dualFormatManifest);
       if (dual.status !== 'PASS_DUAL_FORMAT_ART_MECHANICAL') {
@@ -233,6 +239,9 @@ export function verifyExistingArtReuse(projectDir, contract, {
     errors: issues,
     artifacts: [...artifacts],
     assetCount: manifest?.assets?.length ?? 0,
-    visualAcceptance: issues.length ? 'NOT_VERIFIED' : 'PASS'
+    visualAcceptance: issues.length ? 'NOT_VERIFIED' : 'PASS',
+    verifiedOutputs: issues.length ? [] : (manifest?.assets ?? []).map(asset=>({
+      path:path.resolve(resolvedProject,asset.path),sha256:asset.sha256
+    }))
   };
 }

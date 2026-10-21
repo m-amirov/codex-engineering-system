@@ -160,3 +160,12 @@ records or regenerate accepted images solely to satisfy this view.
 
 This is a second incremental simplification, not a new required release gate.
 Existing acceptance and release policies remain authoritative.
+
+## Episode finalization from existing source-bound evidence
+
+When verified progress is complete but historical CEOS runs are ambiguous or
+missing immutable scope, use the read-only `episode-art-finalize` command
+with an explicit V1 evidence manifest. It requires source, original/runtime
+pixels and independent reviewer receipts; it does not synthesize acceptance
+or overwrite historical runs. Artistic `PASS_EPISODE_ART_FINALIZATION` is
+**not** a game release or Yandex media/contract PASS.

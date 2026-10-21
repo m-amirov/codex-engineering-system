@@ -584,7 +584,7 @@ export function resolveRun(projectDir, runRef = 'latest') {
  */
 function recoverResolutionReceiptContract(project, scope) {
   const allowed = ['target','inScope','outOfScope','acceptanceContract',
-    'mutationBoundary','resolutionReceiptContract'];
+    'mutationBoundary','resolutionReceiptContract','webReviewMode','webReviewAssurance'];
   if (Object.keys(scope).some(key => !allowed.includes(key)))
     throw new Error('BLOCKED_RECOVERY_SCOPE_UNSUPPORTED');
   if (!Object.hasOwn(scope,'resolutionReceiptContract')) return null;
@@ -738,6 +738,11 @@ export function createRun(projectDir, pipeline, {
     throw new Error('visual-content assurance requires enhanced Web review mode');
   const normalizedArtMode = normalizeArtMode(pipeline, artMode);
   const normalizedScope = normalizeScope(scope);
+  // Review assurance is part of the immutable run contract. Later
+  // source-bound consumers must not reinterpret a strict run as
+  // visual-content merely because a receipt omits provider identifiers.
+  normalizedScope.webReviewMode = webReviewMode;
+  normalizedScope.webReviewAssurance = webReviewAssurance;
   if (resolutionReceiptContract !== null) {
     const contract = normalizeResolutionReceiptContract(resolutionReceiptContract);
     const source = resolveArtifact(resolvedProject, resolvedProject, contract.sourceEvidence);
@@ -1020,7 +1025,7 @@ export function recordCheckpoint(projectDir, runRef, {
     const currentSource = gitSourceSnapshot(resolvedProject);
     const existingArtReuse = usesExistingArtReuse(run);
     const existingArtReuseContract = existingArtReuse
-      ? (metadata?.existingArtReuse ?? priorExistingArtReuseContract(resolved.runDir))
+      ? (stage === 'GENERATING' ? metadata?.existingArtReuse : priorExistingArtReuseContract(resolved.runDir))
       : null;
     if (stage === 'GENERATING' && metadata?.existingArtReuse && !existingArtReuse) {
       throw new Error('EXISTING_ART_REUSE_MODE_REQUIRED: create the run with artMode=VERIFIED_EXISTING_ART_REUSE');
@@ -1048,6 +1053,18 @@ export function recordCheckpoint(projectDir, runRef, {
       if (existingReuseGate.status !== 'PASS_VERIFIED_EXISTING_ART_REUSE') {
         throw new Error('VERIFIED_EXISTING_ART_REUSE_BLOCKED: ' + existingReuseGate.errors.join(', '));
       }
+    }
+    // Recheck pinned, previously accepted reuse evidence at every integration
+    // or acceptance gate. An arbitrary later metadata payload cannot change
+    // the source contract recorded by GENERATING.
+    if (existingArtReuse && ['INTEGRATED','REAUDITED'].includes(stage) &&
+        (normalizedOutcome==='CONTINUE' || normalizedOutcome==='PASS')) {
+      existingReuseGate=verifyExistingArtReuse(resolvedProject,existingArtReuseContract,{
+        currentHead:currentSource.available ? currentSource.head : null,
+        narrativeDualFormatRequired:run.narrativeDualFormatRequired===true
+      });
+      if (existingReuseGate.status!=='PASS_VERIFIED_EXISTING_ART_REUSE')
+        throw new Error('VERIFIED_EXISTING_ART_REUSE_BLOCKED: '+existingReuseGate.errors.join(', '));
     }
     if (definition.requiresImageGeneration && !existingArtReuse) {
       const image = currentCapabilities.imageGeneration;
@@ -1094,14 +1111,18 @@ export function recordCheckpoint(projectDir, runRef, {
         throw new Error('NARRATIVE_DUAL_FORMAT_MANIFEST_REQUIRED: metadata.dualFormatManifest');
       const requestEpisodeFinal = metadata.episodeFinalAcceptance === true;
       const batchCoverage = !existingArtReuse && !requestEpisodeFinal;
+      const reuseScope = existingArtReuse && !requestEpisodeFinal;
+      if (existingArtReuse && metadata.dualFormatManifest !== existingArtReuseContract?.dualFormatManifest)
+        throw new Error('NARRATIVE_REUSE_MANIFEST_MISMATCH: use the original GENERATING reuse contract manifest');
       dualFormatGate = verifyNarrativeDualFormatArt(resolvedProject, metadata.dualFormatManifest, {
         currentHead: currentSource.available ? currentSource.head : undefined,
         baseHead: existingArtReuseContract?.sourceHead,
         dependencyBased: existingArtReuseContract?.currentness?.mode === 'DEPENDENCY_BASED_REUSE',
-        coverageMode:batchCoverage?'BATCH_ONLY':'FULL_EPISODE',
+        coverageMode:reuseScope?'REUSE_SCOPE':batchCoverage?'BATCH_ONLY':'FULL_EPISODE',
         expectedBatchOutputs:batchCoverage
           ? latestGeneratingBatchOutputChecks(resolved.runDir,run.cycle)
-          : null
+          : null,
+        expectedReuseOutputs:reuseScope ? existingReuseGate?.verifiedOutputs : null
       });
       if (dualFormatGate.status !== 'PASS_DUAL_FORMAT_ART_MECHANICAL')
         throw new Error('NARRATIVE_DUAL_FORMAT_ART_BLOCKED: ' +
@@ -1110,6 +1131,8 @@ export function recordCheckpoint(projectDir, runRef, {
         throw new Error('NARRATIVE_BATCH_CANNOT_ASSERT_EPISODE_FINAL_ACCEPTANCE');
       if (batchCoverage && metadata.releaseReady === true)
         throw new Error('NARRATIVE_BATCH_CANNOT_ASSERT_RELEASE_READY');
+      if (reuseScope && metadata.releaseReady === true)
+        throw new Error('NARRATIVE_REUSE_SCOPE_CANNOT_ASSERT_RELEASE_READY');
     }
 
     if (definition.requiresDefectCount) {

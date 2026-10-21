@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { encodeProductionPng } from '../src/art-output-gate.mjs';
 import { inspectArtProgress } from '../src/art-progress.mjs';
+import { createRun, recordRoutingTrace } from '../src/execution-engine.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -61,7 +62,7 @@ function fixture(t) {
     schemaVersion:1,status:'PASS',profile:'NARRATIVE_ART_ACCEPTANCE_V2',
     actualPixelsReceived:true,acceptanceScope:'BATCH_ONLY',
     releaseReady:false,episodeFinalAcceptance:false,requiredRegeneration:false,
-    webHighAcceptance:{status:'PASS',reviewTraceId:'fixture-web-high',
+    webHighAcceptance:{status:'PASS',reviewTraceId:'fixture-web-high',taskId:'fixture-web-task',sourceHead,
       evidenceRefs:['fixture-pixels'],receivedEvidenceRefs:['fixture-pixels'],
       actualPixelsReceived:true},
     sourceBase:sourceHead,scope:[{sceneId:'ep2_a',pair:'S22'},{sceneId:'ep2_b',pair:'S23'}],
@@ -133,7 +134,7 @@ function legacyLedgerFixture(t,{missingWeb=false}={}) {
   const mechanicalHash=json(project,mechanical,{status:'PASS_ART_BATCH_MECHANICAL'});
   const web='artifacts/web-high.json',runtime='artifacts/runtime.json';
   const webHash=missingWeb ? 'f'.repeat(64) : json(project,web,{
-    status:'PASS',reviewTraceId:'web-s19',sourceHead,reviewedItems:['S19'],
+    status:'PASS',reviewTraceId:'web-s19',taskId:'web-task-s19',sourceHead,reviewedItems:['S19'],
     evidenceRefs:['S19-pixels'],receivedEvidenceRefs:['S19-pixels'],actualPixelsReceived:true
   });
   const runtimeHash=json(project,runtime,{status:'PASS_RUNTIME',sourceHead,captures:[]});
@@ -166,6 +167,43 @@ test('accepted batches are projected without creating runs or writing evidence',
   assert.equal(r.finalEpisodeAcceptance,'NOT_VERIFIED');
   assert.deepEqual(fs.readFileSync(path.join(x.project,x.indexPath)),before);
   assert.equal(fs.existsSync(path.join(x.project,'.ceos-runs')),false);
+});
+
+test('visual-content batch receipt is accepted only through its linked scope-locked CEOS run',t=>{
+  const x=fixture(t);
+  const run=createRun(x.project,'production-art',{
+    scope:{target:'S22-S23 existing art acceptance',inScope:['ep2_a','ep2_b'],outOfScope:['release'],
+      acceptanceContract:'independent NARRATIVE_ART_ACCEPTANCE_V2 pixel review',mutationBoundary:'existing assets only'},
+    capabilities:{web:{status:'READY',ready:true},imageGeneration:{capabilityPresence:'ABSENT',generationAllowed:false},
+      filesystem:{exists:true,readable:true,writable:true}},
+    webRequired:true,webReviewMode:'enhanced',webReviewAssurance:'visual-content',artMode:'VERIFIED_EXISTING_ART_REUSE'
+  }).run;
+  const refs=[],visualEvidence=[];
+  for(const asset of x.images){
+    refs.push(asset.id);
+    visualEvidence.push({ref:asset.id,path:asset.path,sha256:asset.sha256,
+      observation:`The ${asset.id} source pixels show the authored characters and action in the correct CG format.`});
+  }
+  for(const [index,capture] of x.captures.entries()){
+    const ref=`${capture.tag}-${capture.assetFormat}-runtime-${index}`;
+    refs.push(ref);
+    visualEvidence.push({ref,path:capture.screenshot,sha256:capture.screenshotSha256,
+      observation:`The ${capture.tag} runtime pixels preserve the matching ${capture.assetFormat} scene composition and readable dialogue area.`});
+  }
+  const reviewPath=`.ceos-runs/${run.runId}/evidence/acceptance-review.json`;
+  const review={schemaVersion:1,phase:'acceptance',agent:'ceos_art_director_web',sourceHead:'a'.repeat(40),status:'PASS',
+    artAcceptanceProfile:'NARRATIVE_ART_ACCEPTANCE_V2',reviewedItems:refs,evidenceRefs:refs,receivedEvidenceRefs:[...refs],
+    actualPixelsReceived:true,decision:'Every scoped image and runtime frame was received and visually inspected; no blocking findings remain.',
+    findings:[],unresolved:[],visualEvidence,evidenceArtifact:reviewPath};
+  json(x.project,reviewPath,review);
+  recordRoutingTrace(x.project,run.runId,{webReview:review});
+  x.updateReceipt(receipt=>({...receipt,webHighAcceptance:review}));
+
+  const result=inspectArtProgress(x.project,x.indexPath);
+  assert.equal(result.status,'PASS_ART_PROGRESS_REVALIDATED',JSON.stringify(result));
+  assert.equal(result.acceptedPairs,2);
+  assert.equal(result.acceptedPng,4);
+  assert.equal(result.finalEpisodeAcceptance,'NOT_VERIFIED');
 });
 
 test('actual PNG drift never counts a formerly accepted batch',t=>{

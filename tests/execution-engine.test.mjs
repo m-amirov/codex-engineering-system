@@ -762,7 +762,7 @@ test('narrative existing-art reuse also validates dual-format scene mapping', ()
   fs.writeFileSync(path.join(project, 'config', 'narrative-game.local.json'), JSON.stringify({
     profile: 'narrative-game', enabled: true, modelPath: 'narrative/graph.json'
   }));
-  fs.writeFileSync(path.join(project, 'narrative', 'graph.json'), JSON.stringify({ scenes: [{ id: 'S01', episode: 1 }] }));
+  fs.writeFileSync(path.join(project, 'narrative', 'graph.json'), JSON.stringify({ scenes: [{ id: 'S01', episode: 1 }, { id: 'S02', episode: 1 }] }));
 
   const portrait = path.join(project, 'art', 'scene-portrait.png');
   const desktop = path.join(project, 'art', 'scene-desktop.png');
@@ -802,6 +802,18 @@ test('narrative existing-art reuse also validates dual-format scene mapping', ()
     stage: 'GENERATING', metadata: { existingArtReuse: contract }
   });
   assert.equal(result.run.nextStage, 'INTEGRATED');
+  const integrated=recordCheckpoint(project,start.run.runId,{
+    stage:'INTEGRATED',artifacts:['dual-format.json'],
+    metadata:{dualFormatManifest:'dual-format.json'}
+  });
+  assert.equal(integrated.run.nextStage,'VISUAL_VERIFIED');
+  const cpFile=fs.readdirSync(path.join(start.runDir,'checkpoints'))
+    .find(name=>name.endsWith('-integrated.json'));
+  const cp=JSON.parse(fs.readFileSync(path.join(start.runDir,'checkpoints',cpFile),'utf8'));
+  assert.equal(cp.metadata.dualFormatGate.coverageMode,'REUSE_SCOPE');
+  assert.equal(cp.metadata.dualFormatGate.fullEpisodeCovered,false);
+  assert.equal(cp.metadata.dualFormatGate.episodeFinalAcceptance,'NOT_VERIFIED');
+  assert.equal(cp.metadata.dualFormatGate.variantFilesChecked,2);
 });
 
 test('narrative dependency-based reuse carries currentness through integration', () => {

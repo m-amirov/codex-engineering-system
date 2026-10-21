@@ -1,5 +1,19 @@
 # CEOS Continue V1 — bounded host-directed continuation
 
+## Optional orchestration: direct mode is the everyday default
+
+`ceos direct --project . --json` is a non-gating read-only context helper.
+A Codex task can proceed without running CEOS at all. Existing run state,
+checkpoints, parent markers, broken scope or historical `BLOCKED_AMBIGUOUS_RUNS`
+are **not prerequisites** for ordinary user-authorized source work.
+
+Use `ceos continue` only when opting into a CEOS-specific project
+planning inspection or strictly gated named-run lifecycle. Neither mode
+bypasses real art provenance, independent review, actual tool delivery,
+rights checks or release approval.
+
+See `docs/DIRECT_DEVELOPMENT_MODE.md`.
+
 ## Why
 
 A multi-stage CEOS run already records scope, evidence, nextStage, cycles,
@@ -10,8 +24,35 @@ CEOS Continue V1 is a **single-next-action planner** and **exclusive work claim*
 It is not an autonomous daemon, another model host, generic workflow language,
 nor a substitute for the existing run/checkpoint/verdict engine.
 
+## Project-level continuation from short user goals
+
+Run `ceos continue --scope project --mode inspect --json` in the project
+worktree when the task is "continue project", not "resume RUN_ID".
+
+- Auto-discovers the most recent **committed** `artifacts/audit/*COMPLETION_PLAN_YYYYMMDD.md`,
+  then `docs/PROJECT_PLAN.md` or `PLAN.md`. Same-date ambiguity blocks
+  unless an explicit `--plan` is provided.
+- Optionally accepts `--goal "short user goal"` without requiring lengthy
+  repetition of project constraints.
+- Checks project Git HEAD, actual worktree root, source plan bytes and
+  unmodified plan state; associates a matching readiness matrix if present.
+- Returns `READY_FOR_PROJECT_PLANNING` with a deterministic plan/action
+  digest and at most one unchecked checklist candidate, or requests a
+  host-side bounded task selection from free-form plans.
+- **R0 planning only.** No run is selected, created, reopened or resumed;
+  no claim, image generation, Git mutation or independent PASS is performed.
+  Host Codex must verify actual evidence and apply normal preflight,
+  permissions, capability and acceptance gates before doing any work.
+  A historical `BLOCKED_AMBIGUOUS_RUNS` is preserved, not repaired.
+- `--scope project` cannot be combined with RUN_ID, claim/release or a
+  run-specific art-progress index. An explicit `--scope run` leaves V1
+  behavior unchanged.
+- Missing, dirty or ambiguously selected project plans fail closed.
+
 ## Commands
 
+- ceos continue --scope project [--plan path] [--goal text] --mode inspect --json
+  - Read-only project-plan handoff, independent of legacy run-selection state.
 - ceos continue --mode inspect --json
   - Read-only explicit inspection mode. Inspect only; does not create runs, lock, refresh,
     reopen, check out Git, generate assets or accept evidence.
@@ -42,6 +83,30 @@ actual work, persists real evidence and uses ceos checkpoint, routing-trace,
 capability-challenge and existing verified recovery actions. It then calls
 continue again. CEOS cannot invoke host-native models, Web High or Image Gen
 from Node alone, and the CLI never pretends to.
+
+## Episode-wide art finalization without run selection
+
+A completed episode may have multiple historical active/blocked runs with
+unusable scope provenance. The **read-only** `ceos episode-art-finalize` path
+does not select a run and cannot repair or waive any run's missing
+`scope.json`, source drift or broken checkpoint:
+
+```text
+ceos episode-art-finalize --project <game> \
+  --manifest artifacts/episode-finalization-v1.json --json
+```
+
+It separately checks the source Git ancestry (only evidence-file commits may
+follow the pinned baseline), clean authored source, pinned narrative files,
+independent raw reviewer responses and per-image observations, revalidated
+historical art-progress where supplied, real portrait/landscape PNGs,
+runtime screenshots, narrative validation and reconciliation. Missing
+evidence returns `NOT_VERIFIED`. Its distinct
+`PASS_EPISODE_ART_FINALIZATION` verdict means **episode artwork only**:
+it is not a CEOS historical run `PASS`, platform release approval or
+`releaseReady=true`. This path never mutates historical evidence or calls
+Image Gen/Web High. See `docs/EPISODE_ART_FINALIZATION_V1.md` for the
+manifest contract.
 
 ## Deterministic behavior
 
@@ -185,3 +250,9 @@ attestations or a cryptographic proof of which process issued a separate
 CLI command. Do not pass `--project` from another checkout to borrow
 a session. Generate from an authorized Codex session actually launched
 in the target worktree and retain capability/trace checks.
+
+## Scoped verified-art reuse (CEOS 0.5.40)
+
+Narrative `VERIFIED_EXISTING_ART_REUSE` can cover a positive subset of authored scenes while the whole episode remains incomplete. CEOS checks its dual-format manifest in `REUSE_SCOPE` using the exact PNG path/SHA-256 set from the validated `GENERATING` reuse contract, not a fabricated image-generation checkpoint. It rechecks independent Web/runtime/provenance receipts, the pinned scope and the underlying bytes at integration and final scoped acceptance. The `INTEGRATED` / `REAUDITED` metadata `dualFormatManifest` must match the original contract.
+
+`REUSE_SCOPE` **never** means episode-final or release approval. Only `FULL_EPISODE` can validate complete episode scene coverage. A previously terminal `BLOCKED` reuse run remains terminal and is not silently reopened; create a distinct bounded reuse run under explicit authorization if the original run cannot use a supported recovery mechanism.

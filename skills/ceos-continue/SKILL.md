@@ -1,8 +1,8 @@
 ---
 name: ceos-continue
-description: Continue an existing CEOS project workflow from persisted runs and checkpoints with a bounded next action, safe claim, verified execution, and evidence-based checkpointing.
+description: Continue a project directly from project instructions and tests by default; opt into legacy CEOS run/checkpoint orchestration when explicitly requested.
 metadata:
-  ceos-version: "0.5.35"
+  ceos-version: "0.5.41"
 ---
 
 # Skill: ceos-continue
@@ -10,6 +10,55 @@ metadata:
 Use when the user says "continue", "продолжи", "go on", or asks to resume
 an existing CEOS run without repeating a long technical brief. This skill
 is a **Codex-host execution adapter**, not a separate model host or daemon.
+
+## Default: direct development, no orchestration overhead
+
+For ordinary Codex instructions such as "продолжи", "следующий этап",
+"подготовь EP3", "implement this" or "fix tests", **do the requested
+project work directly**. Do not require any CEOS run, checkpoint, claim,
+recovery, capability-challenge, audit receipt or `ceos continue` as a
+prerequisite just to edit code, write narrative, prepare art briefs,
+run tests, or commit intended files.
+
+1. Read the project's `AGENTS.md`, actual user request, relevant source,
+   current plan and existing accepted evidence. Do not make the user repeat
+   their previous technical brief.
+2. Inspect the actual Git worktree and active parallel work; preserve dirty
+   and untracked files. Direct workflow does not silently reset, clean,
+   cherry-pick or force-push.
+3. Execute the bounded user-authorized task using the host's normal tools.
+   Run relevant project-owned tests/validators. Record real results and
+   commit only intended files when authorized. Report remaining blockers.
+4. Optional context helper: `ceos direct --json`. It is **read-only,
+   never a gate**, does not inspect old runs, never claims PASS and does not
+   grant permission to generate, merge or publish. A missing CEOS binary
+   must not block ordinary Codex project development.
+5. If a particular CEOS validator lacks support for a new episode, do not
+   falsify IDs or evidence or force production through the old validator.
+   Use the project's real source-bound art workflow; report missing
+   verification separately and propose a narrowly scoped validator repair
+   only when needed for an actual acceptance/release requirement.
+
+For actual image generation, call a real host-native authorized generator,
+persist the original pixels and SHA-256, respect rights/provenance and
+bounded retries, and obtain independent artistic review of final images.
+For release/publishing, run the platform's real QA and permission gates.
+**No story, visual, media, episode or release PASS is inferred from a
+completed Codex task or unit tests alone.** CEOS-independent work is not
+an excuse to fabricate receipts or to reclassify an old blocker.
+
+## Opt-in: strict historical CEOS run lifecycle
+
+Use the strict instructions below **only** when the user explicitly requests
+a CEOS run, a named historical run/checkpoint recovery, a source-bound CEOS
+producer challenge, or another project's binding rule expressly requires it.
+Do not start a new strict run merely because an old run exists or is blocked.
+If an old `BLOCKED_AMBIGUOUS_RUNS` pertains only to historical workflows,
+it must not hold up unrelated direct development. Preserve it for audit.
+
+For an explicitly requested project planning inspection, the read-only
+`ceos continue --scope project --mode inspect --json` remains available.
+That command provides suggestions and does not authorize any mutating action.
 
 ## One action at a time
 

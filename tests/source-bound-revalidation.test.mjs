@@ -7,9 +7,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { encodeProductionPng } from '../src/art-output-gate.mjs';
-import { createSourceBoundRevalidation, inspectSourceBoundRevalidation } from '../src/source-bound-revalidation.mjs';
+import { createSourceBoundRevalidation, inspectSourceBoundRevalidation, inspectWebHighAcceptance } from '../src/source-bound-revalidation.mjs';
 import { discoverArtProgress, inspectArtProgress } from '../src/art-progress.mjs';
-import { createRun } from '../src/execution-engine.mjs';
+import { createRun, executionStatus, recordRoutingTrace } from '../src/execution-engine.mjs';
 import { planContinuation } from '../src/continuation-controller.mjs';
 
 const ceosRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -121,6 +121,7 @@ function fixture(t) {
     status: 'PASS',
     profile: 'NARRATIVE_ART_ACCEPTANCE_V2',
     reviewTraceId: 'test-historical-web-review',
+    taskId: 'test-historical-art-acceptance',
     actualPixelsReceived: true,
     sourceHead: historicalHead,
     evidenceRefs: pairs.map(([pairId]) => `${pairId}-pixels`),
@@ -163,6 +164,84 @@ function fixture(t) {
   return { project, pairs, files, ledgerPath, mechanicalPath, contractPath, contract };
 }
 
+function installVisualContentReceipt(x, { runScopeIds = x.pairs.map(([pairId]) => pairId) } = {}) {
+  const head = git(x.project, ['rev-parse', 'HEAD']);
+  const run = createRun(x.project, 'production-art', {
+    scope: {
+      target: 'source-bound EP2 art acceptance',
+      inScope: runScopeIds,
+      outOfScope: ['release'],
+      acceptanceContract: 'independent NARRATIVE_ART_ACCEPTANCE_V2 pixel review',
+      mutationBoundary: 'existing art evidence only'
+    },
+    capabilities: {
+      web: { status: 'READY', ready: true },
+      imageGeneration: { capabilityPresence: 'ABSENT', generationAllowed: false },
+      filesystem: { exists: true, readable: true, writable: true }
+    },
+    webRequired: true,
+    webReviewMode: 'enhanced',
+    webReviewAssurance: 'visual-content',
+    artMode: 'VERIFIED_EXISTING_ART_REUSE'
+  }).run;
+
+  const visualEvidence = [];
+  const evidenceRefs = [];
+  for (const [pairId] of x.pairs) {
+    const assets = x.files.get(pairId);
+    for (const format of ['portrait', 'landscape']) {
+      const ref = `${pairId}-${format}`;
+      visualEvidence.push({
+        ref,
+        path: assets[format],
+        sha256: assets[`${format}Sha`],
+        observation: `The ${format} image visibly stages the authored ${pairId} scene with its required characters and action.`
+      });
+      evidenceRefs.push(ref);
+    }
+  }
+  const contextPath = 'artifacts/revalidation/web-context.png';
+  const contextSha = write(x.project, contextPath, png(211));
+  visualEvidence.push({
+    ref: 'S19-runtime-context',
+    path: contextPath,
+    sha256: contextSha,
+    observation: 'The runtime context preserves the same scene cue and keeps the CG composition visible above the dialogue area.'
+  });
+  evidenceRefs.push('S19-runtime-context');
+
+  const reviewPath = `.ceos-runs/${run.runId}/evidence/acceptance-review.json`;
+  const review = {
+    schemaVersion: 1,
+    phase: 'acceptance',
+    agent: 'ceos_art_director_web',
+    sourceHead: head,
+    status: 'PASS',
+    artAcceptanceProfile: 'NARRATIVE_ART_ACCEPTANCE_V2',
+    reviewedItems: [...evidenceRefs],
+    evidenceRefs,
+    receivedEvidenceRefs: [...evidenceRefs],
+    actualPixelsReceived: true,
+    decision: 'All scoped source images and runtime context were received and visually inspected; no blocking art findings remain.',
+    findings: [],
+    unresolved: [],
+    visualEvidence,
+    evidenceArtifact: path.resolve(x.project, reviewPath)
+  };
+  const reviewSha256 = writeJson(x.project, reviewPath, review);
+  recordRoutingTrace(x.project, run.runId, { webReview: review });
+
+  const ledger = readJson(x.project, x.ledgerPath);
+  ledger.groups[0].webReceipt = { path: reviewPath, sha256: reviewSha256 };
+  writeJson(x.project, x.ledgerPath, ledger);
+  const contract = createSourceBoundRevalidation(x.project, x.ledgerPath, {
+    deferredPairs: ['S24', 'S25', 'S26'],
+    mechanicalReceiptPath: x.mechanicalPath
+  });
+  writeJson(x.project, x.contractPath, contract);
+  return { ...x, runId: run.runId, contextPath, contract };
+}
+
 test('source-bound revalidation proves unchanged S19-S23 mappings without rewriting the historical ledger', t => {
   const x = fixture(t);
   const beforeLedger = fs.readFileSync(abs(x.project, x.ledgerPath));
@@ -174,6 +253,91 @@ test('source-bound revalidation proves unchanged S19-S23 mappings without rewrit
   assert.equal(result.visualReevaluation.status, 'NOT_REQUIRED');
   assert.deepEqual(result.deferredPairs.map(item => item.id), ['S24', 'S25', 'S26']);
   assert.deepEqual(fs.readFileSync(abs(x.project, x.ledgerPath)), beforeLedger);
+});
+
+test('historical revalidation accepts an immutable receipt HEAD older than the ledger baseline', t => {
+  const x = fixture(t);
+  const ledger = readJson(x.project, x.ledgerPath);
+  const receiptPath = ledger.groups[0].webReceipt.path;
+  const receipt = readJson(x.project, receiptPath);
+  const historicalReceiptHead = 'a'.repeat(40);
+  assert.notEqual(historicalReceiptHead, ledger.currentHead);
+  receipt.sourceHead = historicalReceiptHead;
+  ledger.groups[0].webReceipt.sha256 = writeJson(x.project, receiptPath, receipt);
+  writeJson(x.project, x.ledgerPath, ledger);
+  const contract = createSourceBoundRevalidation(x.project, x.ledgerPath, {
+    deferredPairs: ['S24', 'S25', 'S26'],
+    mechanicalReceiptPath: x.mechanicalPath
+  });
+  writeJson(x.project, x.contractPath, contract);
+  const result = inspectSourceBoundRevalidation(x.project, x.contractPath);
+  assert.equal(result.status, 'PASS_ART_PROGRESS_REVALIDATED', JSON.stringify(result));
+  assert.equal(result.acceptedPairs, 5);
+});
+
+test('strict Web acceptance continues to require both provider trace and task identifiers', t => {
+  const x = fixture(t);
+  const ledger = readJson(x.project, x.ledgerPath);
+  const group = ledger.groups[0];
+  const receipt = readJson(x.project, group.webReceipt.path);
+  const baseline = inspectWebHighAcceptance(x.project, group.webReceipt.path, receipt, {
+    expectedSourceHead: ledger.currentHead
+  });
+  assert.equal(baseline.ok, true, JSON.stringify(baseline));
+
+  for (const missing of ['reviewTraceId', 'taskId']) {
+    const strictReceipt = { ...receipt };
+    delete strictReceipt[missing];
+    const result = inspectWebHighAcceptance(x.project, group.webReceipt.path, strictReceipt, {
+      expectedSourceHead: ledger.currentHead
+    });
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.includes('WEB_HIGH_TRACE_OR_TASK_ID_MISSING'), JSON.stringify(result));
+  }
+});
+
+test('source-bound progress accepts trace-free visual-content only from a scope-bound intact CEOS run', t => {
+  const x = installVisualContentReceipt(fixture(t));
+  assert.equal(executionStatus(x.project, x.runId).integrity.ok, true);
+  const result = inspectSourceBoundRevalidation(x.project, x.contractPath);
+  assert.equal(result.status, 'PASS_ART_PROGRESS_REVALIDATED', JSON.stringify(result));
+  assert.equal(result.acceptedPairs, 5);
+  assert.equal(inspectArtProgress(x.project, x.contractPath).acceptedPairs, 5);
+});
+
+test('source-bound progress rejects visual-content receipts whose locked CEOS run scope differs', t => {
+  assert.throws(() => installVisualContentReceipt(fixture(t), {
+    runScopeIds: ['S20', 'S21', 'S22', 'S23', 'S24']
+  }), /WEB_HIGH_SCOPE_MISMATCH/);
+});
+
+test('source-bound progress rejects visual-content evidence after its CEOS-run pixels change', t => {
+  const x = installVisualContentReceipt(fixture(t));
+  fs.appendFileSync(abs(x.project, x.contextPath), Buffer.from('changed after routing-trace'));
+  const result = inspectSourceBoundRevalidation(x.project, x.contractPath);
+  assert.equal(result.status, 'BLOCKED_ART_PROGRESS');
+  assert.ok(result.problems.some(problem => /WEB_HIGH_RUN_INTEGRITY/.test(problem)), JSON.stringify(result));
+});
+
+test('a historical trace-free receipt cannot be relabeled visual-content without a trusted CEOS run', t => {
+  const x = fixture(t);
+  const ledger = readJson(x.project, x.ledgerPath);
+  const receiptPath = ledger.groups[0].webReceipt.path;
+  const receipt = readJson(x.project, receiptPath);
+  delete receipt.reviewTraceId;
+  delete receipt.taskId;
+  receipt.assurance = 'visual-content';
+  receipt.visualEvidence = [{
+    ref: 'S19-pixels', path: x.files.get('S19').portrait,
+    sha256: x.files.get('S19').portraitSha,
+    observation: 'The S19 portrait pixels show the authored scene and expected character action clearly.'
+  }];
+  ledger.groups[0].webReceipt.sha256 = writeJson(x.project, receiptPath, receipt);
+  writeJson(x.project, x.ledgerPath, ledger);
+  assert.throws(() => createSourceBoundRevalidation(x.project, x.ledgerPath, {
+    deferredPairs: ['S24', 'S25', 'S26'],
+    mechanicalReceiptPath: x.mechanicalPath
+  }), /WEB_HIGH_CONTENT_RUN_REQUIRED/);
 });
 
 test('art-progress selects and validates the new source-bound index while keeping deferred pairs separate', t => {

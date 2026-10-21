@@ -15,10 +15,14 @@ import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/ar
 import { importArtOutput } from '../src/art-output-transport.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
 import { inspectArtProgress } from '../src/art-progress.mjs';
+import { inspectEpisodeArtFinalization } from '../src/episode-art-finalization.mjs';
 import { createSourceBoundRevalidation } from '../src/source-bound-revalidation.mjs';
 import { planContinuation, recoverContinuation, claimContinuation, releaseContinuation } from '../src/continuation-controller.mjs';
+import { planProjectContinuation } from '../src/project-continuation.mjs';
+import { inspectDirectWorkflow } from '../src/direct-workflow.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
 import { inspectRunRelocation, relocateRun } from '../src/run-relocation.mjs';
+import { DEFAULT_DEV_WEB_HIGH_INTERVAL_MS, DevWebHighTransport, writeDevWebReceipt } from '../src/dev-web-high-transport.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -142,15 +146,19 @@ Usage:
   ceos art-output-batch --manifest <assets.json> [--receipt <new.json>] [--json]
   ceos art-progress-revalidate --ledger <historical-ledger.json> --mechanical-receipt <new-receipt.json> --deferred-pairs <id;id> --output <new-contract.json> [--project dir] [--json]
   ceos art-progress --index <project-relative-evidence-index.json|source-bound-ledger.json> [--project dir] [--json] (read-only; never invents acceptance)
+  ceos episode-art-finalize --manifest <artifacts/episode-finalization-v1.json> [--project dir] [--json] (read-only, independent of historical run selection; never grants release readiness)
   ceos art-output-normalize --file <prop.png> --output <new.png> [--width 512 --height 512] [--json]
   ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--assurance strict|visual-content] [--json]
   ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--assurance strict|visual-content] [--json]
+  ceos dev-web-review --request-file <json> --receipt <project-relative-new.json> [--raw-response <project-relative-new.txt>] [--project dir] [--dev-home dir] [--stable-home dir] [--head <sha>] [--min-attachment-interval-ms N] [--json]
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
   ceos capability-challenge [run-id|latest] [--codex-home dir] [--json]
   ceos capability-recover [run-id|latest] [--apply] [--json]  # safe hash-exact legacy recovery\n  ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
   ceos producer-route-check [run-id|latest] --trace <actual-child-rollout.jsonl> [--codex-home dir] [--json]
   ceos run <audit-repair-loop|production-art> --target <text> --in-scope <a;b> --acceptance <text> --mutation-boundary <text> [--out-of-scope <a;b>] [--art-mode NEW_GENERATION|VERIFIED_EXISTING_ART_REUSE] [--web-required] [--web-review-assurance strict|visual-content] [--max-cycles N] [--image-generation state] [--resolution-contract-file json] [--json]
   ceos checkpoint [run-id|latest] --stage <stage> [--artifact <path;path>] [--outcome CONTINUE|PASS|FAIL|BLOCKED|ESCALATE] [--metadata-json json] [--defect-count N] [--skip] [--note text] [--json]
+  ceos direct [--project dir] [--json] (read-only optional development context; no runs/checkpoints)
+  ceos continue --scope project [--plan <project-relative-completion-plan.md>] [--goal <short goal>] [--mode inspect|guided|auto] [--json]  (read-only project handoff)
   ceos continue [run-id|latest] [--project dir] [--progress-index path] [--mode inspect|guided|auto] [--dry-run] [--claim --action-id HASH | --release TOKEN] [--json] (guided default; inspect/dry-run read-only)
   ceos run-relocate [run-id|latest] --project <new-worktree> [--apply --expect-sha <original-run-sha256>] [--json] (read-only preview by default)
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
@@ -441,6 +449,13 @@ try {
       process.exitCode = result.status === 'PASS_ART_PROGRESS_REVALIDATED' ? 0 : 2;
       break;
     }
+    case 'episode-art-finalize': {
+      if (typeof args.manifest !== 'string') throw new Error('--manifest is required');
+      const result = inspectEpisodeArtFinalization(project, String(args.manifest));
+      print(result, true);
+      process.exitCode = result.status === 'PASS_EPISODE_ART_FINALIZATION' ? 0 : 2;
+      break;
+    }
     case 'art-output-normalize': {
       if (typeof args.file !== 'string' || typeof args.output !== 'string')
         throw new Error('--file and --output are required');
@@ -475,6 +490,38 @@ try {
       const result = { status: issues.length ? 'WEB_REVIEW_NOT_VERIFIED' : 'PASS', issues };
       print(result, true);
       process.exitCode = issues.length ? 2 : 0;
+      break;
+    }
+    case 'dev-web-review': {
+      if (!args['request-file'] || !args.receipt) throw new Error('--request-file and --receipt are required');
+      const requestFile = path.resolve(String(args['request-file']));
+      const request = JSON.parse(fs.readFileSync(requestFile, 'utf8'));
+      if (!request || typeof request !== 'object' || Array.isArray(request)) throw new Error('--request-file must contain one review request object');
+      const interval = args['min-attachment-interval-ms'] === undefined
+        ? 20_000 : Number(args['min-attachment-interval-ms']);
+      if (!Number.isInteger(interval) || interval < DEFAULT_DEV_WEB_HIGH_INTERVAL_MS || interval > 60_000) {
+        throw new Error(`--min-attachment-interval-ms must be an integer from ${DEFAULT_DEV_WEB_HIGH_INTERVAL_MS} to 60000`);
+      }
+      const transport = new DevWebHighTransport({
+        projectDir: project,
+        devHome: args['dev-home'] || undefined,
+        stableHome: args['stable-home'] || undefined,
+        minAttachmentIntervalMs: interval
+      });
+      try {
+        const result = await transport.review(request, {
+          expectedHead: args.head === true ? undefined : (args.head || undefined),
+          evidenceArtifact: String(args.receipt).replaceAll('\\', '/'),
+          rawResponseArtifact: args['raw-response']
+            ? String(args['raw-response']).replaceAll('\\', '/')
+            : null
+        });
+        if (result.receipt) writeDevWebReceipt(project, String(args.receipt), result.receipt);
+        print(result, Boolean(args.json));
+        process.exitCode = result.status === 'PASS' ? 0 : result.status === 'REWORK' ? 1 : 2;
+      } finally {
+        await transport.close();
+      }
       break;
     }
     case 'run': {
@@ -544,29 +591,45 @@ try {
       process.exitCode = executionExitCode(result.run, result.integrity);
       break;
     }
+    case 'direct': {
+      const result = inspectDirectWorkflow(project);
+      print(result, true);
+      process.exitCode = result.status === 'READY_FOR_DIRECT_DEVELOPMENT' ? 0 : 2;
+      break;
+    }
     case 'continue': {
       const runRef = args._[1] || undefined;
       const mode = args.mode || (args['dry-run'] ? 'inspect' : 'guided');
       if (args.claim && args.release) throw new Error('Cannot claim and release simultaneously');
       if (args['dry-run'] && (args.claim || args.release))
         throw new Error('--dry-run cannot claim/release');
-      const result = args.release
-        ? releaseContinuation(project,{runRef,token:args.release === true ? null : args.release})
-        : args.claim
-          ? claimContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null,expectedActionId:args['action-id']})
-          : (args['dry-run'] || mode === 'inspect')
-            ? planContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null})
-            : recoverContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null});
+      const projectScope = args.scope === 'project' || (args.scope === undefined && args.plan !== undefined);
+      if (args.scope !== undefined && !['project','run'].includes(args.scope))
+        throw new Error('--scope must be project or run');
+      if (projectScope && (runRef || args.claim || args.release || args['progress-index']))
+        throw new Error('Project continuation is read-only; do not pass a run ID, claim, release or progress-index');
+      if (projectScope && !['guided','inspect','auto'].includes(mode))
+        throw new Error('Invalid project continuation mode');
+      const result = projectScope
+        ? planProjectContinuation(project,{planPath:args.plan ?? null,goal:args.goal ?? null})
+        : args.release
+          ? releaseContinuation(project,{runRef,token:args.release === true ? null : args.release})
+          : args.claim
+            ? claimContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null,expectedActionId:args['action-id']})
+            : (args['dry-run'] || mode === 'inspect')
+              ? planContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null})
+              : recoverContinuation(project,{runRef,mode,progressIndex:args['progress-index'] ?? null});
       if (args.json) print(result,true);
       else {
         console.log('CONTINUE: ' + result.status);
         if (result.runId) console.log('Run: ' + result.runId);
+        if (result.plan?.path) console.log('Project plan: ' + result.plan.path);
         if (result.action) console.log('Next: ' + result.action.kind + ' | ' + result.action.instruction);
         if (result.recovery?.status) console.log('Recovery: ' + result.recovery.status + ' from ' + result.recovery.sourceRunId);
         if (result.lease) console.log('Lease: ' + result.lease.token);
         if (!result.executable) console.log('No host work authorized by this response.');
       }
-      process.exitCode = ['READY_FOR_CODEX','DONE','RELEASED'].includes(result.status) ? 0 : 2;
+      process.exitCode = ['READY_FOR_CODEX','READY_FOR_PROJECT_PLANNING','DONE','RELEASED'].includes(result.status) ? 0 : 2;
       break;
     }
     case 'run-status': {

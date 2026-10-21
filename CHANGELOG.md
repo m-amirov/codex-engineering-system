@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.40 — 2026-10-18: Scoped verified-art reuse
+
+- Correct narrative `VERIFIED_EXISTING_ART_REUSE`: independently accepted, SHA-256-verified dual-format art for a positive scene subset can pass `REUSE_SCOPE` without requiring full-episode coverage. This is explicitly **not** episode-final/release acceptance.
+- Check the exact reused PNG set against the immutable GENERATING reuse contract on every integration/acceptance; do not allow later checkpoints to swap reuse manifests or bypass pixel/provenance/source checks.
+- Continue rejecting stale/missing/extra assets, missing Web/runtime acceptance, unknown scene IDs and false release claims. Add regression coverage.
+
+
 ## 0.5.39 — 2026-10-18: Byte-exact legacy capability recovery
 
 - Add guarded `ceos capability-recover RUN_ID [--apply]` for the historical single-file multi-cycle attestation overwrite, with dry-run as default.
