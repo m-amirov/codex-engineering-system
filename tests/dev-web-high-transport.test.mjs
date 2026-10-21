@@ -167,6 +167,24 @@ test('DEV review prompt applies dialogue-first narrative rubric without prescrib
   await t.close();
 });
 
+test('DEV Web High includes optional wardrobe assessment schema only for explicit wardrobe reviews', async () => {
+  const f = fixture();
+  let prompt = '';
+  const t = transport(f, {
+    run: async call => {
+      prompt = call.prompt;
+      return { text: reviewerResponse(f.request), submitted: true, attachmentAccepted: true };
+    }
+  });
+  f.request.context += '\\nWARDROBE_VISUAL_ACCEPTANCE_V1: independent wardrobe comparisons required';
+  const result = await t.review(f.request);
+  assert.equal(result.status, 'PASS');
+  assert.match(prompt, /wardrobeAssessments/);
+  assert.match(prompt, /silver streaks/);
+  assert.match(prompt, /every required cast member/i);
+  await t.close();
+});
+
 test('fenced JSON is accepted without relaxing source-bound pixel validation', async () => {
   const f = fixture();
   const result = await transport(f, {
