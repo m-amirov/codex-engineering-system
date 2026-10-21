@@ -217,6 +217,7 @@ export function prepareDevWebReviewRequest(request, { projectDir, currentHead } 
 
 function buildPrompt(request) {
   const manifest = request.images.map(image => ({ ref: image.ref, kind: image.kind, sha256: image.sha256 }));
+  const wardrobeReview = request.context.includes('WARDROBE_VISUAL_ACCEPTANCE_V1');
   return [
     'You are an independent GPT-6 Sol High reviewer running through the isolated DEV browser-only transport.',
     'You have no local filesystem, terminal, MCP, Stable bridge, or repository access. Review only the supplied text and attached pixels.',
@@ -248,9 +249,31 @@ function buildPrompt(request) {
         sha256: image.sha256,
         observation: 'specific independent pixel observation of at least 20 characters'
       })),
+      ...(wardrobeReview ? {
+        wardrobeAssessments: [{
+          characterId: 'required character ID from the source-bound context; repeat for each required cast member',
+          portraitObservation: 'actual original and runtime portrait clothing, age, hair and silhouette observation',
+          landscapeObservation: 'actual original and runtime landscape clothing, age, hair and silhouette observation',
+          referenceComparison: 'specific comparison with attached character reference pixels',
+          dualFormatComparison: 'specific portrait vs landscape garment and accessory comparison',
+          continuityReason: 'specific previous/next scene wardrobe comparison or evidence-bound not-applicable explanation',
+          repetitionReason: 'specific outfit repetition assessment with time and role context',
+          identityStatus: 'PASS | REWORK',
+          dualFormatStatus: 'PASS | REWORK',
+          continuityStatus: 'PASS | REWORK',
+          repetitionStatus: 'PASS | REWORK',
+          evidenceRefs: request.images.map(image => image.ref)
+        }]
+      } : {}),
       findings: [],
       unresolved: []
     }),
+    ...(wardrobeReview ? [
+      'WARDROBE_VISUAL_ACCEPTANCE_V1: Add a wardrobeAssessments entry for EVERY required cast member named in source-bound context. The template entry is illustrative, not an observed verdict.',
+      'Compare original/runtime portrait and landscape pixels with the character reference and any adjacent-scene pixels. Apparent age, silver streaks, face, silhouette, garment/accessory continuity and unmotivated repeated outfits are substantive review subjects.',
+      'Use PASS for a wardrobe sub-assessment only when the necessary pixels were actually received and the evidence supports it. Missing adjacent images needed for continuous-story continuity must not be invented; report REWORK with explicit evidence gap.',
+      'Do not penalize authored same-day continuity or a necessary staff uniform. Material P0/P1 identity/wardrobe conflicts must produce a substantive REWORK; minor P2/P3 visual preferences must not trigger endless regeneration.'
+    ] : []),
     'Observe both the original PNG and the runtime capture separately. Copy the supplied sourceHead, refs, paths and SHA-256 values exactly; never invent or infer an observation for pixels you did not actually see. For any finding use the NARRATIVE_ART_ACCEPTANCE_V2 fields: id, severity, status, impactCode, authoredCue, observation, playerImpact, evidenceRef, actualPixelsReceived, visualRequired (if directly relevant), and materialPlayerImpact when relevant. If the visuals do not need to depict a narrated action, classify that absence as nonblocking, not as a visual contradiction.'
   ].join('\n');
 }
