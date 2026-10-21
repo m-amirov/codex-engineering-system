@@ -152,3 +152,20 @@ The implementation was audited against the installed DEV 6.1.11 bundle:
 The separate source checkout found locally is 6.1.7 and was used only to
 cross-check the helper protocol shape; production execution is pinned to the
 installed 6.1.11 DEV descriptor and fails closed on another release.
+
+## Optional wardrobe visual assessment (Direct Development Mode)
+
+When the source-bound `context` contains `WARDROBE_VISUAL_ACCEPTANCE_V1`,
+the DEV reviewer prompt includes a structured `wardrobeAssessments` array
+in the same JSON response. This is opt-in; existing story-first Web High reviews
+are unchanged. For every required cast member, independent observations compare
+portrait and landscape original/runtime pixels, canonical character reference,
+adjacent-scene wardrobe continuity and repeated outfits. An unavailable visual
+comparison cannot be invented or marked PASS. Stable bridge remains unused.
+
+The game-side `wardrobe-visual-gate.mjs` verifies the raw response's
+`wardrobeAssessments` against its SHA-bound DEV receipt, original files,
+reference pixels and current Git HEAD. The CEOS receipt intentionally does not
+promote these extra fields into the standard V2 envelope; the unmodified raw
+reviewer response is persisted as evidence. The game-side gate must therefore
+be run separately and must return NOT_VERIFIED if assessments are missing.
