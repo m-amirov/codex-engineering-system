@@ -9,6 +9,9 @@ import { assessNarrativeArtFindings, NARRATIVE_ART_ACCEPTANCE_V2, NARRATIVE_ART_
 import { classifyWebTransportFailure } from './web-transport-failure.mjs';
 
 export const DEV_WEB_HIGH_MODEL = 'chatgpt-web/gpt-6-sol';
+export const DEV_WEB_HIGH_FALLBACK_MODEL = 'gpt-5.6-sol';
+export const DEV_WEB_HIGH_MODEL_ENTITLEMENT_UNAVAILABLE = 'MODEL_ENTITLEMENT_UNAVAILABLE';
+export const DEV_WEB_HIGH_BLOCKED_MODEL_ENTITLEMENT = 'BLOCKED_MODEL_ENTITLEMENT';
 export const DEV_WEB_HIGH_RELEASE = '6.1.11';
 export const DEV_WEB_HIGH_AGENT = 'ceos_art_director_web';
 export const DEFAULT_DEV_WEB_HIGH_INTERVAL_MS = 20_000;
@@ -61,6 +64,110 @@ function fail(code, message, details = {}) {
   return error;
 }
 
+function routeModelId(route) {
+  return route.modelId || String(route.model || '').replace(/^chatgpt-web\//, '');
+}
+
+function normalizeReviewerRoute(route, index = 0) {
+  if (!route || typeof route !== 'object' || Array.isArray(route)) return null;
+  const model = String(route.model ?? '').trim();
+  const provider = String(route.provider ?? 'codex-chatgpt-web-dev').trim();
+  const mode = String(route.mode ?? 'browser-only').trim();
+  if (!nonempty(model) || provider !== 'codex-chatgpt-web-dev' || mode !== 'browser-only') return null;
+  if (route.multimodal !== true) return null;
+  const modelId = routeModelId({ ...route, model });
+  if (!nonempty(modelId)) return null;
+  return {
+    id: String(route.id || `${provider}:${model}`),
+    provider,
+    mode,
+    model,
+    modelId,
+    reasoning: String(route.reasoning || 'high'),
+    authMode: String(route.authMode || 'codex-chatgpt-account'),
+    multimodal: true,
+    preferred: route.preferred === true || index === 0,
+    fallback: route.fallback === true || index > 0,
+    declaredAvailability: route.declaredAvailability || 'unknown'
+  };
+}
+
+function defaultReviewerRoutes(profile) {
+  return [
+    normalizeReviewerRoute({
+      id: 'gpt-6-sol-high',
+      provider: 'codex-chatgpt-web-dev',
+      mode: 'browser-only',
+      model: DEV_WEB_HIGH_MODEL,
+      modelId: 'gpt-6-sol',
+      reasoning: 'high',
+      multimodal: true,
+      preferred: true,
+      declaredAvailability: 'unknown'
+    }, 0),
+    ...(profile.solAvailable === true ? [normalizeReviewerRoute({
+      id: 'gpt-5.6-sol-high',
+      provider: 'codex-chatgpt-web-dev',
+      mode: 'browser-only',
+      model: DEV_WEB_HIGH_FALLBACK_MODEL,
+      modelId: 'gpt-5.6-sol',
+      reasoning: 'high',
+      multimodal: true,
+      fallback: true,
+      declaredAvailability: 'declared-only'
+    }, 1)] : [])
+  ].filter(Boolean);
+}
+
+function reviewerRoutes(profile, configuredRoutes = null) {
+  const source = Array.isArray(configuredRoutes) && configuredRoutes.length > 0
+    ? configuredRoutes
+    : Array.isArray(profile.reviewerRoutes) && profile.reviewerRoutes.length > 0
+      ? profile.reviewerRoutes
+      : defaultReviewerRoutes(profile);
+  const routes = source.map(normalizeReviewerRoute).filter(Boolean);
+  if (routes.length === 0) throw fail('DEV_UNAVAILABLE', 'No trusted browser-only multimodal reviewer route is configured');
+  return routes;
+}
+
+export function discoverDevWebCapabilities(profile, { observedRoutes = [] } = {}) {
+  const routes = reviewerRoutes(profile);
+  const observations = new Map((Array.isArray(observedRoutes) ? observedRoutes : [])
+    .filter(value => value && nonempty(value.model))
+    .map(value => [value.model, value]));
+  return {
+    schemaVersion: 1,
+    provider: 'codex-chatgpt-web-dev',
+    app: {
+      status: 'AVAILABLE',
+      releaseVersion: profile.releaseVersion,
+      mode: profile.mode,
+      isolatedFromStable: path.resolve(profile.home ?? '') !== path.resolve(profile.stableHome ?? ''),
+      descriptorPath: profile.descriptorPath
+    },
+    authorization: {
+      status: 'UNKNOWN',
+      source: 'model invocation is required; config flags are not entitlement proof'
+    },
+    attachments: {
+      transport: 'browser-helper-inline-images',
+      status: 'UNVERIFIED',
+      actualPixelsReceived: false
+    },
+    reviewers: routes.map(route => ({
+      ...route,
+      entitlement: observations.get(route.model)?.classification === 'MODEL_ENTITLEMENT_UNAVAILABLE'
+        ? 'UNAVAILABLE'
+        : observations.get(route.model)?.status === 'AVAILABLE' ? 'AVAILABLE' : 'UNVERIFIED',
+      observed: observations.get(route.model) || null
+    })),
+    browserOnlyReview: {
+      status: 'UNVERIFIED',
+      reasonCode: null
+    }
+  };
+}
+
 function readJson(file, label) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -94,7 +201,9 @@ function assertProfile(profile) {
   if (profile.mode !== 'browser-only') {
     throw fail('DEV_UNAVAILABLE', 'DEV Web High transport requires browser-only mode');
   }
-  if (profile.solAvailable !== true) throw fail('DEV_UNAVAILABLE', 'DEV account has no GPT-6 Sol capability');
+  if (profile.solAvailable !== undefined && typeof profile.solAvailable !== 'boolean') {
+    throw fail('DEV_UNAVAILABLE', 'DEV solAvailable declaration must be boolean when present');
+  }
   if (profile.descriptor?.profile !== 'development' || profile.descriptor?.kind !== 'codex-web-gpt-launcher') {
     throw fail('DEV_UNAVAILABLE', 'DEV launcher descriptor is not development-scoped');
   }
@@ -130,6 +239,9 @@ export function loadDevWebProfile({
     releaseVersion: config.releaseVersion,
     mode: config.mode,
     solAvailable: config.solAvailable,
+    extraHighAvailable: config.extraHighAvailable,
+    proAvailable: config.proAvailable,
+    reviewerRoutes: Array.isArray(config.reviewerRoutes) ? config.reviewerRoutes : null,
     appName: 'Codex Native2 DEV'
   };
   assertProfile(profile);
@@ -215,11 +327,11 @@ export function prepareDevWebReviewRequest(request, { projectDir, currentHead } 
   };
 }
 
-function buildPrompt(request) {
+function buildPrompt(request, route) {
   const manifest = request.images.map(image => ({ ref: image.ref, kind: image.kind, sha256: image.sha256 }));
   const wardrobeReview = request.context.includes('WARDROBE_VISUAL_ACCEPTANCE_V1');
   return [
-    'You are an independent GPT-6 Sol High reviewer running through the isolated DEV browser-only transport.',
+    `You are an independent ${route.model} reviewer running through the isolated DEV browser-only transport.`,
     'You have no local filesystem, terminal, MCP, Stable bridge, or repository access. Review only the supplied text and attached pixels.',
     'Do not claim to have used tools or inspected files. Do not invent missing pixels.',
     'This is a source-bound visual acceptance for NARRATIVE_ART_ACCEPTANCE_V2.',
@@ -447,11 +559,33 @@ function malformedResponseRepairEligible(request, responseText) {
   return observationCount >= request.images.length;
 }
 
+function routeTransport(route = null) {
+  const selected = route || {
+    provider: 'codex-chatgpt-web-dev',
+    mode: 'browser-only',
+    model: DEV_WEB_HIGH_MODEL,
+    modelId: 'gpt-6-sol',
+    reasoning: 'high',
+    authMode: 'codex-chatgpt-account'
+  };
+  return {
+    provider: selected.provider,
+    releaseVersion: DEV_WEB_HIGH_RELEASE,
+    mode: selected.mode,
+    model: selected.model,
+    modelId: selected.modelId,
+    reasoning: selected.reasoning,
+    authorizationMode: selected.authMode,
+    stableBridgeUsed: false
+  };
+}
+
 function notVerified(request, reasonCode, responseText, transportEvidence, {
   validationErrors = [],
   extraction = null,
   normalization = {},
-  rawResponseArtifacts = []
+  rawResponseArtifacts = [],
+  route = null
 } = {}) {
   return {
     schemaVersion: 1,
@@ -461,12 +595,7 @@ function notVerified(request, reasonCode, responseText, transportEvidence, {
     sourceHead: request.sourceHead,
     transport: {
       status: 'COMPLETED',
-      provider: 'codex-chatgpt-web-dev',
-      releaseVersion: DEV_WEB_HIGH_RELEASE,
-      mode: 'browser-only',
-      model: DEV_WEB_HIGH_MODEL,
-      reasoning: 'high',
-      stableBridgeUsed: false,
+      ...routeTransport(route),
       attachmentRefs: request.images.map(image => image.ref),
       ...transportEvidence
     },
@@ -482,7 +611,7 @@ function notVerified(request, reasonCode, responseText, transportEvidence, {
   };
 }
 
-function buildReceipt(request, parsed, responseText, delivery, evidenceArtifact) {
+function buildReceipt(request, parsed, responseText, delivery, evidenceArtifact, route) {
   const actualPixelsReceived = delivery.submitted === true && delivery.attachmentAccepted !== false && parsed.actualPixelsReceived === true;
   return {
     schemaVersion: 1,
@@ -492,9 +621,9 @@ function buildReceipt(request, parsed, responseText, delivery, evidenceArtifact)
     reviewTraceId: null,
     sourceHead: request.sourceHead,
     status: parsed.status,
-    model: DEV_WEB_HIGH_MODEL,
-    reasoning: 'high',
-    provider: 'codex-chatgpt-web-dev',
+    model: route.model,
+    reasoning: route.reasoning,
+    provider: route.provider,
     stableBridgeUsed: false,
     reviewedItems: parsed.reviewedItems,
     evidenceRefs: parsed.evidenceRefs,
@@ -508,12 +637,7 @@ function buildReceipt(request, parsed, responseText, delivery, evidenceArtifact)
     visualEvidence: parsed.visualEvidence,
     normalization: parsed.normalization,
     transport: {
-      provider: 'codex-chatgpt-web-dev',
-      releaseVersion: DEV_WEB_HIGH_RELEASE,
-      mode: 'browser-only',
-      model: DEV_WEB_HIGH_MODEL,
-      reasoning: 'high',
-      stableBridgeUsed: false,
+      ...routeTransport(route),
       actualProjectHead: delivery.actualProjectHead ?? request.sourceHead,
       responseSha256: digest(String(responseText ?? '')),
       attachmentRefs: request.images.map(image => image.ref),
@@ -524,7 +648,7 @@ function buildReceipt(request, parsed, responseText, delivery, evidenceArtifact)
   };
 }
 
-function parseResponse(request, response, { evidenceArtifact, rawResponseArtifacts = [], schemaRepairAttempted = false } = {}) {
+function parseResponse(request, response, { evidenceArtifact, rawResponseArtifacts = [], schemaRepairAttempted = false, route } = {}) {
   const responseText = response?.text;
   const transportEvidence = {
     traceId: response?.traceId ?? null,
@@ -537,7 +661,8 @@ function parseResponse(request, response, { evidenceArtifact, rawResponseArtifac
     return notVerified(request, extraction.error, responseText, transportEvidence, {
       extraction,
       rawResponseArtifacts,
-      normalization: { schemaRepairAttempted }
+      normalization: { schemaRepairAttempted },
+      route
     });
   }
   const parsed = extraction.parsed;
@@ -547,7 +672,8 @@ function parseResponse(request, response, { evidenceArtifact, rawResponseArtifac
       validationErrors: validation.errors,
       extraction,
       rawResponseArtifacts,
-      normalization: { schemaRepairAttempted }
+      normalization: { schemaRepairAttempted },
+      route
     });
   }
   if (validation.pixelErrors.length) {
@@ -555,7 +681,8 @@ function parseResponse(request, response, { evidenceArtifact, rawResponseArtifac
       validationErrors: validation.pixelErrors,
       extraction,
       rawResponseArtifacts,
-      normalization: { schemaRepairAttempted }
+      normalization: { schemaRepairAttempted },
+      route
     });
   }
   const findingCheck = assessNarrativeArtFindings(parsed.findings);
@@ -563,14 +690,16 @@ function parseResponse(request, response, { evidenceArtifact, rawResponseArtifac
     validationErrors: findingCheck.errors,
     extraction,
     rawResponseArtifacts,
-    normalization: { schemaRepairAttempted }
+    normalization: { schemaRepairAttempted },
+    route
   });
   if (parsed.status === 'PASS' && findingCheck.blockingFindings.length > 0) {
     return notVerified(request, 'NARRATIVE_VERDICT_CONTRADICTION', responseText, transportEvidence, {
       validationErrors: ['PASS cannot contain open blocking NARRATIVE_ART_ACCEPTANCE_V2 findings'],
       extraction,
       rawResponseArtifacts,
-      normalization: { schemaRepairAttempted }
+      normalization: { schemaRepairAttempted },
+      route
     });
   }
   const normalized = {
@@ -584,11 +713,12 @@ function parseResponse(request, response, { evidenceArtifact, rawResponseArtifac
       imageSha256: request.images.map(image => ({ ref: image.ref, sha256: image.sha256 }))
     }
   };
-  const receipt = buildReceipt(request, normalized, responseText, response, evidenceArtifact);
+  const receipt = buildReceipt(request, normalized, responseText, response, evidenceArtifact, route);
   if (!receipt.actualPixelsReceived) return notVerified(request, 'PIXEL_DELIVERY_NOT_CONFIRMED', responseText, transportEvidence, {
     extraction,
     rawResponseArtifacts,
-    normalization: { schemaRepairAttempted }
+    normalization: { schemaRepairAttempted },
+    route
   });
   return {
     schemaVersion: 1,
@@ -620,7 +750,12 @@ function normalizeFailure(error) {
     code: value.code || '',
     httpStatus: value.status ?? null
   });
+  if (classified.classification !== 'UNKNOWN') return { ...classified, detail: value.message };
   if (value.code === 'DEV_UNAVAILABLE') return { classification: 'DEV_UNAVAILABLE', retryAllowed: false, detail: value.message };
+  if (value.code === DEV_WEB_HIGH_MODEL_ENTITLEMENT_UNAVAILABLE) {
+    return { classification: DEV_WEB_HIGH_MODEL_ENTITLEMENT_UNAVAILABLE, retryAllowed: false, reviewerFallbackAllowed: true, detail: value.message };
+  }
+  if (value.code === 'AUTHENTICATION_UNAVAILABLE') return { classification: 'AUTHENTICATION_UNAVAILABLE', retryAllowed: false, reviewerFallbackAllowed: false, detail: value.message };
   if (value.code === 'PROVENANCE_FAILURE') return { classification: 'PROVENANCE_FAILURE', retryAllowed: false, detail: value.message };
   if (value.code === 'DEV_ATTACHMENT_PACING_BLOCKED') return { classification: 'ATTACHMENT_PACING_BLOCKED', retryAllowed: false, detail: value.message };
   return { ...classified, detail: value.message };
@@ -634,6 +769,7 @@ export class DevWebHighTransport {
     profile,
     profileLoader,
     helperFactory,
+    reviewerRoutes: configuredReviewerRoutes = null,
     stableRoutingEnabled = false,
     sleep = sleepDefault,
     now = () => Date.now(),
@@ -648,6 +784,7 @@ export class DevWebHighTransport {
     this.profile = profile;
     this.profileLoader = profileLoader || (() => loadDevWebProfile({ devHome, stableHome }));
     this.helperFactory = helperFactory;
+    this.configuredReviewerRoutes = configuredReviewerRoutes;
     this.stableRoutingEnabled = Boolean(stableRoutingEnabled);
     this.sleep = sleep;
     this.now = now;
@@ -667,6 +804,15 @@ export class DevWebHighTransport {
     if (!this.profile) this.profile = this.profileLoader();
     assertProfile(this.profile);
     return this.profile;
+  }
+
+  async discoverCapabilities({ observedRoutes = [] } = {}) {
+    const profile = await this.getProfile();
+    return discoverDevWebCapabilities(profile, { observedRoutes });
+  }
+
+  getReviewerRoutes(profile) {
+    return reviewerRoutes(profile, this.configuredReviewerRoutes);
   }
 
   async getHelper() {
@@ -796,15 +942,15 @@ export class DevWebHighTransport {
     let actualHead = null;
     try {
       const profile = await this.getProfile();
+      const routes = this.getReviewerRoutes(profile);
       actualHead = this.headResolver();
       const suppliedHead = expectedHead ?? currentHead;
       if (suppliedHead && String(suppliedHead).toLowerCase() !== String(actualHead).toLowerCase()) {
         throw fail('PROVENANCE_FAILURE', `Supplied HEAD ${suppliedHead} does not match the actual project HEAD ${actualHead}`);
       }
       prepared = prepareDevWebReviewRequest(request, { projectDir: this.projectDir, currentHead: actualHead });
-      const helper = await this.getHelper();
+      let helper = await this.getHelper();
       const traceId = `devweb_${crypto.randomUUID().replaceAll('-', '')}`;
-      const prompt = buildPrompt(prepared);
       const conversationKey = digest(`ceos-dev-web-high:${this.projectDir}:${prepared.sceneId}:${prepared.sourceHead}:${traceId}`);
       const initialRawArtifact = rawResponseArtifact || deriveRawResponseArtifact(evidenceArtifact, `.${prepared.sceneId}`);
       const persistResponse = (responseText, artifact) => {
@@ -815,7 +961,7 @@ export class DevWebHighTransport {
           return error;
         }
       };
-      const rawPersistenceFailure = (error, artifact) => ({
+      const rawPersistenceFailure = (error, artifact, route) => ({
         schemaVersion: 1,
         status: 'BLOCKED',
         failureType: 'INFRA_FAILURE',
@@ -824,29 +970,26 @@ export class DevWebHighTransport {
         sourceHead: prepared.sourceHead,
         transport: {
           status: 'BLOCKED',
-          provider: 'codex-chatgpt-web-dev',
-          releaseVersion: DEV_WEB_HIGH_RELEASE,
-          mode: 'browser-only',
-          model: DEV_WEB_HIGH_MODEL,
-           reasoning: 'high',
-           stableBridgeUsed: false,
+          ...routeTransport(route),
            actualProjectHead: actualHead,
            classification: 'PROVENANCE_FAILURE',
           detail: `Could not persist raw reviewer response ${artifact}: ${asError(error).message}`,
           attempts: 1
         }
       });
-      let attempt = 0;
-      for (;;) {
+      for (const [routeIndex, route] of routes.entries()) {
+        const prompt = buildPrompt(prepared, route);
+        let attempt = 0;
+        for (;;) {
         try {
           const response = await this.runAttachmentTurn(profile, helper, {
             traceId,
             sceneId: prepared.sceneId,
             sourceHead: prepared.sourceHead,
             prompt,
-            model: DEV_WEB_HIGH_MODEL,
-            reasoning: 'high',
-            modelFamily: '6',
+            model: route.model,
+            reasoning: route.reasoning,
+            modelFamily: route.modelId.startsWith('gpt-5.6') ? '5.6' : '6',
             profile,
             images: prepared.images,
             retainConversation: true,
@@ -856,13 +999,14 @@ export class DevWebHighTransport {
           });
           const firstResponse = { ...response, traceId, actualProjectHead: actualHead };
           const persistError = persistResponse(firstResponse.text, initialRawArtifact);
-          if (persistError) return rawPersistenceFailure(persistError, initialRawArtifact);
+          if (persistError) return rawPersistenceFailure(persistError, initialRawArtifact, route);
           const initialExtraction = extractStructuredResponse(firstResponse.text);
           const initialParsed = initialExtraction.parsed;
           const initialValidation = initialParsed ? validateReviewerEnvelope(prepared, initialParsed) : { errors: [], pixelErrors: [] };
           const initialResult = parseResponse(prepared, firstResponse, {
             evidenceArtifact,
-            rawResponseArtifacts: [initialRawArtifact]
+            rawResponseArtifacts: [initialRawArtifact],
+            route
           });
           const repairEligible = initialParsed
             ? schemaRepairEligible(prepared, initialParsed, initialValidation)
@@ -884,9 +1028,9 @@ export class DevWebHighTransport {
               'Return exactly one JSON object matching the requested schema. Do not add, remove, or change any visual observation or verdict.',
               'If either image was not actually visible, return NOT_VERIFIED in the explanation rather than inventing pixel observations.'
             ].join('\n'),
-            model: DEV_WEB_HIGH_MODEL,
-            reasoning: 'high',
-            modelFamily: '6',
+            model: route.model,
+            reasoning: route.reasoning,
+            modelFamily: route.modelId.startsWith('gpt-5.6') ? '5.6' : '6',
             profile,
             images: [],
             retainConversation: true,
@@ -905,12 +1049,7 @@ export class DevWebHighTransport {
               sourceHead: prepared.sourceHead,
               transport: {
                 status: 'BLOCKED',
-                provider: 'codex-chatgpt-web-dev',
-                releaseVersion: DEV_WEB_HIGH_RELEASE,
-                mode: 'browser-only',
-                model: DEV_WEB_HIGH_MODEL,
-                reasoning: 'high',
-                stableBridgeUsed: false,
+                ...routeTransport(route),
                 actualProjectHead: actualHead,
                 attachmentRefs: prepared.images.map(image => image.ref),
                 classification: 'RETAINED_CONVERSATION_UNAVAILABLE',
@@ -926,29 +1065,32 @@ export class DevWebHighTransport {
           }
           const finalResponse = { ...repairResponse, traceId: repairTraceId, actualProjectHead: actualHead };
           const repairPersistError = persistResponse(finalResponse.text, repairRawArtifact);
-          if (repairPersistError) return rawPersistenceFailure(repairPersistError, repairRawArtifact);
+          if (repairPersistError) return rawPersistenceFailure(repairPersistError, repairRawArtifact, route);
           return parseResponse(prepared, finalResponse, {
             evidenceArtifact,
             rawResponseArtifacts: [initialRawArtifact, repairRawArtifact],
-            schemaRepairAttempted: true
+            schemaRepairAttempted: true,
+            route
           });
         } catch (error) {
           const failure = normalizeFailure(error);
+          if (failure.classification === DEV_WEB_HIGH_MODEL_ENTITLEMENT_UNAVAILABLE && routeIndex < routes.length - 1) {
+            await this.close();
+            helper = await this.getHelper();
+            break;
+          }
           if (failure.classification !== 'ATTACHMENT_TRANSPORT' || attempt >= this.retryDelaysMs.length) {
             return {
               schemaVersion: 1,
               status: 'BLOCKED',
               failureType: 'INFRA_FAILURE',
+              reasonCode: failure.classification === DEV_WEB_HIGH_MODEL_ENTITLEMENT_UNAVAILABLE
+                ? DEV_WEB_HIGH_BLOCKED_MODEL_ENTITLEMENT : undefined,
               sceneId: prepared.sceneId,
               sourceHead: prepared.sourceHead,
               transport: {
                 status: 'BLOCKED',
-                provider: 'codex-chatgpt-web-dev',
-                releaseVersion: DEV_WEB_HIGH_RELEASE,
-                mode: 'browser-only',
-                model: DEV_WEB_HIGH_MODEL,
-                 reasoning: 'high',
-                 stableBridgeUsed: false,
+                ...routeTransport(route),
                  actualProjectHead: actualHead,
                  attachmentRefs: prepared.images.map(image => image.ref),
                 classification: failure.classification,
@@ -961,6 +1103,7 @@ export class DevWebHighTransport {
           await this.sleep(this.retryDelaysMs[attempt]);
           attempt += 1;
         }
+      }
       }
     } catch (error) {
       const failure = normalizeFailure(error);
@@ -1115,6 +1258,7 @@ export class DevBrowserHelperClient {
     this.active = true;
     try {
       await this.ensureChild();
+      const selectedModelId = routeModelId({ model });
       return await new Promise((resolve, reject) => {
         this.pending.set(traceId, { resolve, reject, prompt, images, submitted: false, attachmentAccepted: false });
         this.send({
@@ -1130,14 +1274,18 @@ export class DevBrowserHelperClient {
           },
           turn: {
             traceId,
-            modelId: 'gpt-5.6-sol',
-            requestedModel: DEV_WEB_HIGH_MODEL,
+            modelId: selectedModelId,
+            requestedModel: model,
             reasoning,
             modelFamily,
             capabilities: {
-              solAvailable: true,
-              extraHighAvailable: false,
-              proAvailable: false,
+              // The DEV profile flag is a legacy declaration for the installed
+              // 5.6 route; it must not be sent as proof that the requested
+              // model is entitled. The helper receives capability truth only
+              // for the route it is actually asked to execute.
+              solAvailable: selectedModelId === 'gpt-5.6-sol' && this.profile.solAvailable === true,
+              extraHighAvailable: this.profile.extraHighAvailable === true,
+              proAvailable: this.profile.proAvailable === true,
               localToolsEnabled: false
             },
             ...(prepareResume ? { resumeAvailable: true } : {}),

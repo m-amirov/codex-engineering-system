@@ -6,8 +6,11 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 import { validateWebReview } from '../src/web-delegation.mjs';
+import { classifyWebTransportFailure } from '../src/web-transport-failure.mjs';
 import {
   DEV_WEB_HIGH_MODEL,
+  DEV_WEB_HIGH_FALLBACK_MODEL,
+  discoverDevWebCapabilities,
   DEV_WEB_HIGH_ATTACHMENT_LEASE_FILE,
   DevBrowserHelperClient,
   DevWebHighTransport,
@@ -117,6 +120,78 @@ test('DEV unavailable returns an explicit BLOCKED result', async () => {
   const result = await t.review(f.request, { currentHead: HEAD });
   assert.equal(result.status, 'BLOCKED');
   assert.equal(result.transport.classification, 'DEV_UNAVAILABLE');
+});
+
+test('config solAvailable is only a declaration and capability discovery stays unverified', () => {
+  const f = fixture();
+  const result = discoverDevWebCapabilities(profile({ home: path.join(f.projectDir, 'dev-home') }));
+  assert.equal(result.app.status, 'AVAILABLE');
+  assert.equal(result.authorization.status, 'UNKNOWN');
+  assert.equal(result.attachments.actualPixelsReceived, false);
+  assert.deepEqual(result.reviewers.map(route => [route.model, route.entitlement]), [
+    [DEV_WEB_HIGH_MODEL, 'UNVERIFIED'],
+    [DEV_WEB_HIGH_FALLBACK_MODEL, 'UNVERIFIED']
+  ]);
+  const observed = discoverDevWebCapabilities(profile({ home: path.join(f.projectDir, 'dev-home') }), {
+    observedRoutes: [{ model: DEV_WEB_HIGH_MODEL, classification: 'MODEL_ENTITLEMENT_UNAVAILABLE' }]
+  });
+  assert.equal(observed.reviewers[0].entitlement, 'UNAVAILABLE');
+});
+
+test('model entitlement failure is distinct from attachment and generic DEV failures', () => {
+  const model = classifyWebTransportFailure({
+    message: "The 'chatgpt-web/gpt-6-sol' model is not supported when using Codex with a ChatGPT account."
+  });
+  assert.equal(model.classification, 'MODEL_ENTITLEMENT_UNAVAILABLE');
+  assert.equal(model.retryAllowed, false);
+  assert.equal(model.reviewerFallbackAllowed, true);
+  assert.equal(classifyWebTransportFailure({ message: 'ChatGPT attachment upload failed before the prompt was sent' }).classification, 'ATTACHMENT_TRANSPORT');
+  assert.equal(classifyWebTransportFailure({ message: 'ChatGPT requires sign in for this account' }).classification, 'AUTHENTICATION_UNAVAILABLE');
+});
+
+test('unsupported preferred model selects one real multimodal browser fallback without weakening pixel gates', async () => {
+  const f = fixture();
+  const calls = [];
+  const t = transport(f, {
+    run: async request => {
+      calls.push({ model: request.model, images: request.images.length, requestedModel: request.model });
+      if (request.model === DEV_WEB_HIGH_MODEL) {
+        throw Object.assign(new Error("The 'chatgpt-web/gpt-6-sol' model is not supported when using Codex with a ChatGPT account."), {
+          code: 'MODEL_NOT_SUPPORTED'
+        });
+      }
+      return { text: reviewerResponse(f.request), submitted: true, attachmentAccepted: request.images.length === 2 };
+    }
+  });
+  const result = await t.review(f.request, { currentHead: HEAD });
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(calls.map(call => call.model), [DEV_WEB_HIGH_MODEL, DEV_WEB_HIGH_FALLBACK_MODEL]);
+  assert.deepEqual(calls.map(call => call.images), [2, 2]);
+  assert.equal(result.receipt.model, DEV_WEB_HIGH_FALLBACK_MODEL);
+  assert.equal(result.receipt.transport.modelId, 'gpt-5.6-sol');
+  assert.equal(result.receipt.transport.authorizationMode, 'codex-chatgpt-account');
+  assert.equal(result.receipt.actualPixelsReceived, true);
+  await t.close();
+});
+
+test('unsupported preferred and fallback models return BLOCKED_MODEL_ENTITLEMENT without a receipt', async () => {
+  const f = fixture();
+  let calls = 0;
+  const t = transport(f, {
+    run: async request => {
+      calls += 1;
+      throw Object.assign(new Error(`ChatGPT model ${request.model} could not be selected and verified`), {
+        code: 'MODEL_NOT_SUPPORTED'
+      });
+    }
+  });
+  const result = await t.review(f.request, { currentHead: HEAD });
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(result.reasonCode, 'BLOCKED_MODEL_ENTITLEMENT');
+  assert.equal(result.transport.classification, 'MODEL_ENTITLEMENT_UNAVAILABLE');
+  assert.equal(result.receipt, undefined);
+  assert.equal(calls, 2);
+  await t.close();
 });
 
 test('DEV helper acknowledges prompt selection and send activation', async () => {

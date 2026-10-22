@@ -39,8 +39,18 @@ match. It then recomputes every image hash, checks PNG signatures and byte
 limits, and converts the bytes to inline data URLs. A mismatch is a
 `PROVENANCE_FAILURE` and no DEV turn is started.
 
-Each turn selects `chatgpt-web/gpt-6-sol` with `reasoning=high`,
-`modelFamily=6`, and `localToolsEnabled=false`. The prompt requires exactly one
+Each turn prefers `chatgpt-web/gpt-6-sol` with `reasoning=high`,
+`modelFamily=6`, and `localToolsEnabled=false`. The installed DEV config's
+`solAvailable` flag is only a route declaration; it is not model entitlement
+evidence. If the preferred model is rejected by the live ChatGPT account, the
+adapter may make one bounded attempt through an explicitly trusted,
+browser-only multimodal fallback such as `gpt-5.6-sol`. The selected model,
+provider, authorization mode and transport trace remain in the receipt. A
+fallback is usable for acceptance only after the same original PNGs and
+runtime screenshots are actually accepted and the response proves
+`actualPixelsReceived:true`; model substitution is never implicit.
+
+The prompt requires exactly one
 JSON object containing `sourceHead`, `reviewedItems`, `evidenceRefs`,
 `receivedEvidenceRefs`, `actualPixelsReceived`, `decision`, `findings`,
 `unresolved`, the V2 profile, and one `visualEvidence` observation for every
@@ -89,6 +99,10 @@ The adapter keeps semantic outcomes separate from transport outcomes:
 - `PASS`, `REWORK`, and reviewer `BLOCKED` are reviewer decisions;
 - `NOT_VERIFIED` means the completed response did not prove the required pixel
   observations;
+- `MODEL_ENTITLEMENT_UNAVAILABLE` is a terminal model-route observation for
+  that candidate, not a generic DEV health failure. After the bounded trusted
+  fallback list is exhausted, the result is `BLOCKED_MODEL_ENTITLEMENT` and no
+  receipt is written;
 - `BLOCKED` with a transport classification is an infrastructure/capability
   stop, not a semantic pass;
 - `ATTACHMENT_TRANSPORT` retries only the failed turn after 30 s and 60 s;
@@ -112,6 +126,18 @@ is `BLOCKED` with `RETAINED_CONVERSATION_UNAVAILABLE`; the adapter never starts
 a replacement image review or presents a new conversation as a continuation.
 
 ## CEOS and `continue`
+
+The read-only capability report separates installed-app/descriptor state,
+authorization uncertainty, declared model rows and attachment verification:
+
+```text
+ceos dev-web-capabilities --json
+```
+
+It deliberately reports model rows as `UNVERIFIED` until a real invocation
+observes the route. A successful visual review upgrades only the selected
+route through its receipt; a model-selection error is recorded as
+`MODEL_ENTITLEMENT_UNAVAILABLE` and cannot be hidden by `solAvailable:true`.
 
 The CLI command writes only a new project-relative receipt when a valid
 reviewer response exists; raw responses are written for both valid and

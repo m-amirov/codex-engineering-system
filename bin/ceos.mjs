@@ -22,7 +22,7 @@ import { planProjectContinuation } from '../src/project-continuation.mjs';
 import { inspectDirectWorkflow } from '../src/direct-workflow.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
 import { inspectRunRelocation, relocateRun } from '../src/run-relocation.mjs';
-import { DEFAULT_DEV_WEB_HIGH_INTERVAL_MS, DevWebHighTransport, writeDevWebReceipt } from '../src/dev-web-high-transport.mjs';
+import { DEFAULT_DEV_WEB_HIGH_INTERVAL_MS, DevWebHighTransport, discoverDevWebCapabilities, loadDevWebProfile, writeDevWebReceipt } from '../src/dev-web-high-transport.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -151,6 +151,7 @@ Usage:
   ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--assurance strict|visual-content] [--json]
   ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--assurance strict|visual-content] [--json]
   ceos dev-web-review --request-file <json> --receipt <project-relative-new.json> [--raw-response <project-relative-new.txt>] [--project dir] [--dev-home dir] [--stable-home dir] [--head <sha>] [--min-attachment-interval-ms N] [--json]
+  ceos dev-web-capabilities [--dev-home dir] [--stable-home dir] [--json]  (read-only; declarations are not entitlement proof)
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
   ceos capability-challenge [run-id|latest] [--codex-home dir] [--json]
   ceos capability-recover [run-id|latest] [--apply] [--json]  # safe hash-exact legacy recovery\n  ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
@@ -522,6 +523,14 @@ try {
       } finally {
         await transport.close();
       }
+      break;
+    }
+    case 'dev-web-capabilities': {
+      const profile = loadDevWebProfile({
+        devHome: args['dev-home'] || undefined,
+        stableHome: args['stable-home'] || undefined
+      });
+      print(discoverDevWebCapabilities(profile), Boolean(args.json));
       break;
     }
     case 'run': {
