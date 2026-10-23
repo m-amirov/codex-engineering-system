@@ -45,14 +45,16 @@ test('process runner captures a real successful child with bounded evidence', as
 test('timeout terminates nested descendants instead of leaving background work running', async () => {
   const dir = fixture();
   const marker = path.join(dir, 'orphan.txt');
-  fs.writeFileSync(path.join(dir, 'child.mjs'), `import fs from 'node:fs'; setTimeout(() => fs.writeFileSync(${JSON.stringify(marker)}, 'orphan'), 400);`);
+  const release = path.join(dir, 'release.txt');
+  fs.writeFileSync(path.join(dir, 'child.mjs'), `import fs from 'node:fs'; const timer = setInterval(() => { if (fs.existsSync(${JSON.stringify(release)})) { fs.writeFileSync(${JSON.stringify(marker)}, 'orphan'); clearInterval(timer); } }, 20);`);
   fs.writeFileSync(path.join(dir, 'hang.mjs'), "import {spawn} from 'node:child_process'; spawn(process.execPath, ['child.mjs'], {stdio:'ignore'}); setInterval(()=>{}, 1000);\n");
   const result = await runVerificationProcess(resolveVerificationCommand('node hang.mjs', { projectDir: dir }), {
     cwd: dir, timeoutMs: 220, maxOutputBytes: 4096
   });
   assert.equal(result.status, 'TIMED_OUT');
   assert.equal(result.timedOut, true);
-  await new Promise(resolve => setTimeout(resolve, 550));
+  fs.writeFileSync(release, 'check-after-timeout');
+  await new Promise(resolve => setTimeout(resolve, 300));
   assert.equal(fs.existsSync(marker), false, 'grandchild survived timeout');
 });
 
