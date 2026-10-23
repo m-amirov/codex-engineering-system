@@ -11,6 +11,7 @@ import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, 
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
+import { inspectArtCandidateLedger } from '../src/art-candidate-ledger.mjs';
 import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
 import { importArtOutput } from '../src/art-output-transport.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
@@ -391,9 +392,22 @@ try {
     case 'art-brief-verify': {
       if (!args.file || args.file === true) throw new Error('--file <art-brief.json> is required');
       const brief = JSON.parse(fs.readFileSync(path.resolve(project, String(args.file)), 'utf8'));
-      const result = validateArtProducerBrief(project, brief, {briefPath:String(args.file)});
+      const result = validateArtProducerBrief(project, brief, {
+        briefPath:String(args.file),
+        ownerExceptionPath:args['owner-exception'] ?? null,
+        ownerExceptionSha256:args['owner-exception-sha256'] ?? null,
+        ownerApprovalObserved:args['owner-approval-observed'] === true,
+        candidateLedgerPath:args['candidate-ledger'] ?? null
+      });
       print(result, true);
       process.exitCode = result.status === 'READY_TO_GENERATE' ? 0 : 2;
+      break;
+    }
+    case 'art-candidate-ledger': {
+      if (typeof args.file !== 'string') throw new Error('--file <ledger.json> required');
+      const result = inspectArtCandidateLedger(project, args.file);
+      print(result,true);
+      process.exitCode = result.status === 'PASS_CANDIDATE_LEDGER' ? 0 : 2;
       break;
     }
     case 'art-output-import': {

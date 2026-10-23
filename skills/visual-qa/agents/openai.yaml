@@ -1,6 +1,0 @@
-interface:
-  display_name: "CEOS Visual QA"
-  short_description: "Codex Engineering OS workflow: visual-qa"
-  default_prompt: "Use the visual-qa workflow and produce evidence-based results."
-policy:
-  allow_implicit_invocation: true

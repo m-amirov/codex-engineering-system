@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { resolveAuthoredSceneId } from './narrative-source-resolver.mjs';
+import { authorizeArtCandidate } from './art-candidate-ledger.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/i;
 const HEAD = /^[a-f0-9]{40}$/i;
@@ -76,7 +78,7 @@ function checkBriefOnlyCommitCurrentness(projectDir, brief, head, briefPath) {
   const root = fs.realpathSync(projectDir);
   const full = path.resolve(projectDir, briefPath);
   const rel = path.relative(root, full).split(path.sep).join('/');
-  const allowed = /^artifacts\/production-art\/stage9\.4\/briefs\/[A-Za-z0-9._-]+\.json$/;
+  const allowed = /^artifacts\/production-art\/stage\d+(?:\.\d+)?\/briefs\/[A-Za-z0-9._-]+\.json$/;
   if (!allowed.test(rel)) return false;
   try {
     if (!fs.statSync(full).isFile() || fs.realpathSync(full) !== full ||
@@ -109,7 +111,7 @@ function checkBriefOnlyCommitCurrentness(projectDir, brief, head, briefPath) {
           !disk.equals(committed.stdout)) return false;
       const sibling=JSON.parse(disk.toString('utf8'));
       if (sibling.schemaVersion!==1 || sibling.sourceHead!==brief.sourceHead ||
-          !ID.test(sibling.sceneId ?? '')) return false;
+          !resolveAuthoredSceneId(projectDir, sibling.sceneId).ok) return false;
     } catch { return false; }
     if (candidate===rel) selected=true;
   }
@@ -117,7 +119,7 @@ function checkBriefOnlyCommitCurrentness(projectDir, brief, head, briefPath) {
 }
 
 /** Read-only source-bound planning guard. Not proof that a subagent has Image Gen. */
-export function validateArtProducerBrief(projectDir, brief, {briefPath=null}={}) {
+export function validateArtProducerBrief(projectDir, brief, {briefPath=null, ownerExceptionPath=null, ownerExceptionSha256=null, ownerApprovalObserved=false, candidateLedgerPath=null}={}) {
   const issues = [];
   if (!brief || typeof brief !== 'object' || Array.isArray(brief))
     return { status: 'BLOCKED_ART_BRIEF', issues: ['brief must be a JSON object'] };
@@ -134,8 +136,8 @@ export function validateArtProducerBrief(projectDir, brief, {briefPath=null}={})
   if (!exactHead && !briefOnlyCommit)
     issues.push('sourceHead must equal current exact git HEAD, or be an ancestor separated only by committed Stage 9.4 brief additions');
   if (brief.schemaVersion !== 1) issues.push('schemaVersion must be 1');
-  if (typeof brief.sceneId !== 'string' || !ID.test(brief.sceneId))
-    issues.push('sceneId must be an S-numbered scene');
+  const sceneResolution = resolveAuthoredSceneId(projectDir, brief.sceneId);
+  if (!sceneResolution.ok) issues.push('sceneId must resolve to a canonical narrative scene or legacy S-numbered identifier: ' + sceneResolution.code);
   if (typeof brief.cue?.id !== 'string' || !brief.cue.id ||
       !Array.isArray(brief.cue.at) || brief.cue.at.length !== 2 ||
       !brief.cue.at.every(n => Number.isInteger(n) && n >= 0))
@@ -182,15 +184,24 @@ export function validateArtProducerBrief(projectDir, brief, {briefPath=null}={})
   if (!Array.isArray(brief.qualityAcceptance) || brief.qualityAcceptance.length < 3 ||
       brief.qualityAcceptance.some(x => !hasText(x)))
     issues.push('qualityAcceptance must specify at least 3 measurable art checks');
-  if (!Number.isInteger(brief.candidateNumber) || brief.candidateNumber < 1 ||
-      brief.candidateNumber > MAX_CANDIDATES)
-    issues.push('candidateNumber exceeds bounded maximum of 2; stop and escalate');
-  if (brief.candidateNumber === 2) {
+  const candidateAuthorization = Number.isInteger(brief.candidateNumber) && brief.candidateNumber > 0
+    ? authorizeArtCandidate(projectDir, {
+      sceneId: brief.sceneId, variant: brief.variant ?? 'pair',
+      candidateNumber: brief.candidateNumber, sourceHead: brief.sourceHead,
+      ownerExceptionPath, ownerExceptionSha256, ownerApprovalObserved,
+      ledgerPath: candidateLedgerPath
+    }) : { status: 'BLOCKED_CANDIDATE_SCOPE_INVALID', authorized: false };
+  if (!candidateAuthorization.authorized) {
+    issues.push(brief.candidateNumber > MAX_CANDIDATES && !ownerExceptionPath
+      ? 'candidateNumber exceeds bounded maximum of 2; stop and escalate'
+      : 'candidate authorization failed: ' + candidateAuthorization.status);
+  }
+  if (brief.candidateNumber >= 2) {
     const prior = brief.priorRejection;
-    if (prior?.candidateNumber !== 1 || !hasText(prior?.revision) ||
+    if (prior?.candidateNumber !== brief.candidateNumber - 1 || !hasText(prior?.revision) ||
         !Array.isArray(prior?.findings) || prior.findings.length === 0 ||
         prior.findings.some(x => !hasText(x)))
-      issues.push('second candidate needs concrete pixel-backed findings and revised brief');
+      issues.push('subsequent candidate needs concrete pixel-backed findings and a revised brief');
     verifiedFile(projectDir, prior?.evidencePath, prior?.sha256, issues, 'priorRejection');
   } else if (brief.candidateNumber === 1 && brief.priorRejection != null) {
     issues.push('first candidate cannot claim a previous failed generation');
@@ -200,7 +211,8 @@ export function validateArtProducerBrief(projectDir, brief, {briefPath=null}={})
     currentHead: head,
     sourceCurrentness: exactHead ? 'EXACT_HEAD' : briefOnlyCommit ? 'BRIEF_ONLY_COMMIT' : 'UNVERIFIED',
     candidateNumber: brief.candidateNumber ?? null,
-    maxCandidatesPerCueVariant: MAX_CANDIDATES,
+    maxCandidatesPerCueVariant: candidateAuthorization.maxCandidates ?? MAX_CANDIDATES,
+    candidateAuthorization: candidateAuthorization.status,
     toolAvailability: 'NOT_ATTESTED', // Always separate: host capability challenge must pass.
     issues
   };

@@ -14,6 +14,7 @@ import { narrativeDualFormatEnabled, verifyNarrativeDualFormatArt } from './narr
 import { inspectNativeProducerRoute, nativeProducerParentContext } from './native-producer-routing.mjs';
 import { readRunCapabilityAttestation } from './capability-attestation.mjs';
 import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
+import { classifyTemporaryBlocker } from './temporary-blocker-recovery.mjs';
 import { VERIFIED_EXISTING_ART_REUSE, verifyExistingArtReuse } from './existing-art-reuse.mjs';
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -384,7 +385,7 @@ function isScopedDualFormatCoverageBlocked(run, {
 function isRecoverableBlocked(run, recoveryContext = {}) {
   if (run.verdict !== 'BLOCKED' || run.state !== 'BLOCKED') return false;
   const stopReason = run.stopReason ?? {};
-  if (RECOVERABLE_BLOCK_CODES.has(stopReason.code)) return true;
+  if (RECOVERABLE_BLOCK_CODES.has(stopReason.code) || classifyTemporaryBlocker(stopReason.code).canContinueIndependentWork) return true;
   // Exact legacy full-episode-at-batch-stage failure is recoverable only
   // after a fresh scoped dual-format verification against actual GEN outputs.
   if (isScopedDualFormatCoverageBlocked(run, recoveryContext)) return true;

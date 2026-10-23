@@ -1,6 +1,0 @@
-interface:
-  display_name: "CEOS Release"
-  short_description: "Codex Engineering OS workflow: release"
-  default_prompt: "Use the release workflow and produce evidence-based results."
-policy:
-  allow_implicit_invocation: false
