@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { CEOS_ROOT, VERSION, SUPPORTED_PROFILES, SKILL_NAMES, resolveProject, loadManifest, doctor, gitState, resolveGates, runVerification, validateEvidence, createManifest, detectManifestForProject, latestEvidenceDir, readFailures, renderContext, installSkills, installGlobal, globalStatus, routingTable } from '../src/ceos.mjs';
 import { webPreflight } from '../src/web-preflight.mjs';
 import { gitPreflight } from '../src/git-preflight.mjs';
+import { inspectWorktrees, cleanupWorktree } from '../src/worktree-hygiene.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { webReviewPlan, validateWebReview } from '../src/web-delegation.mjs';
 import { createRun, recordCheckpoint, refreshRunCapabilities, recordRecoveryEvent, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES, preflightNativeProducerRoute, recoverLegacyCapabilityAttestation } from '../src/execution-engine.mjs';
@@ -133,9 +134,11 @@ Usage:
   ceos adopt --project dir [--profile profile] [--dry-run] [--force] [--json]
   ceos status [--project dir] [--json]
   ceos git-preflight [--project dir] [--remote origin] [--branch main] [--expect-repo owner/repo] [--fetch] [--apply] [--json]
+  ceos worktrees inspect [--project dir] [--include-legacy] [--json]  # all registered local checkouts, never changes files
+  ceos worktrees cleanup --project dir --target <absolute-path> --expect-head SHA --plan-token TOKEN --apply [--include-legacy] [--json]
   ceos doctor [--project dir] [--json]
   ceos gates [--mode verification|release] [--project dir] [--json]
-  ceos verify [--mode verification|release] [--project dir] [--evidence dir] [--baseline-ref ref] [--dry-run] [--json]
+  ceos verify [--mode verification|release] [--project dir] [--evidence dir] [--baseline-ref ref] [--gate-timeout-ms N] [--replay-from prior-evidence-dir] [--dry-run] [--json]
   ceos evidence [--path dir | --project dir] [--json]
   ceos failures [--path dir | --project dir] [--tail lines] [--json]
   ceos profile [--project dir]
@@ -237,6 +240,20 @@ try {
       process.exitCode = ['IN_SYNC', 'IN_SYNC_DIRTY', 'FAST_FORWARDED'].includes(r.status) ? 0 : 2;
       break;
     }
+    case 'worktrees': {
+      const action = args._[1] ?? 'inspect';
+      if (action === 'inspect') print(inspectWorktrees(project, { includeLegacy: Boolean(args['include-legacy']) }), Boolean(args.json));
+      else if (action === 'cleanup') {
+        if (!args.apply) throw new Error('Worktree cleanup requires explicit --apply and a fresh inventory confirmation');
+        const result = cleanupWorktree(project, {
+          targetPath: args.target, expectedHead: args['expect-head'], planToken: args['plan-token'],
+          allowLegacy: Boolean(args['include-legacy'])
+        });
+        print(result, Boolean(args.json));
+        if (result.status !== 'REMOVED') process.exitCode = 2;
+      } else throw new Error('Unknown worktrees command; use inspect or cleanup');
+      break;
+    }
     case 'status': {
       const loaded = loadManifest(project); const git = gitState(project);
       const data = { ceosVersion: VERSION, project, manifest: loaded.file, profile: loaded.data.profile, productionAccess: loaded.data.production?.access ?? 'read-only', git };
@@ -259,7 +276,10 @@ try {
       break;
     }
     case 'verify': {
-      const result = runVerification(project, { mode: args.mode || 'verification', evidenceDir: args.evidence, dryRun: Boolean(args['dry-run']), baselineRef: args['baseline-ref'] === true ? null : (args['baseline-ref'] || null) });
+      const result = await runVerification(project, { mode: args.mode || 'verification', evidenceDir: args.evidence,
+        dryRun: Boolean(args['dry-run']), baselineRef: args['baseline-ref'] === true ? null : (args['baseline-ref'] || null),
+        gateTimeoutMs: args['gate-timeout-ms'] === undefined ? 300_000 : Number(args['gate-timeout-ms']),
+        replayFrom: args['replay-from'] || null });
       if (args.json) print({ outputDir: result.outputDir, summary: result.summary }, true); else {
         result.records.forEach(r => console.log(`${r.status.padEnd(19)} ${r.id} [${r.risk}]${r.exitCode === null ? '' : ` exit=${r.exitCode}`}${r.failureType ? ` ${r.failureType}` : ''}${r.reason && r.status === 'CONFIGURATION_ERROR' ? ` — ${r.reason}` : ''}`));
         console.log(`\nEvidence: ${result.outputDir}\nVERDICT: ${result.summary.verdict}`);

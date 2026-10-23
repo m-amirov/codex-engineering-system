@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { terminateProcessTree } from './process-tree.mjs';
 
 import { assessNarrativeArtFindings, NARRATIVE_ART_ACCEPTANCE_V2, NARRATIVE_ART_STORY_FIRST_GUIDANCE } from './narrative-art-acceptance.mjs';
 import { classifyWebTransportFailure } from './web-transport-failure.mjs';
@@ -1167,9 +1168,13 @@ export class DevWebHighTransport {
 }
 
 export class DevBrowserHelperClient {
-  constructor(profile, { spawnImpl = spawn } = {}) {
+  constructor(profile, { spawnImpl = spawn, startupTimeoutMs = 15_000,
+    turnTimeoutMs = 1_810_000, closeGraceMs = 1_000 } = {}) {
     this.profile = profile;
     this.spawnImpl = spawnImpl;
+    this.startupTimeoutMs = startupTimeoutMs;
+    this.turnTimeoutMs = turnTimeoutMs;
+    this.closeGraceMs = closeGraceMs;
     this.child = null;
     this.ready = null;
     this.pending = new Map();
@@ -1190,20 +1195,37 @@ export class DevBrowserHelperClient {
         CODEX_CHATGPT_WEB_BROWSER_HELPER_PROCESS: '1'
       },
       stdio: ['pipe', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
       windowsHide: true
     });
     this.child = child;
     this.ready = new Promise((resolve, reject) => {
+      let settled = false;
+      let startupTimer;
+      const readyResolve = () => {
+        if (!settled) { settled = true; clearTimeout(startupTimer); resolve(); }
+      };
+      const readyReject = error => {
+        if (!settled) { settled = true; clearTimeout(startupTimer); reject(error); }
+      };
       const output = createInterface({ input: child.stdout });
-      output.on('line', line => this.handleLine(line, resolve, reject));
-      child.once('error', reject);
+      output.on('line', line => this.handleLine(line, readyResolve, readyReject));
+      child.once('error', error => readyReject(error));
       child.once('exit', (code, signal) => {
         const error = fail('DEV_UNAVAILABLE', `DEV browser helper exited ${signal ? `from ${signal}` : `with status ${code ?? 1}`}`);
-        if (this.ready) reject(error);
-        for (const pending of this.pending.values()) pending.reject(error);
+        readyReject(error);
+        for (const pending of this.pending.values()) {
+          clearTimeout(pending.timer);
+          pending.reject(error);
+        }
         this.pending.clear();
-        this.child = null;
+        if (this.child === child) { this.child = null; this.ready = null; }
       });
+      startupTimer = setTimeout(() => {
+        readyReject(fail('DEV_HELPER_START_TIMEOUT', 'DEV browser helper did not become ready before startup deadline'));
+        // Startup must also reap a helper that ignores SIGTERM.
+        void this.close();
+      }, this.startupTimeoutMs);
     });
     await this.ready;
   }
@@ -1242,6 +1264,7 @@ export class DevBrowserHelperClient {
       return;
     }
     this.pending.delete(message.id);
+    clearTimeout(pending.timer);
     if (message.type === 'result') pending.resolve({
       text: message.text,
       submitted: pending.submitted,
@@ -1279,7 +1302,13 @@ export class DevBrowserHelperClient {
       await this.ensureChild();
       const selectedModelId = routeModelId({ model });
       return await new Promise((resolve, reject) => {
-        this.pending.set(traceId, { resolve, reject, prompt, images, submitted: false, attachmentAccepted: false });
+        const timer = setTimeout(() => {
+          if (!this.pending.delete(traceId)) return;
+          reject(fail('DEV_HELPER_TURN_TIMEOUT', 'DEV helper returned no terminal result before turn deadline'));
+          // The session may be wedged; the next request must start a fresh helper.
+          void this.close();
+        }, this.turnTimeoutMs);
+        this.pending.set(traceId, { resolve, reject, prompt, images, submitted: false, attachmentAccepted: false, timer });
         this.send({
           type: 'run',
           id: traceId,
@@ -1314,6 +1343,7 @@ export class DevBrowserHelperClient {
           }
         }).catch(error => {
           this.pending.delete(traceId);
+          clearTimeout(timer);
           reject(error);
         });
       });
@@ -1326,11 +1356,25 @@ export class DevBrowserHelperClient {
     const child = this.child;
     this.child = null;
     this.ready = null;
-    for (const pending of this.pending.values()) pending.reject(fail('DEV_UNAVAILABLE', 'DEV browser helper closed'));
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(fail('DEV_UNAVAILABLE', 'DEV browser helper closed'));
+    }
     this.pending.clear();
     if (!child) return;
-    try { await new Promise(resolve => child.stdin.end(resolve)); } catch {}
-    if (child.exitCode === null) child.kill();
+    try { child.stdin.end(); } catch {}
+    const wait = ms => new Promise(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) { resolve(true); return; }
+      let settled = false;
+      const timer = setTimeout(() => { if (!settled) { settled = true; child.off('close', done); resolve(false); } }, ms);
+      const done = () => { if (!settled) { settled = true; clearTimeout(timer); resolve(true); } };
+      child.once('close', done);
+    });
+    if (await wait(this.closeGraceMs)) return;
+    terminateProcessTree(child, 'SIGTERM');
+    if (await wait(this.closeGraceMs)) return;
+    terminateProcessTree(child, 'SIGKILL');
+    await wait(this.closeGraceMs);
   }
 }
 

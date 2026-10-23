@@ -35,7 +35,7 @@ test('init creates a valid manifest', () => {
 
 test('doctor passes safe commands and reports profile', () => {
   const dir = tempProject();
-  writeManifest(dir, base('  ok: node -e "process.exit(0)"'));
+  writeManifest(dir, base('  ok: node --version'));
   const d = doctor(dir);
   assert.equal(d.ok, true);
   assert.equal(d.manifest.profile, 'generic');
@@ -49,39 +49,40 @@ test('doctor flags risky command', () => {
   assert.match(d.checks.find(c => c.id === 'command-risk:ok').detail, /^R2/);
 });
 
-test('verification PASS creates valid evidence', () => {
+test('verification PASS creates valid evidence', async () => {
   const dir = tempProject();
-  writeManifest(dir, base('  ok: node -e "console.log(123)"'));
-  const r = runVerification(dir);
+  writeManifest(dir, base('  ok: node --version'));
+  const r = await runVerification(dir);
   assert.equal(r.summary.verdict, 'PASS');
   assert.equal(r.records[0].status, 'PASS');
   const ev = validateEvidence(r.outputDir);
   assert.equal(ev.ok, true);
 });
 
-test('verification FAIL propagates failing gate', () => {
+test('verification FAIL propagates failing gate', async () => {
   const dir = tempProject();
-  writeManifest(dir, base('  ok: node -e "process.exit(7)"'));
-  const r = runVerification(dir);
+  fs.writeFileSync(path.join(dir, 'check.mjs'), 'process.exit(7)\n');
+  writeManifest(dir, base('  ok: node check.mjs'));
+  const r = await runVerification(dir);
   assert.equal(r.summary.verdict, 'FAIL');
   assert.equal(r.records[0].exitCode, 7);
 });
 
-test('verification BLOCKED never executes R2/R3 command', () => {
+test('verification BLOCKED never executes R2/R3 command', async () => {
   const dir = tempProject();
   const marker = path.join(dir, 'SHOULD_NOT_EXIST');
   // The command contains a risky token and would create a marker if actually executed.
   writeManifest(dir, base(`  ok: node -e "require('fs').writeFileSync('${marker.replaceAll('\\','\\\\')}','x')" && git push origin main`));
-  const r = runVerification(dir);
+  const r = await runVerification(dir);
   assert.equal(r.summary.verdict, 'BLOCKED');
   assert.equal(r.records[0].status, 'BLOCKED');
   assert.equal(fs.existsSync(marker), false);
 });
 
-test('dry-run becomes BLOCKED because required gates were not proven', () => {
+test('dry-run becomes BLOCKED because required gates were not proven', async () => {
   const dir = tempProject();
-  writeManifest(dir, base('  ok: node -e "process.exit(0)"'));
-  const r = runVerification(dir, { dryRun: true });
+  writeManifest(dir, base('  ok: node --version'));
+  const r = await runVerification(dir, { dryRun: true });
   assert.equal(r.summary.verdict, 'BLOCKED');
   assert.equal(r.records[0].status, 'SKIP');
 });
@@ -105,18 +106,18 @@ test('browser-required manifest requires an explicit verification gate', () => {
   assert.throws(() => validateManifest({ version: 1, profile: 'generic', commands: { ok: 'npm test' }, gates: { verification: ['ok'] }, browser: { required: true } }), /browser.gate/);
 });
 
-test('release clean-worktree policy becomes a mechanical BLOCKED gate', () => {
+test('release clean-worktree policy becomes a mechanical BLOCKED gate', async () => {
   const dir = tempProject();
-  writeManifest(dir, `version: 1\nprofile: generic\ncommands:\n  ok: node -e "process.exit(0)"\ngates:\n  verification: [ok]\n  release: [ok]\nproduction:\n  access: read-only\nrelease:\n  clean_worktree: true\n`);
-  const r = runVerification(dir, { mode: 'release' });
+  writeManifest(dir, `version: 1\nprofile: generic\ncommands:\n  ok: node --version\ngates:\n  verification: [ok]\n  release: [ok]\nproduction:\n  access: read-only\nrelease:\n  clean_worktree: true\n`);
+  const r = await runVerification(dir, { mode: 'release' });
   assert.equal(r.summary.verdict, 'BLOCKED');
   assert.ok(r.records.some(x => x.id === 'ceos.clean_worktree.start' && x.status === 'BLOCKED'));
 });
 
-test('release baseline ancestry passes only for a descendant HEAD', () => {
+test('release baseline ancestry passes only for a descendant HEAD', async () => {
   const dir = tempProject();
   const git = (args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
-  writeManifest(dir, `version: 1\nprofile: generic\ncommands:\n  ok: node -e "process.exit(0)"\ngates:\n  verification: [ok]\n  release: [ok]\nproduction:\n  access: read-only\n`);
+  writeManifest(dir, `version: 1\nprofile: generic\ncommands:\n  ok: node --version\ngates:\n  verification: [ok]\n  release: [ok]\nproduction:\n  access: read-only\n`);
   fs.writeFileSync(path.join(dir, 'tracked.txt'), 'base\n');
   assert.equal(git(['init', '--initial-branch=main']).status, 0);
   assert.equal(git(['add', '--all']).status, 0);
@@ -126,15 +127,15 @@ test('release baseline ancestry passes only for a descendant HEAD', () => {
   assert.equal(git(['add', 'tracked.txt']).status, 0);
   assert.equal(git(['-c', 'user.name=CEOS Test', '-c', 'user.email=ceos@example.invalid', 'commit', '-m', 'descendant']).status, 0);
 
-  const r = runVerification(dir, { mode: 'release', baselineRef: baseline });
+  const r = await runVerification(dir, { mode: 'release', baselineRef: baseline });
   assert.equal(r.records.find(x => x.id === 'ceos.release_ancestry').status, 'PASS');
   assert.equal(r.summary.verdict, 'PASS');
 });
 
-test('release recovery from an unrelated HEAD is BLOCKED with provenance failure', () => {
+test('release recovery from an unrelated HEAD is BLOCKED with provenance failure', async () => {
   const dir = tempProject();
   const git = (args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
-  const manifest = `version: 1\nprofile: generic\ncommands:\n  ok: node -e "process.exit(0)"\ngates:\n  verification: [ok]\n  release: [ok]\nproduction:\n  access: read-only\n`;
+  const manifest = `version: 1\nprofile: generic\ncommands:\n  ok: node --version\ngates:\n  verification: [ok]\n  release: [ok]\nproduction:\n  access: read-only\n`;
   writeManifest(dir, manifest);
   fs.writeFileSync(path.join(dir, 'tracked.txt'), 'base\n');
   assert.equal(git(['init', '--initial-branch=main']).status, 0);
@@ -149,7 +150,7 @@ test('release recovery from an unrelated HEAD is BLOCKED with provenance failure
   assert.equal(git(['add', '--all']).status, 0);
   assert.equal(git(['-c', 'user.name=CEOS Test', '-c', 'user.email=ceos@example.invalid', 'commit', '-m', 'wrong recovery base']).status, 0);
 
-  const r = runVerification(dir, { mode: 'release', baselineRef: baseline });
+  const r = await runVerification(dir, { mode: 'release', baselineRef: baseline });
   const gate = r.records.find(x => x.id === 'ceos.release_ancestry');
   assert.equal(gate.status, 'BLOCKED');
   assert.equal(gate.failureType, 'PROVENANCE_FAILURE');
@@ -195,11 +196,11 @@ test('doctor reports a configured but missing npm script', () => {
   assert.match(check.detail, /no script "test:e2e"/);
 });
 
-test('verification classifies missing npm script as CONFIGURATION_ERROR without spawning it', () => {
+test('verification classifies missing npm script as CONFIGURATION_ERROR without spawning it', async () => {
   const dir = tempProject();
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'node --test' } }));
   writeManifest(dir, base('  e2e: npm run test:e2e', '[e2e]'));
-  const r = runVerification(dir);
+  const r = await runVerification(dir);
   assert.equal(r.records[0].status, 'CONFIGURATION_ERROR');
   assert.equal(r.records[0].failureType, 'CONFIGURATION_ERROR');
   assert.match(r.records[0].reason, /no script "test:e2e"/);
@@ -208,11 +209,11 @@ test('verification classifies missing npm script as CONFIGURATION_ERROR without 
   assert.equal(validateEvidence(r.outputDir).ok, true);
 });
 
-test('real test failure wins overall verdict while configuration error remains separately classified', () => {
+test('real test failure wins overall verdict while configuration error remains separately classified', async () => {
   const dir = tempProject();
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "process.exit(5)"' } }));
   writeManifest(dir, `version: 1\nprofile: generic\ncommands:\n  test: npm test\n  e2e: npm run test:e2e\ngates:\n  verification: [test, e2e]\nproduction:\n  access: read-only\n`);
-  const r = runVerification(dir);
+  const r = await runVerification(dir);
   assert.equal(r.summary.verdict, 'FAIL');
   assert.equal(r.records.find(x => x.id === 'test').failureType, 'TEST_FAILURE');
   assert.equal(r.records.find(x => x.id === 'e2e').status, 'CONFIGURATION_ERROR');
@@ -241,10 +242,11 @@ test('yandex init maps a known browser-test alias to the e2e gate', () => {
   assert.deepEqual(detected.manifest.browser, { required: true, gate: 'e2e' });
 });
 
-test('failures reads only non-PASS gates and tails their logs', () => {
+test('failures reads only non-PASS gates and tails their logs', async () => {
   const dir = tempProject();
-  writeManifest(dir, base('  ok: node -e "console.log(\'alpha\'); console.log(\'beta\'); process.exit(7)"'));
-  const r = runVerification(dir);
+  fs.writeFileSync(path.join(dir, 'check.mjs'), "console.log('alpha'); console.log('beta'); process.exit(7)\n");
+  writeManifest(dir, base('  ok: node check.mjs'));
+  const r = await runVerification(dir);
   const f = readFailures(dir, { evidenceDir: r.outputDir, tail: 1 });
   assert.equal(f.failures.length, 1);
   assert.equal(f.failures[0].failureType, 'COMMAND_FAILURE');
@@ -258,4 +260,24 @@ test('command configuration accepts an existing npm script', () => {
   const r = checkCommandConfiguration(dir, 'npm run test:e2e');
   assert.equal(r.ok, true);
   assert.equal(r.script, 'test:e2e');
+});
+
+test('verification refuses a shell-evaluated command even if legacy risk classifier calls it R0', async () => {
+  const dir = tempProject();
+  const marker = path.join(dir, 'UNSAFE');
+  writeManifest(dir, base(`  ok: node -e "require('fs').writeFileSync('${marker.replaceAll('\\', '\\\\')}', 'unsafe')"`));
+  const r = await runVerification(dir);
+  assert.equal(r.summary.verdict, 'BLOCKED');
+  assert.equal(r.records[0].failureCode, 'UNSAFE_COMMAND_ADAPTER');
+  assert.equal(fs.existsSync(marker), false);
+});
+
+test('verification timeout is recorded as FAIL and preserves bounded evidence', async () => {
+  const dir = tempProject();
+  fs.writeFileSync(path.join(dir, 'delay.mjs'), 'setTimeout(() => process.stdout.write("too late"), 650)\n');
+  writeManifest(dir, base('  ok: node delay.mjs'));
+  const r = await runVerification(dir, { gateTimeoutMs: 100 });
+  assert.equal(r.summary.verdict, 'FAIL');
+  assert.equal(r.records[0].failureCode, 'GATE_TIMEOUT');
+  assert.equal(r.records[0].timedOut, true);
 });

@@ -8,6 +8,8 @@ These defaults apply across repositories. More specific repository instructions 
 
 Before Git-backed work, verify root, expected remote, branch, dirty state and **fresh remote HEAD**. Use `ceos git-preflight --fetch`; fast-forward only a clean matching branch via `--fetch --apply`. Preserve dirty/diverged work, never force-push. See `policies/git.md`.
 
+Worktrees: permanent `main`; Codex uses `ceos/task/*`. No auto-deletion. Report path/branch/HEAD; see `policies/git.md`.
+
 ## User-visible progress discipline
 
 - Silent reasoning is the default; do not narrate chain-of-thought or step-by-step deliberation.
