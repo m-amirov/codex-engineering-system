@@ -186,6 +186,12 @@ Skills: ${SKILL_NAMES.join(', ')}`);
 
 const args = parseArgs(process.argv.slice(2));
 const cmd = args._[0] ?? 'help';
+if (args.help !== undefined || args._.includes('-h')) {
+  if (cmd === 'adopt') {
+    console.log('Usage: ceos adopt --project <dir> [--profile <profile>] [--dry-run] [--force] [--json]');
+    console.log('Adds only CEOS-owned .codex-os adoption files; dry-run plans without writes.');
+  } else usage();
+} else {
 const project = resolveProject(args.project || process.cwd());
 try {
   switch (cmd) {
@@ -204,11 +210,6 @@ try {
       break;
     }
     case 'adopt': {
-      if (args.help) {
-        console.log('Usage: ceos adopt --project <dir> [--profile <profile>] [--dry-run] [--force] [--json]');
-        console.log('Adds only CEOS-owned .codex-os adoption files; dry-run plans without writes.');
-        break;
-      }
       const plan = planAdoption(project, { profile: args.profile, force: Boolean(args.force) });
       if (args['dry-run']) {
         print(plan, Boolean(args.json));
@@ -810,4 +811,5 @@ try {
 } catch (e) {
   console.error(`CEOS_ERROR: ${e.message}`);
   process.exitCode = 1;
+}
 }
