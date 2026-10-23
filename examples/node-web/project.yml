@@ -1,0 +1,11 @@
+version: 1
+profile: node-web
+commands:
+  lint: npm run lint
+  test: npm test
+  build: npm run build
+gates:
+  verification: [lint, test, build]
+  release: [lint, test, build]
+production:
+  access: read-only

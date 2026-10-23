@@ -1,0 +1,207 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { webPreflight } from '../src/web-preflight.mjs';
+
+function makeHome(manifest, { bom = false } = {}) {
+  if (manifest?.enabled === true && !Object.hasOwn(manifest, 'webAgents')) {
+    manifest = { ...manifest, webAgents:
+      ['ceos_bulk_checker_web', 'ceos_reasoner_web', 'ceos_art_director_web']
+        .map(name => ({ name, model: 'chatgpt-web/gpt-6-sol' })) };
+  }
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ceos-web-preflight-'));
+  const dir = path.join(home, '.codex', 'ceos');
+  fs.mkdirSync(dir, { recursive: true });
+  if (manifest !== undefined) {
+    const json = JSON.stringify(manifest);
+    fs.writeFileSync(path.join(dir, 'hybrid-routing.json'), bom ? `\uFEFF${json}` : json, 'utf8');
+  }
+  return home;
+}
+
+test('Web preflight degrades cleanly when hybrid routing is not configured', async () => {
+  const homeDir = makeHome(undefined);
+  const result = await webPreflight({ homeDir, fetchImpl: async () => { throw new Error('must not fetch'); } });
+  assert.equal(result.status, 'NOT_CONFIGURED');
+  assert.equal(result.ready, false);
+  assert.equal(result.fallbackAllowed, true);
+});
+
+test('Web preflight accepts Windows PowerShell UTF-8 BOM manifests', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true }, { bom: true });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'ok', accepting_turns: true, active_http_turns: 0, active_browser_turns: 0 })
+    })
+  });
+  assert.equal(result.status, 'READY');
+  assert.equal(result.ready, true);
+  assert.equal(result.fallbackAllowed, false);
+});
+
+test('Web preflight does not probe runtime when Web routing is disabled', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: false });
+  let called = false;
+  const result = await webPreflight({ homeDir, fetchImpl: async () => { called = true; throw new Error('unexpected'); } });
+  assert.equal(called, false);
+  assert.equal(result.status, 'DISABLED');
+  assert.equal(result.ready, false);
+  assert.equal(result.fallbackAllowed, true);
+});
+
+test('Web preflight reports READY only for a healthy bridge accepting turns', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'ok', accepting_turns: true, active_http_turns: 0, active_browser_turns: 0 })
+    })
+  });
+  assert.equal(result.status, 'READY');
+  assert.equal(result.ready, true);
+  assert.equal(result.fallbackAllowed, false);
+});
+
+test('Web preflight converts bridge transport failure into explicit fallback state', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true });
+  const result = await webPreflight({ homeDir, fetchImpl: async () => { throw new Error('ECONNREFUSED'); } });
+  assert.equal(result.status, 'UNAVAILABLE');
+  assert.equal(result.ready, false);
+  assert.equal(result.fallbackAllowed, true);
+  assert.match(result.reason, /ECONNREFUSED/);
+});
+
+test('Web preflight refuses stale CEOS Web model mapping', async () => {
+  const homeDir = makeHome({
+    schemaVersion: 2,
+    enabled: true,
+    webAgents: [
+      { name: 'ceos_bulk_checker_web', model: 'chatgpt-web/light' },
+      { name: 'ceos_reasoner_web', model: 'chatgpt-web/gpt-6-sol' },
+      { name: 'ceos_art_director_web', model: 'chatgpt-web/gpt-6-sol' }
+    ]
+  });
+  let probed = false;
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => { probed = true; throw new Error('should not probe stale Web config'); }
+  });
+  assert.equal(result.status, 'NOT_CONFIGURED');
+  assert.equal(result.ready, false);
+  assert.equal(probed, false);
+  assert.match(result.reason, /GPT-6/);
+});
+
+test('Web preflight accepts the GPT-6 Sol routing manifest', async () => {
+  const homeDir = makeHome({
+    schemaVersion: 2,
+    enabled: true,
+    webAgents: [
+      { name: 'ceos_bulk_checker_web', model: 'chatgpt-web/gpt-6-sol' },
+      { name: 'ceos_reasoner_web', model: 'chatgpt-web/gpt-6-sol' },
+      { name: 'ceos_art_director_web', model: 'chatgpt-web/gpt-6-sol' }
+    ]
+  });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ status: 'ok', accepting_turns: true }) })
+  });
+  assert.equal(result.status, 'READY');
+});
+
+
+test('Web preflight classifies HTTP 429 as RATE_LIMITED and preserves Retry-After', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({
+      ok: false,
+      status: 429,
+      headers: { get: name => name.toLowerCase() === 'retry-after' ? '180' : null },
+      json: async () => ({ message: 'Too many requests' })
+    })
+  });
+  assert.equal(result.status, 'RATE_LIMITED');
+  assert.equal(result.ready, false);
+  assert.equal(result.fallbackAllowed, true);
+  assert.equal(result.retryAfterSeconds, 180);
+});
+
+test('Web preflight classifies explicit bridge cooldown body as RATE_LIMITED', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({ status: 'ok', accepting_turns: false, rate_limited: true, retry_after_ms: 125000 })
+    })
+  });
+  assert.equal(result.status, 'RATE_LIMITED');
+  assert.equal(result.retryAfterSeconds, 125);
+});
+
+test('Web preflight rejects legacy GPT-5.6 High routes even when the bridge is healthy', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true, webAgents:
+    ['ceos_bulk_checker_web','ceos_reasoner_web','ceos_art_director_web']
+      .map(name => ({ name, model: 'chatgpt-web/high' })) });
+  let probed = false;
+  const result = await webPreflight({
+    homeDir, fetchImpl: async () => { probed = true; throw Error('must not probe'); }
+  });
+  assert.equal(result.status, 'NOT_CONFIGURED');
+  assert.equal(probed, false);
+  assert.match(result.reason, /GPT-6/);
+});
+
+test('Web preflight refuses missing and duplicate GPT-6 managed routes', async () => {
+  const names = ['ceos_bulk_checker_web','ceos_reasoner_web','ceos_art_director_web'];
+  for (const webAgents of [
+    names.slice(0,2).map(name => ({ name, model: 'chatgpt-web/gpt-6-sol' })),
+    [names[0],names[0],names[2]].map(name => ({ name, model: 'chatgpt-web/gpt-6-sol' })),
+    null
+  ]) {
+    const homeDir = makeHome({ schemaVersion: 2, enabled: true, webAgents });
+    const result = await webPreflight({
+      homeDir, fetchImpl: async () => { throw Error('must not probe stale config'); }
+    });
+    assert.equal(result.status, 'NOT_CONFIGURED');
+  }
+});
+
+test('Web preflight detects explicit attachment quota even when bridge returns HTTP 429', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({
+      ok: false,
+      status: 429,
+      headers: { get: () => null },
+      json: async () => ({ code: 'FILE_UPLOAD_LIMIT_REACHED', message: 'File attachment limit reached' })
+    })
+  });
+  assert.equal(result.status, 'ATTACHMENT_QUOTA_EXHAUSTED');
+  assert.equal(result.ready, false);
+  assert.equal(result.fallbackAllowed, false);
+  assert.equal(result.retryAllowed, false);
+});
+
+test('Web preflight does not classify generic attachment failures as quota', async () => {
+  const homeDir = makeHome({ schemaVersion: 2, enabled: true });
+  const result = await webPreflight({
+    homeDir,
+    fetchImpl: async () => ({
+      ok: false, status: 503, headers: { get: () => null },
+      json: async () => ({ message: 'attachment transport failed' })
+    })
+  });
+  assert.equal(result.status, 'UNAVAILABLE');
+});

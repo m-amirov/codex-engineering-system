@@ -1,0 +1,4 @@
+node_modules/
+.ceos-evidence/
+.DS_Store
+*.log

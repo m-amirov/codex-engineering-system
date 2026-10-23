@@ -1,0 +1,6 @@
+interface:
+  display_name: "CEOS Incident Analysis"
+  short_description: "Codex Engineering OS workflow: incident-analysis"
+  default_prompt: "Use the incident-analysis workflow and produce evidence-based results."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,18 @@
+version: 1
+profile: yandex-games
+commands:
+  lint: npm run lint
+  test: npm test
+  e2e: npm run test:e2e
+  build: npm run build
+  starter_kit_self_test: npm run starter-kit:self-test
+gates:
+  verification: [lint, test, e2e, build, starter_kit_self_test]
+  release: [lint, test, e2e, build, starter_kit_self_test]
+production:
+  access: read-only
+release:
+  clean_worktree: true
+browser:
+  required: true
+  gate: e2e

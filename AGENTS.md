@@ -1,0 +1,43 @@
+# Codex Engineering OS — Agent Map
+
+For medium/high-complexity work, load `policies/web-delegation.md` and make bounded Web High handoffs at **analysis, post-repair checkpoint and independent acceptance** when the Web route is READY. Use `ceos web-plan` for planning; use actual source-bound review receipts rather than one token Web agent name. A reviewer asking for new evidence means NOT_VERIFIED until fresh independent review, not automatic closure. This policy never grants Web tools or product write access. Visual-art workflows can explicitly opt into `--web-review-assurance visual-content` when the host lacks task/trace IDs; this is not provider attestation and never bypasses project release gates.
+
+Keep this file short. Load only the skill/profile/policy required by the task.
+
+## Routing
+
+- Continue an existing CEOS run from persisted checkpoints → `skills/ceos-continue/SKILL.md`; `ceos continue` plans one safe next action, it does not execute host tools itself.
+- Audit without product mutation → `skills/audit/SKILL.md`
+- Reproduce + repair a defect → `skills/fix/SKILL.md`
+- Independent completion check → `skills/verification/SKILL.md`
+- Prepare a release candidate → `skills/release/SKILL.md`
+- Browser/presentation QA → `skills/visual-qa/SKILL.md`
+- Gameplay videos / platform media evidence / trailers → `skills/video-production/SKILL.md`
+- Romance-first interactive fiction: concept development and editorial review → `skills/romance-narrative/SKILL.md` (combine with `audit` / `audit-repair-loop` for existing drafts)
+- Production image assets / character sheets / backgrounds / CG integration → `skills/production-art/SKILL.md`; for enabled narrative-game use story-first `docs/NARRATIVE_ART_ACCEPTANCE_V2.md`
+- Production inspection → `skills/prod-check/SKILL.md`
+- Runtime/log incident diagnosis → `skills/incident-analysis/SKILL.md`
+
+For narrative drafting/editorial repair, the parent is the sole native writer/editor by default; see `policies/native-delegation.md`. Do not spawn parallel native scene editors/reviewers by routine. Web High independent critique is allowed and retains all mandatory evidence gates.
+
+Always load `policies/safety.md`, `policies/evidence.md`, and the resolved project profile. Load other policies only when relevant.
+
+## Invariants
+For Git-backed engineering tasks, begin with the fresh-remote Git preflight in `policies/git.md`. Do not trust only the local checkout when evaluating whether a requested GitHub file exists. The policy is non-destructive and does not authorize forced synchronization.
+
+
+1. Evidence, not assertion, determines PASS. Engine-backed terminal PASS also requires the executable `metadata.evidenceContract`; zero counters, artifacts without assertions, partial coverage, stale HEAD evidence, and unresolved manual/external conditions are not PASS.
+2. Default production access is read-only.
+3. Unknown permission is not permission.
+4. Reuse project-native infrastructure; do not build parallel test/build systems unless the task explicitly requires it.
+5. Prefer goal + constraints + acceptance criteria over prescriptive multi-thousand-line prompts.
+6. Repeated prose rules should migrate into mechanical gates.
+7. If required evidence cannot be obtained, return `BLOCKED`, not a guessed PASS.
+8. User-visible progress is concise status reporting, not reasoning narration; keep detailed reasoning, logs, and evidence out of routine progress updates.
+
+Use `ceos status`, `ceos doctor`, `ceos gates`, and `ceos verify` for local contracts. For engine-backed workflows use `ceos capabilities`, `ceos run`, `ceos checkpoint`, and `ceos resume`; do not bypass their persisted stage order.
+
+
+## Native capability attestation
+
+Before a production-art run enters `GENERATING`, use `ceos capability-challenge latest`. Inspect only the callable tools actually exposed to the current Codex turn; never invoke Image Gen as a probe. Attest `PRESENT + UNKNOWN` only when `image_gen.imagegen` is actually callable. The challenge is bound to the current run/session/turn and a one-time nonce. Manual CLI/environment overrides are diagnostic-only and cannot unlock production generation.

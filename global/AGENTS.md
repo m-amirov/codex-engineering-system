@@ -1,0 +1,105 @@
+# Codex Engineering OS — global defaults
+
+These defaults apply across repositories. More specific repository instructions may refine project behavior.
+
+## Engineering contract
+
+### GitHub-first preflight
+
+Before Git-backed work, verify root, expected remote, branch, dirty state and **fresh remote HEAD**. Use `ceos git-preflight --fetch`; fast-forward only a clean matching branch via `--fetch --apply`. Preserve dirty/diverged work, never force-push. See `policies/git.md`.
+
+## User-visible progress discipline
+
+- Silent reasoning is the default; do not narrate chain-of-thought or step-by-step deliberation.
+- Progress updates are status reporting, not reasoning narration: at most 1–2 short sentences with action, result, and blocker.
+- Keep detailed diagnostics, logs, and evidence in artifacts/files; surface only actionable summaries. Evidence, provenance, checkpoints, and fail-closed rules still apply.
+
+## Deterministic execution engine
+
+For engine-backed multi-stage workflows (`audit-repair-loop` and `production-art`), use the CEOS control plane when 0.5.0+ is available:
+
+- create the immutable scope/capability snapshot with `ceos run <pipeline> ...`;
+- execute only the `nextStage` returned by CEOS;
+- persist stage evidence and advance with `ceos checkpoint`;
+- record actual Web/fallback use with `ceos routing-trace`;
+- after interruption, call `ceos resume` instead of inferring progress from conversation history;
+- do not claim PASS when run integrity is stale, the state machine has not reached terminal PASS, or required evidence is absent.
+
+CEOS controls stage order, cycle limits, capability gates, evidence provenance, resume, and verdict acceptance; the parent agent performs semantic/tool work.
+
+### Continue
+
+For short continuation requests, use `ceos continue --json` and the `ceos-continue` skill. Plan one claimed action from saved evidence; the CLI does not execute host tools or grant permissions.
+
+## Native capability attestation
+
+For production-art, use a fresh run-scoped `ceos capability-challenge`; manual/env evidence cannot unlock `GENERATING`.
+
+## Native delegation budget (especially literary tasks)
+
+Follow `policies/native-delegation.md` for the full contract. **For literary drafting and editorial repair, use the parent Codex session as the sole native writer/editor by default. Do not spawn multiple native workers for different episodes, routes or repairs, or duplicate manuscript/canon reads in parallel native contexts.** Process large writing requests episode by episode with persisted progress; never call a partial checkpoint completion of the full task.
+
+Use at most one bounded substantive Web High editorial review per completed episode by default, and after repair review only changed text plus causally affected branches unless the original acceptance contract requires full-scope re-audit. Deterministic counts and ID checks are local commands, not agent tasks. If an independent native tool-backed review is genuinely required or the user explicitly requests parallelism, delegate the minimum narrowly scoped role and record why. This is instructional: CEOS cannot set a hard Codex-host subagent count or guarantee provider quota usage.
+
+## Automatic model routing (hybrid)
+
+For sustained work, route by workload, uncertainty, risk, and fresh-tool needs. The parent owns orchestration and the final answer.
+
+CEOS 0.5.x may use optional `chatgpt-web/*` rows from `codex-chatgpt-web`; Web routes are reasoning-only. MCP / Full Harness is not required and must not be assumed.
+
+All CEOS-managed Web roles use `chatgpt-web/gpt-6-sol` with high reasoning. Never silently downgrade; use explicit fallback/failure rules, or `BLOCKED` when Web is required. Preflight READY is not completed delegation.
+
+
+- `ceos_bulk_checker_web` (`chatgpt-web/gpt-6-sol`): repetitive classification/comparison over a complete bounded evidence bundle supplied by the parent.
+- `ceos_reasoner_web` (`chatgpt-web/gpt-6-sol`): architecture reasoning, hypothesis comparison, planning, synthesis, or critique over supplied context.
+- `ceos_art_director_web` (`chatgpt-web/gpt-6-sol`): art direction, visual canon, asset briefs, and consistency review over supplied manifests/contact sheets/screenshots. It does not generate or persist files.
+- Do not ask a Web agent to discover files, inspect the workspace, run commands/tests, browse, call local tools, or perform writes.
+- If fresh repository/tool evidence is required, route natively: `ceos_bulk_checker` for batch checks, `ceos_explorer` for repository exploration, `ceos_asset_generator` for bounded asset generation/integration when native image generation is actually available, and the existing native implement/debug/review/verify agents for their roles.
+- Web analysis is advisory reasoning over supplied evidence; it is not independent proof of repository state.
+- Keep implementation, asset persistence, debugging, risk review, and final verification native.
+
+When Web routing is disabled or unavailable, use the native agents:
+
+- `ceos_bulk_checker`: repetitive deterministic checks.
+- `ceos_explorer`: repository exploration/evidence mapping.
+- `ceos_implementer`: bounded implementation/refactor.
+- `ceos_asset_generator` (`gpt-5.6-terra`, Medium): source-bound native Image Gen, separate from parent/Web. Missing producer-context tool or trusted gate → `BLOCKED`.
+- `ceos_debugger`: ambiguous/cross-component debugging.
+- `ceos_reviewer`: correctness/security/architecture/production-risk review.
+- `ceos_verifier`: independent final verification.
+
+## Web transport pacing and cooldown
+
+Follow `policies/web-transport.md`. For attachment-heavy Web High review, send turns sequentially with at least 20s between attachment-bearing turns. Explicit 429/"too many requests"/usage-limit signals use bounded 120s → 300s → 600s cooldown; after the third event stop as `BLOCKED: WEB_RATE_LIMITED`. A longer Retry-After wins.
+
+Generic attachment failures are not rate limits: retry only the failed turn after 30s, then 60s, and block after two retries. Transport retries do not consume generation/repair cycles. A pixel-backed REWORK/FAIL is semantic, not transport. Runtime dialogue/navigation chrome is expected UI, not baked UI inside the asset.
+
+## Production art pipeline
+
+When the user asks to create, replace, or integrate production image assets, activate `production-art` rather than treating image generation as an incidental implementation detail.
+
+Freeze scope/canon → Sol Web analysis → verify a **real** Terra child route → `ceos art-brief-verify` → Terra Medium native Image Gen (max 2 per cue/variant; own trusted tool access) → actual assets → desktop/mobile runtime QA → independent Sol Web acceptance. See `policies/art-producer.md`.
+
+For `narrative-game`, require native `spawn_agent agent_type=ceos_asset_generator` (not `task_name`). Parent runs official `ceos producer-route-check` on real Terra Medium child rollout. In `CURRENT_TURN`, `run.producerParentSessionId=null` is normal: child must not flag it as a mismatch. Real route failures block. `GENERATING` needs `metadata.producerTraceFile`; tool access is checked separately. See `docs/NATIVE_TERRA_ROUTING.md`.
+
+See `policies/art-producer.md`: model ≠ rendering tool; Web Sol does not persist images. Claim only actual workspace files. After each generated PNG run `ceos art-output-verify`; on failure stop the batch before another Image Gen call. New GENERATING checkpoints require verified output records.
+
+## Universal audit → repair loop
+
+When the user asks to audit a product and automatically fix confirmed defects, activate `audit-repair-loop`.
+
+First freeze the audit target and scope. Repository profiles, platform requirements, release gates, submission assets, screenshots, videos, store metadata, deployment evidence, and adjacent surfaces must not silently expand the user's target. Unless release/publication/submission readiness is explicitly requested, those surfaces cannot block the target verdict.
+
+Then collect fresh evidence natively → `ceos web-preflight --json` → audit supplied evidence → confirm in-scope defects → one consolidated remediation packet → repair natively → target-proportional verification → fresh evidence → re-audit against the original acceptance contract.
+
+If Web is enabled and preflight is `READY`, each substantive audit cycle must use the appropriate Web reviewer; do not silently skip Web. If Web is unavailable, allow the existing single native fallback and record it. If the user explicitly requires Web review, unavailable Web is `BLOCKED`.
+
+Every loop checkpoint reports Web preflight status, Web agents used, whether native fallback was used, and why. Default maximum automatic repair cycles: **3**. Stop on `PASS`, `FAIL`, `BLOCKED`, `ESCALATE`, the cycle limit, a safety/permission boundary, missing essential target evidence, or repeated lack of material progress.
+
+### Fallback contract
+
+A Web-to-native fallback is allowed at most once for a delegated unit and only when the selected Web model/backend/transport cannot run. Do not fallback because the agent found a bug, returned uncertainty, rejected an assumption, or disagreed with another analysis.
+
+Do not create retry loops, cycle among Web modes, or switch models to evade usage limits. Fallback preserves task scope and safety constraints. Routing never weakens sandbox, approval, production-write, or project-specific constraints.
+
+For native routes, prefer the lowest-cost adequate route and escalate strength when uncertainty remains or risk warrants it. Web routes are fixed to High; do not optimize Web costs by selecting a lower Web mode. For literary production, do not parallelize native agents by default. For other work, parallelize only bounded independent tasks where the benefit justifies extra native contexts; do not delegate trivial work when overhead exceeds the task.

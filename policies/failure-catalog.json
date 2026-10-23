@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "categories": [
+    "PRODUCT_FAILURE",
+    "TEST_FAILURE",
+    "COMMAND_FAILURE",
+    "CONFIGURATION_ERROR",
+    "INFRA_FAILURE",
+    "EXTERNAL_BLOCKER",
+    "CAPABILITY_BLOCKER",
+    "EVIDENCE_FAILURE",
+    "PROVENANCE_FAILURE"
+  ],
+  "failures": [
+    {
+      "id": "SEMANTIC_ASSERTIONS_MISSING",
+      "category": "EVIDENCE_FAILURE",
+      "severity": "blocker",
+      "owner": "CEOS",
+      "prevents": [
+        "PASS",
+        "READY",
+        "RELEASE_READY"
+      ],
+      "remediation": "Record an executable evidence contract with at least one actually executed assertion and proved claim."
+    },
+    {
+      "id": "COVERAGE_INCOMPLETE",
+      "category": "EVIDENCE_FAILURE",
+      "severity": "blocker",
+      "owner": "CEOS",
+      "prevents": [
+        "PASS",
+        "READY",
+        "RELEASE_READY"
+      ],
+      "remediation": "Complete the declared scope or reduce the claim scope explicitly; partial coverage cannot prove a full-scope claim."
+    },
+    {
+      "id": "EVIDENCE_PROVENANCE_MISMATCH",
+      "category": "PROVENANCE_FAILURE",
+      "severity": "blocker",
+      "owner": "CEOS",
+      "prevents": [
+        "PASS",
+        "READY",
+        "RELEASE_READY"
+      ],
+      "remediation": "Regenerate evidence from the current source HEAD."
+    },
+    {
+      "id": "ART_ACCEPTANCE_HEAD_MISMATCH",
+      "category": "PROVENANCE_FAILURE",
+      "severity": "blocker",
+      "owner": "CEOS",
+      "prevents": [
+        "RELEASE_READY"
+      ],
+      "remediation": "Repeat art acceptance against the exact current source/build HEAD."
+    },
+    {
+      "id": "RELEASE_RECOVERY_BASE_MISMATCH",
+      "category": "PROVENANCE_FAILURE",
+      "severity": "blocker",
+      "owner": "CEOS",
+      "prevents": [
+        "RELEASE_READY"
+      ],
+      "remediation": "Return to a HEAD descended from the recorded release baseline before recovery."
+    },
+    {
+      "id": "MISSING_REQUIRED_SCRIPT",
+      "category": "CONFIGURATION_ERROR",
+      "severity": "blocker",
+      "owner": "CEOS",
+      "prevents": [
+        "PASS"
+      ],
+      "remediation": "Configure the required project-native command. Do not classify an absent command as a failed test."
+    },
+    {
+      "id": "STALE_FIXTURE",
+      "category": "TEST_FAILURE",
+      "severity": "blocker",
+      "owner": "CEOS",
+      "prevents": [
+        "PASS"
+      ],
+      "remediation": "Update or replace stale fixtures and prove the product independently before treating the result as a regression."
+    },
+    {
+      "id": "HOST_CAPABILITY_PRODUCER_API_MISSING",
+      "category": "CAPABILITY_BLOCKER",
+      "severity": "blocker",
+      "owner": "CEOS",
+      "prevents": [
+        "PASS"
+      ],
+      "remediation": "Provide an authoritative current-session producer/attestation surface; do not synthesize capability state."
+    },
+    {
+      "id": "BLOCKED_CODEX_HOOK_NOT_TRUSTED",
+      "category": "CAPABILITY_BLOCKER",
+      "severity": "blocker",
+      "owner": "CEOS",
+      "prevents": [
+        "PASS"
+      ],
+      "remediation": "Restore trusted SessionStart/UserPromptSubmit runtime markers and obtain a fresh run-scoped attestation."
+    },
+    {
+      "id": "EXTERNAL_EVIDENCE_MISSING",
+      "category": "EXTERNAL_BLOCKER",
+      "severity": "blocker",
+      "owner": "profile",
+      "prevents": [
+        "RELEASE_READY"
+      ],
+      "remediation": "Obtain the required manual/external evidence or keep the release blocked."
+    }
+  ]
+}

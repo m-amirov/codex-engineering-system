@@ -1,0 +1,6 @@
+interface:
+  display_name: "CEOS Audit"
+  short_description: "Codex Engineering OS workflow: audit"
+  default_prompt: "Use the audit workflow and produce evidence-based results."
+policy:
+  allow_implicit_invocation: true
