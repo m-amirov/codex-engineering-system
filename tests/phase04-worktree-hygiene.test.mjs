@@ -131,10 +131,10 @@ test('legacy branch cleanup requires explicit opt-in in both inventory and apply
   const x = repo();
   const legacyPath = path.join(x.parent, 'old phase branch');
   git(x.main, 'worktree', 'add', '-b', 'feature/old-draft', legacyPath, 'HEAD');
-  const ordinary = inspectWorktrees(x.main).worktrees.find(row => row.path === legacyPath);
+  const ordinary = inspectWorktrees(x.main).worktrees.find(row => sameWorktreePath(row.path, legacyPath));
   assert.equal(ordinary.eligible, false);
   assert.match(ordinary.reasonCodes.join(','), /UNMANAGED_BRANCH/);
-  const opted = inspectWorktrees(x.main, { includeLegacy: true }).worktrees.find(row => row.path === legacyPath);
+  const opted = inspectWorktrees(x.main, { includeLegacy: true }).worktrees.find(row => sameWorktreePath(row.path, legacyPath));
   assert.equal(opted.eligible, true);
   assert.throws(() => cleanupWorktree(x.main, {
     targetPath: legacyPath, expectedHead: opted.head, planToken: opted.planToken
