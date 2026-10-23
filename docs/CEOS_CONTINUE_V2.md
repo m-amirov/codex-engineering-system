@@ -45,8 +45,21 @@ To persist an actual host-observed technical failure without invoking a tool:
 ceos recovery-event RUN_ID --event-file artifacts/recovery-event.json --json
 ```
 
-The event must be source-bound to the current checkout. Repeating the same
-`operationId` is idempotent. An unknown external result, source drift,
+The event must be source-bound to the current checkout. For a retryable
+technical failure, supply a stable logical `operationId` and a distinct
+`attemptId` for each actual host execution attempt (for example
+`{"operationId":"web-review-17","attemptId":"turn-2","reasonCode":"TIMEOUT"}`).
+Re-delivering the same attempt is idempotent; a new attempt with the same
+failure payload consumes the next retry slot. A retryable event without
+`attemptId` is persisted as `NEEDS_USER_ACTION / RECOVERY_ATTEMPT_ID_REQUIRED`
+instead of silently authorizing ambiguous repeats. Older runs without
+recovery state remain readable; historical retry state lacking attempt
+identity pauses until the host supplies a fresh, unambiguous attempt.
+
+Authorization failures override transient reason codes; a missing, expired,
+revoked or denied authorization requires user action. `Retry-After` supplied
+as `retryAfterMs` or `retryAfterSeconds` is a minimum wait even when longer
+than the configured local backoff cap. An unknown external result, source drift,
 checkpoint/integrity failure, missing evidence, provenance/SHA mismatch or
 artistic REWORK is not automatically retried.
 

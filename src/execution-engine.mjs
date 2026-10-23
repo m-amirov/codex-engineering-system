@@ -1374,7 +1374,8 @@ export function recordRecoveryEvent(projectDir, runRef = 'latest', event = {}, {
       detail: applied.detail,
       issues: applied.issues,
       executable: false,
-      nextAction: 'STOP_AND_REPAIR'
+      nextAction: applied.status === RECOVERY_CATEGORIES.NEEDS_USER_ACTION
+        ? 'REQUEST_USER_ACTION' : 'STOP_AND_REPAIR'
     };
     run.recovery = applied.state;
     run.updatedAt = new Date(nowMs).toISOString();

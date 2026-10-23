@@ -62,6 +62,7 @@ function stableJson(value) {
 export function recoveryEventId(event = {}) {
   const identity = {
     operationId: event.operationId ?? null,
+    attemptId: event.attemptId ?? null,
     reasonCode: asCode(event.reasonCode ?? event.code),
     stage: event.stage ?? null,
     sourceHead: event.sourceHead ?? null,
@@ -75,16 +76,15 @@ export function classifyContinuationError(event = {}) {
   const reasonCode = asCode(event.reasonCode ?? event.code);
   const explicitCategory = asCode(event.category);
   const integrity = event.integrity === false || event.sourceBound === false || event.evidenceComplete === false;
+  const authorizationBlocked = ['EXPIRED', 'MISSING', 'REVOKED', 'DENIED'].includes(asCode(event.authorization));
   let category = RECOVERY_CATEGORIES.HARD_BLOCKED;
   if (integrity || HARD_CODES.has(reasonCode)) category = RECOVERY_CATEGORIES.HARD_BLOCKED;
-  else if (USER_CODES.has(reasonCode) || explicitCategory === RECOVERY_CATEGORIES.NEEDS_USER_ACTION) {
+  else if (authorizationBlocked || USER_CODES.has(reasonCode) || explicitCategory === RECOVERY_CATEGORIES.NEEDS_USER_ACTION) {
     category = RECOVERY_CATEGORIES.NEEDS_USER_ACTION;
   } else if (AUTO_CODES.has(reasonCode) || explicitCategory === RECOVERY_CATEGORIES.AUTO_RECOVERABLE) {
     category = RECOVERY_CATEGORIES.AUTO_RECOVERABLE;
   } else if (WAIT_CODES.has(reasonCode) || explicitCategory === RECOVERY_CATEGORIES.WAIT_EXTERNAL) {
     category = RECOVERY_CATEGORIES.WAIT_EXTERNAL;
-  } else if (event.authorization === 'EXPIRED' || event.authorization === 'MISSING') {
-    category = RECOVERY_CATEGORIES.NEEDS_USER_ACTION;
   } else if (event.external === true || event.temporary === true) {
     category = RECOVERY_CATEGORIES.WAIT_EXTERNAL;
   }
@@ -156,23 +156,51 @@ function retryDelayMs(state, event, attempt) {
       : Number(event.retryAfter);
   const hinted = Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter : 0;
   const exponential = policy.baseDelayMs * (2 ** Math.max(0, attempt - 1));
-  return Math.min(policy.maxDelayMs, Math.max(hinted, exponential));
+  // maxDelayMs caps our own backoff, never the server's minimum Retry-After.
+  return Math.max(hinted, Math.min(policy.maxDelayMs, exponential));
 }
 
 export function applyRecoveryEvent(state, event = {}, { now = Date.now() } = {}) {
   const validation = validateRecoveryState(state);
   if (!validation.ok) return { ok: false, status: RECOVERY_CATEGORIES.HARD_BLOCKED, reasonCode: 'CHECKPOINT_CORRUPTED', issues: validation.issues };
   const next = structuredClone(state);
-  const classification = classifyContinuationError(event);
+  let classification = classifyContinuationError(event);
   const eventId = String(event.eventId ?? recoveryEventId(event));
   if (!/^[a-f0-9-]{8,128}$/i.test(eventId)) return { ok: false, status: RECOVERY_CATEGORIES.HARD_BLOCKED, reasonCode: 'INVALID_RECOVERY_EVENT_ID' };
-  if (next.processedEventIds.includes(eventId)) {
-    return { ok: true, alreadyRecorded: true, state: next, eventId,
-      ...recoveryDecision(next, { now }) };
-  }
   if (event.sourceHead && next.sourceHead && event.sourceHead !== next.sourceHead) {
     return { ok: false, status: RECOVERY_CATEGORIES.HARD_BLOCKED, reasonCode: 'SOURCE_HEAD_CHANGED', eventId,
       detail: 'Recovery event is bound to a different source HEAD' };
+  }
+  // The logical operation can fail repeatedly with identical payloads. A
+  // stable, attempt-specific identity is required to distinguish a new
+  // failure from a retransmission of the same failure receipt.
+  const hasAttemptId = typeof event.attemptId === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.attemptId);
+  if (classification.category === RECOVERY_CATEGORIES.AUTO_RECOVERABLE && !hasAttemptId) {
+    classification = {
+      ...classification,
+      category: RECOVERY_CATEGORIES.NEEDS_USER_ACTION,
+      reasonCode: 'RECOVERY_ATTEMPT_ID_REQUIRED',
+      nextAction: 'REQUEST_USER_ACTION',
+      retryAllowed: false,
+      detail: 'Retryable events require an attemptId unique to each actual execution attempt'
+    };
+  }
+  const existingAttempt = hasAttemptId ? next.history.find(record =>
+    record.attemptId === event.attemptId && record.operationId === (event.operationId ?? null)) : null;
+  if (existingAttempt && existingAttempt.eventId !== eventId) {
+    return { ok: false, status: RECOVERY_CATEGORIES.HARD_BLOCKED,
+      reasonCode: 'RECOVERY_ATTEMPT_ID_CONFLICT', eventId };
+  }
+  if (next.processedEventIds.includes(eventId)) {
+    const existingEvent = next.history.find(record => record.eventId === eventId);
+    if (!existingEvent || existingEvent.attemptId !== (event.attemptId ?? null) ||
+        existingEvent.operationId !== (event.operationId ?? null)) {
+      return { ok: false, status: RECOVERY_CATEGORIES.HARD_BLOCKED,
+        reasonCode: 'RECOVERY_EVENT_ID_CONFLICT', eventId };
+    }
+    return { ok: true, alreadyRecorded: true, state: next, eventId,
+      ...recoveryDecision(next, { now }) };
   }
   const recordedAt = new Date(now).toISOString();
   const record = {
@@ -183,6 +211,7 @@ export function applyRecoveryEvent(state, event = {}, { now = Date.now() } = {})
     nextAction: classification.nextAction,
     stage: event.stage ?? null,
     operationId: event.operationId ?? null,
+    attemptId: hasAttemptId ? event.attemptId : null,
     sourceHead: event.sourceHead ?? next.sourceHead ?? null,
     detail: classification.detail
   };
@@ -218,6 +247,10 @@ export function recoveryDecision(state, { now = Date.now(), externalReady = fals
   if (last.category === RECOVERY_CATEGORIES.NEEDS_USER_ACTION || last.reasonCode === 'RETRY_BUDGET_EXHAUSTED')
     return { status: RECOVERY_CATEGORIES.NEEDS_USER_ACTION, category: RECOVERY_CATEGORIES.NEEDS_USER_ACTION,
       reasonCode: last.reasonCode, nextAction: 'REQUEST_USER_ACTION', detail: last.detail,
+      retryCount: state.retryCount, nextRetryAt: null };
+  if (last.category === RECOVERY_CATEGORIES.AUTO_RECOVERABLE && !last.attemptId)
+    return { status: RECOVERY_CATEGORIES.NEEDS_USER_ACTION, category: RECOVERY_CATEGORIES.NEEDS_USER_ACTION,
+      reasonCode: 'RECOVERY_ATTEMPT_ID_REQUIRED', nextAction: 'REQUEST_USER_ACTION',
       retryCount: state.retryCount, nextRetryAt: null };
   if (last.category === RECOVERY_CATEGORIES.WAIT_EXTERNAL && externalReady === true)
     return { status: RECOVERY_CATEGORIES.AUTO_RECOVERABLE, category: RECOVERY_CATEGORIES.AUTO_RECOVERABLE,

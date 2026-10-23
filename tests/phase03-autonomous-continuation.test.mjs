@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRun, recordRecoveryEvent, resumeRun } from '../src/execution-engine.mjs';
+import { planContinuation } from '../src/continuation-controller.mjs';
 import { brokerCapabilities } from '../src/capability-broker.mjs';
 import {
   applyRecoveryEvent,
@@ -69,10 +70,23 @@ test('error classification separates transient, external, user and hard blockers
   assert.equal(classifyContinuationError({ reasonCode: 'SOURCE_HEAD_CHANGED', integrity: false }).nextAction, 'STOP_AND_REPAIR');
 });
 
+test('expired or missing authorization overrides transient errors and explicit auto recovery', () => {
+  for (const authorization of ['EXPIRED', 'MISSING', 'REVOKED', 'DENIED']) {
+    const result = classifyContinuationError({
+      reasonCode: 'TIMEOUT', category: 'AUTO_RECOVERABLE', authorization
+    });
+    assert.equal(result.category, RECOVERY_CATEGORIES.NEEDS_USER_ACTION);
+    assert.equal(result.retryAllowed, false);
+  }
+  assert.equal(classifyContinuationError({
+    reasonCode: 'SHA256_MISMATCH', authorization: 'EXPIRED'
+  }).category, RECOVERY_CATEGORIES.HARD_BLOCKED);
+});
+
 test('recovery state persists a technical retry, survives re-read and never consumes art budget', t => {
   const dir = project(t);
   const run = runFor(dir);
-  const event = { operationId: 'web-turn-1', reasonCode: 'TIMEOUT', retryAfterMs: 0, stage: 'EVIDENCE_COLLECTED' };
+  const event = { operationId: 'web-turn-1', attemptId: 'attempt-1', reasonCode: 'TIMEOUT', retryAfterMs: 0, stage: 'EVIDENCE_COLLECTED' };
   const first = recordRecoveryEvent(dir, run.runId, event, { nowMs: 1_000 });
   assert.equal(first.consumesArtAttempt, false);
   assert.equal(first.consumesRepairCycle, false);
@@ -86,15 +100,85 @@ test('recovery state persists a technical retry, survives re-read and never cons
 
 test('retry backoff is finite and exhaustion requires user action', () => {
   let state = createRecoveryState({ sourceHead: 'a'.repeat(40), retryPolicy: { maxAttempts: 2, baseDelayMs: 0 } });
-  const first = applyRecoveryEvent(state, { operationId: 'one', reasonCode: 'TIMEOUT', sourceHead: state.sourceHead }, { now: 1_000 });
+  const first = applyRecoveryEvent(state, { operationId: 'one', attemptId: 'attempt-1', reasonCode: 'TIMEOUT', sourceHead: state.sourceHead }, { now: 1_000 });
   state = first.state;
   assert.equal(recoveryDecision(state, { now: 1_000 }).category, RECOVERY_CATEGORIES.AUTO_RECOVERABLE);
-  const second = applyRecoveryEvent(state, { operationId: 'two', reasonCode: 'TIMEOUT', sourceHead: state.sourceHead }, { now: 2_000 });
+  const second = applyRecoveryEvent(state, { operationId: 'two', attemptId: 'attempt-2', reasonCode: 'TIMEOUT', sourceHead: state.sourceHead }, { now: 2_000 });
   state = second.state;
   assert.equal(recoveryDecision(state, { now: 2_000 }).category, RECOVERY_CATEGORIES.AUTO_RECOVERABLE);
-  const exhausted = applyRecoveryEvent(state, { operationId: 'three', reasonCode: 'TIMEOUT', sourceHead: state.sourceHead }, { now: 3_000 });
+  const exhausted = applyRecoveryEvent(state, { operationId: 'three', attemptId: 'attempt-3', reasonCode: 'TIMEOUT', sourceHead: state.sourceHead }, { now: 3_000 });
   assert.equal(exhausted.state.lastEvent.reasonCode, 'RETRY_BUDGET_EXHAUSTED');
   assert.equal(recoveryDecision(exhausted.state).category, RECOVERY_CATEGORIES.NEEDS_USER_ACTION);
+});
+
+test('identical failures of distinct attempts exhaust the budget and replay of one attempt is idempotent', () => {
+  let state = createRecoveryState({ sourceHead: 'a'.repeat(40), retryPolicy: { maxAttempts: 2, baseDelayMs: 0 } });
+  const error = { operationId: 'same-logical-operation', reasonCode: 'TIMEOUT', sourceHead: state.sourceHead };
+  state = applyRecoveryEvent(state, { ...error, attemptId: 'attempt-1' }, { now: 1_000 }).state;
+  assert.equal(state.retryCount, 1);
+  const replay = applyRecoveryEvent(state, { ...error, attemptId: 'attempt-1' }, { now: 2_000 });
+  assert.equal(replay.alreadyRecorded, true);
+  assert.equal(replay.state.retryCount, 1);
+  state = applyRecoveryEvent(state, { ...error, attemptId: 'attempt-2' }, { now: 3_000 }).state;
+  assert.equal(state.retryCount, 2);
+  state = applyRecoveryEvent(state, { ...error, attemptId: 'attempt-3' }, { now: 4_000 }).state;
+  assert.equal(recoveryDecision(state).reasonCode, 'RETRY_BUDGET_EXHAUSTED');
+});
+
+test('ambiguous legacy retry events cannot authorize automatic retries', () => {
+  const state = createRecoveryState({ sourceHead: 'a'.repeat(40) });
+  const missingAttempt = applyRecoveryEvent(state, {
+    operationId: 'one-operation', reasonCode: 'TIMEOUT', sourceHead: state.sourceHead
+  }, { now: 1_000 });
+  assert.equal(missingAttempt.ok, true);
+  assert.equal(missingAttempt.status, RECOVERY_CATEGORIES.NEEDS_USER_ACTION);
+  assert.equal(missingAttempt.reasonCode, 'RECOVERY_ATTEMPT_ID_REQUIRED');
+  assert.equal(state.retryCount, 0);
+  assert.equal(missingAttempt.state.lastEvent.reasonCode, 'RECOVERY_ATTEMPT_ID_REQUIRED');
+
+  const legacyState = structuredClone(state);
+  legacyState.retryCount = 1;
+  legacyState.lastEvent = { category: 'AUTO_RECOVERABLE', reasonCode: 'TIMEOUT' };
+  assert.equal(recoveryDecision(legacyState).category, RECOVERY_CATEGORIES.NEEDS_USER_ACTION);
+});
+
+test('missing attempt identity persists a user-action pause across continue and restart', t => {
+  const dir = project(t);
+  const run = runFor(dir);
+  const denied = recordRecoveryEvent(dir, run.runId, {
+    operationId: 'ambiguous-web-request', reasonCode: 'TIMEOUT'
+  });
+  assert.equal(denied.status, RECOVERY_CATEGORIES.NEEDS_USER_ACTION);
+  assert.equal(denied.executable, false);
+  assert.equal(resumeRun(dir, run.runId).run.recovery.lastEvent.reasonCode, 'RECOVERY_ATTEMPT_ID_REQUIRED');
+  const resumed = planContinuation(dir, { runRef: run.runId, mode: 'auto' });
+  assert.equal(resumed.executable, false);
+  assert.equal(resumed.status, RECOVERY_CATEGORIES.NEEDS_USER_ACTION);
+});
+
+test('one attempt cannot be recorded twice with conflicting evidence', () => {
+  const state = createRecoveryState({ sourceHead: 'a'.repeat(40) });
+  const first = applyRecoveryEvent(state, {
+    operationId: 'one-operation', attemptId: 'attempt-1', reasonCode: 'TIMEOUT'
+  }, { now: 1_000 });
+  const conflict = applyRecoveryEvent(first.state, {
+    operationId: 'one-operation', attemptId: 'attempt-1', reasonCode: 'RATE_LIMITED'
+  }, { now: 2_000 });
+  assert.equal(conflict.ok, false);
+  assert.equal(conflict.reasonCode, 'RECOVERY_ATTEMPT_ID_CONFLICT');
+});
+
+test('server Retry-After is a lower bound, even beyond local backoff cap', () => {
+  const state = createRecoveryState({ sourceHead: 'a'.repeat(40), retryPolicy: {
+    maxAttempts: 3, baseDelayMs: 1_000, maxDelayMs: 300_000
+  } });
+  const applied = applyRecoveryEvent(state, {
+    operationId: 'api-review', attemptId: 'attempt-1', reasonCode: 'RATE_LIMITED',
+    retryAfterMs: 1_800_000
+  }, { now: 1_000 });
+  assert.equal(Date.parse(applied.state.nextRetryAt), 1_801_000);
+  assert.equal(recoveryDecision(applied.state, { now: 301_000 }).category, RECOVERY_CATEGORIES.WAIT_EXTERNAL);
+  assert.equal(recoveryDecision(applied.state, { now: 1_801_000 }).category, RECOVERY_CATEGORIES.AUTO_RECOVERABLE);
 });
 
 test('restored external service resumes the saved operation without changing retry or art budgets', () => {
@@ -166,7 +250,7 @@ test('recovery-event CLI persists an observed event and returns a machine-readab
   const dir = project(t);
   const run = runFor(dir);
   const eventPath = path.join(dir, 'recovery-event.json');
-  fs.writeFileSync(eventPath, JSON.stringify({ operationId: 'cli-timeout', reasonCode: 'TIMEOUT', retryAfterMs: 0 }));
+  fs.writeFileSync(eventPath, JSON.stringify({ operationId: 'cli-timeout', attemptId: 'attempt-1', reasonCode: 'TIMEOUT', retryAfterMs: 0 }));
   const result = spawnSync(process.execPath, [CLI, 'recovery-event', run.runId,
     '--project', dir, '--event-file', 'recovery-event.json', '--json'], { encoding: 'utf8' });
   assert.equal(result.status, 2, result.stderr);
