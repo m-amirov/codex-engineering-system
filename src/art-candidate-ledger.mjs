@@ -25,6 +25,12 @@ function sourceFile(projectDir, relative, expectedHash = null) {
 export function inspectArtCandidateLedger(projectDir, ledgerPath) {
   if (!ledgerPath) return { status: 'NO_LEDGER', attempts: [], consumed: {} };
   try {
+    if (!safe(ledgerPath)) throw new Error('UNSAFE_ART_LEDGER_PATH');
+    const root = fs.realpathSync(projectDir);
+    const target = path.resolve(root, ledgerPath);
+    if (!target.startsWith(root + path.sep))
+      throw new Error('ART_LEDGER_PATH_OUTSIDE_PROJECT');
+    if (!fs.existsSync(target)) return { status:'NO_LEDGER', attempts:[], consumed:{} };
     const { value, sha256 } = sourceFile(projectDir, ledgerPath);
     if (value.schemaVersion !== 1 || value.kind !== 'ART_CANDIDATE_LEDGER_V1' || !Array.isArray(value.attempts))
       throw new Error('ART_LEDGER_SCHEMA_INVALID');
