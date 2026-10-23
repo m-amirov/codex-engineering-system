@@ -3,6 +3,45 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
+function resolvedPath(value) {
+  const input = String(value ?? '');
+  // Git for Windows may expose an MSYS drive path even though Node receives
+  // native Windows paths. Convert only the unambiguous /X/ form; other paths
+  // continue through Node's platform resolver unchanged.
+  const windowsDrive = process.platform === 'win32' && /^\/[A-Za-z](?:\/|$)/.test(input)
+    ? `${input[1].toUpperCase()}:${input.slice(2)}` : input;
+  return path.resolve(windowsDrive);
+}
+
+function realPath(value) {
+  try { return fs.realpathSync.native(resolvedPath(value)); }
+  catch { return null; }
+}
+
+/**
+ * Compare existing directories by filesystem identity first and canonical
+ * realpath second. Textual path normalization alone is not sufficient on
+ * Windows because Git and Node can disagree about separators, drive case,
+ * junctions, or 8.3 versus long names.
+ */
+export function sameWorktreePath(left, right) {
+  if (left == null || right == null) return false;
+  const leftPath = resolvedPath(left);
+  const rightPath = resolvedPath(right);
+  try {
+    const leftStat = fs.statSync(leftPath);
+    const rightStat = fs.statSync(rightPath);
+    if (leftStat.dev && rightStat.dev && leftStat.ino && rightStat.ino &&
+        leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino) return true;
+  } catch {}
+  const leftReal = realPath(leftPath);
+  const rightReal = realPath(rightPath);
+  if (!leftReal || !rightReal) return false;
+  return process.platform === 'win32'
+    ? leftReal.toLowerCase() === rightReal.toLowerCase()
+    : leftReal === rightReal;
+}
+
 function git(cwd, args) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true, timeout: 15_000 });
   if (result.error || result.status !== 0) throw new Error(`Git worktree inspection failed: ${(result.stderr || result.error?.message || result.stdout || '').trim()}`);
@@ -42,7 +81,7 @@ function hashPlan(item, mainHead) {
 
 /** Read-only inventory; neither worktree metadata nor local branches are pruned. */
 export function inspectWorktrees(projectDir, { includeLegacy = false } = {}) {
-  const current = fs.realpathSync(path.resolve(projectDir));
+  const current = fs.realpathSync.native(resolvedPath(projectDir));
   const primary = parseWorktreeList(git(current, ['worktree', 'list', '--porcelain']))[0];
   if (!primary?.path) throw new Error('No registered Git worktree');
   const mainRef = spawnSync('git', ['rev-parse', '--verify', 'refs/heads/main'], {
@@ -52,10 +91,10 @@ export function inspectWorktrees(projectDir, { includeLegacy = false } = {}) {
   const trees = parseWorktreeList(git(current, ['worktree', 'list', '--porcelain']));
   const worktrees = trees.map((tree, index) => {
     const reasons = [];
-    const absolute = path.resolve(tree.path);
+    const absolute = resolvedPath(tree.path);
     if (index === 0) reasons.push('PRIMARY_CHECKOUT');
     if (tree.branch === 'main' || tree.branch === 'master') reasons.push('PROTECTED_BRANCH');
-    if (absolute === current) reasons.push('ACTIVE_CHECKOUT');
+    if (sameWorktreePath(absolute, current)) reasons.push('ACTIVE_CHECKOUT');
     if (!tree.branch?.startsWith('ceos/task/') && !includeLegacy) reasons.push('UNMANAGED_BRANCH');
     if (!mainHead) reasons.push('MAIN_REF_MISSING');
     if (tree.locked || tree.prunable) reasons.push('GIT_WORKTREE_LOCKED_OR_MISSING');
@@ -77,7 +116,7 @@ export function inspectWorktrees(projectDir, { includeLegacy = false } = {}) {
     const row = { ...tree, path: absolute, reasonCodes: [...new Set(reasons)], eligible: reasons.length === 0 };
     return { ...row, planToken: hashPlan(row, mainHead) };
   });
-  return { schemaVersion: 1, status: 'INSPECTED', checkout: current, primary: path.resolve(primary.path),
+  return { schemaVersion: 1, status: 'INSPECTED', checkout: current, primary: resolvedPath(primary.path),
     mainHead, includeLegacy: Boolean(includeLegacy), worktrees, eligible: worktrees.filter(item => item.eligible).length };
 }
 
@@ -86,7 +125,7 @@ export function cleanupWorktree(projectDir, { targetPath, expectedHead, planToke
   if (!targetPath || !expectedHead || !planToken || !path.isAbsolute(targetPath)) {
     throw new Error('Exact absolute target path, expected HEAD and inspection confirmation token are required');
   }
-  const source = fs.realpathSync(path.resolve(projectDir));
+  const source = fs.realpathSync.native(resolvedPath(projectDir));
   const common = git(source, ['rev-parse', '--path-format=absolute', '--git-common-dir']).trim();
   const lockPath = path.join(common, 'ceos-worktree-cleanup.lock');
   let lock;
@@ -94,7 +133,7 @@ export function cleanupWorktree(projectDir, { targetPath, expectedHead, planToke
   catch { throw new Error('Concurrent worktree cleanup lock is already held'); }
   try {
     const inventory = inspectWorktrees(source, { includeLegacy: allowLegacy });
-    const target = inventory.worktrees.find(item => item.path === path.resolve(targetPath));
+    const target = inventory.worktrees.find(item => sameWorktreePath(item.path, targetPath));
     if (!target || !target.eligible) throw new Error('Worktree is protected or not eligible for cleanup');
     if (target.head !== expectedHead || target.planToken !== planToken) throw new Error('Worktree confirmation mismatch; refresh inspection');
     git(source, ['worktree', 'remove', '--', target.path]);

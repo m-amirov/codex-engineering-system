@@ -34,6 +34,15 @@ If a worktree is blocked, stop and inspect its work before making any separate
 manual decision. A branch may be stale on GitHub but still contain unique work
 on the PC. CEOS does not infer safety from age or PR status alone.
 
+Worktree identity is filesystem-based rather than a raw string comparison.
+Git for Windows may report forward-slash paths, a different drive-letter case,
+or a long/short path spelling while Node receives a native path. CEOS compares
+existing directories by filesystem identity and `realpathSync.native`; this
+also rejects merely similar directory names. Cleanup still requires the
+registered inventory entry, exact HEAD, and the current `planToken`, so path
+canonicalization only prevents false negatives and does not authorize a new
+cleanup target.
+
 ## Optional exact-target cleanup (destructive; only after checking)
 
 After refreshing the local `main` and confirming that a task worktree is

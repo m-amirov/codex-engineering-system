@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { inspectWorktrees, cleanupWorktree } from '../src/worktree-hygiene.mjs';
+import { inspectWorktrees, cleanupWorktree, sameWorktreePath } from '../src/worktree-hygiene.mjs';
 
 function git(dir, ...args) {
   const r = spawnSync('git', args, { cwd: dir, encoding: 'utf8', windowsHide: true });
@@ -25,13 +25,24 @@ function repo() {
   git(main, 'worktree', 'add', '-b', 'ceos/task/example', feature, 'HEAD');
   return { parent, main, feature, head: git(main, 'rev-parse', 'HEAD') };
 }
-function candidate(x) { return inspectWorktrees(x.main).worktrees.find(w => w.path === x.feature); }
+function candidate(x) { return inspectWorktrees(x.main).worktrees.find(w => sameWorktreePath(w.path, x.feature)); }
+
+test('worktree identity accepts Git/Node path forms but rejects a different directory', () => {
+  const x = repo();
+  const slashPath = x.feature.replaceAll('\\', '/');
+  assert.equal(sameWorktreePath(slashPath, x.feature), true);
+  assert.equal(sameWorktreePath(path.resolve(slashPath), x.feature), true);
+  const similar = path.join(x.parent, 'codex task with spaces-copy');
+  fs.mkdirSync(similar);
+  assert.equal(sameWorktreePath(similar, x.feature), false);
+  if (process.platform === 'win32') assert.equal(sameWorktreePath(x.feature.toUpperCase(), x.feature), true);
+});
 
 test('the main checkout is protected and a clean merged temporary task is identified without mutation', () => {
   const x = repo();
   const inspection = inspectWorktrees(x.main);
   assert.equal(inspection.worktrees.length, 2);
-  assert.equal(inspection.worktrees.find(w => w.path === x.main).eligible, false);
+  assert.equal(inspection.worktrees.find(w => sameWorktreePath(w.path, x.main)).eligible, false);
   assert.equal(candidate(x).eligible, true);
   assert.equal(fs.existsSync(x.feature), true);
 });
@@ -98,7 +109,7 @@ test('CLI inventory is read-only and explicit cleanup requires --apply', () => {
   });
   assert.equal(inspect.status, 0, inspect.stderr);
   const view = JSON.parse(inspect.stdout);
-  assert.equal(view.worktrees.find(item => item.path === x.feature).eligible, true);
+  assert.equal(view.worktrees.find(item => sameWorktreePath(item.path, x.feature)).eligible, true);
   const cleanup = spawnSync(process.execPath, [cli, 'worktrees', 'cleanup', '--project', x.main,
     '--target', x.feature, '--expect-head', x.head, '--plan-token', candidate(x).planToken, '--json'], {
     encoding: 'utf8', windowsHide: true
