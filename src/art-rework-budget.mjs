@@ -1,4 +1,5 @@
 import { NARRATIVE_ART_ACCEPTANCE_V2, assessNarrativeArtFindings } from './narrative-art-acceptance.mjs';
+import { authorizeArtCandidate } from './art-candidate-ledger.mjs';
 
 const MATERIAL = new Set(['P0', 'P1', 'P2']);
 const SEVERITIES = new Set([...MATERIAL, 'P3']);
@@ -55,8 +56,20 @@ export function authorizeArtRework(request) {
     return denied('BLOCKED_ALREADY_ACCEPTED', 'Previously accepted scope requires a new independent finding before another repair.', stats);
   if (strategies.size >= 3)
     return denied('ESCALATE_ART_REWORK', 'Three failed approaches require escalation, not a fourth automatic attempt.', stats);
-  if (request.proposedMethod === 'generation' && generations.length >= 2)
-    return denied('ESCALATE_ART_GENERATION', 'Two generation candidates exhausted; automatic third candidate prohibited.', stats);
+  if (request.proposedMethod === 'generation' && generations.length >= 2) {
+    if (!request.projectDir || !request.sceneId || !request.sourceHead ||
+        !request.ownerExceptionPath || !request.candidateLedgerPath)
+      return denied('ESCALATE_ART_GENERATION', 'Two generation candidates exhausted; automatic third candidate prohibited.', stats);
+    const auth = authorizeArtCandidate(request.projectDir, {
+      sceneId: request.sceneId, variant: request.variant ?? 'pair',
+      candidateNumber: generations.length + 1, sourceHead: request.sourceHead,
+      ownerExceptionPath: request.ownerExceptionPath,
+      ownerExceptionSha256: request.ownerExceptionSha256,
+      ownerApprovalObserved: request.ownerApprovalObserved === true,
+      ledgerPath: request.candidateLedgerPath
+    });
+    if (!auth.authorized) return denied('ESCALATE_ART_GENERATION', 'Owner exception not verified: ' + auth.status, stats);
+  }
   if (!text(request.proposedStrategyKey) || strategies.has(request.proposedMethod + ':' + request.proposedStrategyKey))
     return denied('BLOCKED_REPEAT_STRATEGY', 'Do not repeat the same failed strategy automatically.', stats);
 

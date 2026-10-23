@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { decodeProductionPng } from './art-output-gate.mjs';
+import { resolveEpisodeIdentity, expectedEpisodePath } from './narrative-source-resolver.mjs';
 import { inspectArtProgress } from './art-progress.mjs';
 import { validateWebReview } from './web-delegation.mjs';
 import { extractStructuredResponse } from './dev-web-high-transport.mjs';
@@ -119,7 +120,7 @@ function canonicalVariant(record, format) {
 
 function readAuthoritativeInventory(project, manifest, sourceDependencies, problems) {
   const inventory = manifest.authoritativeInventory;
-  const expectedPaths = { episode: 'narrative/episodes/ep-02.json', graph: 'narrative/graph.json', assets: 'narrative/assets.json' };
+  const expectedPaths = { episode: expectedEpisodePath(manifest.episodeId), graph: 'narrative/graph.json', assets: 'narrative/assets.json' };
   const documents = {};
   if (!inventory || typeof inventory !== 'object') {
     problems.push('AUTHORITATIVE_INVENTORY_REQUIRED');
@@ -135,8 +136,8 @@ function readAuthoritativeInventory(project, manifest, sourceDependencies, probl
     documents[key] = readPinned(project, ref, problems, 'AUTHORITATIVE_' + key.toUpperCase());
   }
   if (!documents.episode || !documents.graph || !documents.assets) return null;
-  if (documents.episode.episode !== 2 && documents.episode.episodeId !== 'EP2')
-    problems.push('AUTHORITATIVE_EPISODE_MISMATCH');
+  const episodeIdentity = resolveEpisodeIdentity(manifest.episodeId, documents.episode, documents.graph);
+  if (!episodeIdentity.ok) problems.push(episodeIdentity.code);
   const episodeScenes = Array.isArray(documents.episode.scenes) ? documents.episode.scenes : [];
   const graphScenes = Array.isArray(documents.graph.scenes) ? documents.graph.scenes : [];
   if (!ownArray(episodeScenes) || !ownArray(graphScenes)) {
@@ -530,9 +531,12 @@ function verifyReconciliation(project, manifest, inventory, problems) {
   const reconciliation = readPinned(project, manifest.reconciliation, problems, 'RECONCILIATION');
   const byScene = new Map();
   if (!reconciliation) return byScene;
-  const allowed = ['PASS','PASS_EP2_ART_RECONCILIATION','PASS_ART_PROGRESS_REVALIDATED',
+  const allowed = ['PASS','PASS_ART_PROGRESS_REVALIDATED',
     'SCENE_LEVEL_ACCEPTANCE_COMPLETE_EPISODE_WIDE_NOT_VERIFIED'];
-  if (!allowed.includes(reconciliation.status) || reconciliation.sourceHead !== manifest.sourceHead)
+  const episodeReconciliation = typeof reconciliation.status === 'string' &&
+    /^PASS_EP\d+_ART_RECONCILIATION$/i.test(reconciliation.status);
+  if ((!allowed.includes(reconciliation.status) && !episodeReconciliation) ||
+      reconciliation.sourceHead !== manifest.sourceHead)
     problems.push('RECONCILIATION_NOT_PASSED');
   if (!Array.isArray(reconciliation.acceptedScenes) ||
       reconciliation.acceptedScenes.length !== inventory.scenes.length)

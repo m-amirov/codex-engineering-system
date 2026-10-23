@@ -11,6 +11,7 @@ import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, 
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
+import { inspectArtCandidateLedger, recordArtCandidateAttempt } from '../src/art-candidate-ledger.mjs';
 import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
 import { importArtOutput } from '../src/art-output-transport.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
@@ -22,7 +23,7 @@ import { planProjectContinuation } from '../src/project-continuation.mjs';
 import { inspectDirectWorkflow } from '../src/direct-workflow.mjs';
 import { diagnoseRuntimeContext } from '../src/runtime-context.mjs';
 import { inspectRunRelocation, relocateRun } from '../src/run-relocation.mjs';
-import { DEFAULT_DEV_WEB_HIGH_INTERVAL_MS, DevWebHighTransport, discoverDevWebCapabilities, loadDevWebProfile, writeDevWebReceipt } from '../src/dev-web-high-transport.mjs';
+import { DEFAULT_DEV_WEB_HIGH_INTERVAL_MS, DevWebHighTransport, writeDevWebReceipt } from '../src/dev-web-high-transport.mjs';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -151,7 +152,6 @@ Usage:
   ceos web-plan --kind engineering|visual-qa|narrative|release|audit-repair-loop|production-art [--complexity low|medium|high|critical] [--items N] [--visual] [--assurance strict|visual-content] [--json]
   ceos web-review-verify --kind <kind> --phase analysis|midpoint|acceptance --record-file <json> [--head <sha>] [--visual] [--assurance strict|visual-content] [--json]
   ceos dev-web-review --request-file <json> --receipt <project-relative-new.json> [--raw-response <project-relative-new.txt>] [--project dir] [--dev-home dir] [--stable-home dir] [--head <sha>] [--min-attachment-interval-ms N] [--json]
-  ceos dev-web-capabilities [--dev-home dir] [--stable-home dir] [--json]  (read-only; declarations are not entitlement proof)
   ceos capabilities [--project dir] [--run run-id|latest] [--image-generation available|unavailable|unknown] [--json]
   ceos capability-challenge [run-id|latest] [--codex-home dir] [--json]
   ceos capability-recover [run-id|latest] [--apply] [--json]  # safe hash-exact legacy recovery\n  ceos capability-attest [run-id|latest] --challenge-id <id> --nonce <nonce> --presence PRESENT|ABSENT [--service-availability UNKNOWN|AVAILABLE|UNAVAILABLE|RATE_LIMITED|USAGE_LIMIT_REACHED] [--service-evidence text] [--observed-tool image_gen.imagegen] [--json]
@@ -392,9 +392,36 @@ try {
     case 'art-brief-verify': {
       if (!args.file || args.file === true) throw new Error('--file <art-brief.json> is required');
       const brief = JSON.parse(fs.readFileSync(path.resolve(project, String(args.file)), 'utf8'));
-      const result = validateArtProducerBrief(project, brief, {briefPath:String(args.file)});
+      const result = validateArtProducerBrief(project, brief, {
+        briefPath:String(args.file),
+        ownerExceptionPath:args['owner-exception'] ?? null,
+        ownerExceptionSha256:args['owner-exception-sha256'] ?? null,
+        ownerApprovalObserved:args['owner-approval-observed'] === true,
+        candidateLedgerPath:args['candidate-ledger'] ?? null
+      });
       print(result, true);
       process.exitCode = result.status === 'READY_TO_GENERATE' ? 0 : 2;
+      break;
+    }
+    case 'art-candidate-ledger': {
+      if (typeof args.file !== 'string') throw new Error('--file <ledger.json> required');
+      const result = inspectArtCandidateLedger(project, args.file);
+      print(result,true);
+      process.exitCode = result.status === 'PASS_CANDIDATE_LEDGER' ? 0 : 2;
+      break;
+    }
+    case 'art-candidate-record': {
+      if (typeof args.file !== 'string' || typeof args['attempt-file'] !== 'string')
+        throw new Error('--file <ledger.json> and --attempt-file <real-attempt.json> required');
+      const attempt = JSON.parse(fs.readFileSync(path.resolve(project, String(args['attempt-file'])), 'utf8'));
+      const result = recordArtCandidateAttempt(project, {
+        ledgerPath:args.file, attempt, expectedLedgerSha256:args['expected-ledger-sha256'] ?? null,
+        ownerExceptionPath:args['owner-exception'] ?? null,
+        ownerExceptionSha256:args['owner-exception-sha256'] ?? null,
+        ownerApprovalObserved:args['owner-approval-observed'] === true
+      });
+      print(result,true);
+      process.exitCode = result.recorded ? 0 : 2;
       break;
     }
     case 'art-output-import': {
@@ -523,14 +550,6 @@ try {
       } finally {
         await transport.close();
       }
-      break;
-    }
-    case 'dev-web-capabilities': {
-      const profile = loadDevWebProfile({
-        devHome: args['dev-home'] || undefined,
-        stableHome: args['stable-home'] || undefined
-      });
-      print(discoverDevWebCapabilities(profile), Boolean(args.json));
       break;
     }
     case 'run': {

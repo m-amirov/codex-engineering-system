@@ -24,7 +24,7 @@ export function summarizeArtReviewQueue(ledger, receipts, { limit = 6 } = {}) {
   const items = new Map();
   for (const item of ledger.items) {
     if (typeof item?.id !== 'string' || !item.id || seen.has(item.id) ||
-        typeof item.sceneId !== 'string' || !/^S\d{2,3}$/.test(item.sceneId) ||
+        typeof item.sceneId !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,120}$/.test(item.sceneId) ||
         typeof item.cue !== 'string' || !item.cue ||
         typeof item.viewport !== 'string' || !item.viewport ||
         !hash(item.screenshotSha256) || !hash(item.productionAssetSha256))

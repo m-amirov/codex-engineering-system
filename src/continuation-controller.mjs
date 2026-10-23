@@ -7,6 +7,7 @@ import { readRuntimeContext } from './capability-attestation.mjs';
 import { discoverArtProgress, inspectArtProgress } from './art-progress.mjs';
 import { inspectRunRelocation } from './run-relocation.mjs';
 import { inspectCheckpointedArtDirt } from './checkpointed-art-dirt.mjs';
+import { classifyTemporaryBlocker } from './temporary-blocker-recovery.mjs';
 
 const MODES = new Set(['inspect', 'guided', 'auto']);
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -143,6 +144,11 @@ function taskFor(run) {
     return {kind:'STOP_TERMINAL', risk:'R0', instruction:'Do not reopen failed/escalated runs automatically.'};
   if (run.verdict === 'BLOCKED') {
     const recovery = inspectBlockedRunRecovery(run);
+    const transient = classifyTemporaryBlocker(run.stopReason?.code);
+    if (transient.canContinueIndependentWork) return {
+      kind:'PAUSE_EXTERNAL_DEPENDENCY', risk:'R0',
+      instruction:'Preserve this blocked run and its receipts. Continue separately authorized work independent of the failed external capability; resume review only with fresh evidence.'
+    };
     return recovery.reopenSupported
       ? {kind:'VERIFY_RECOVERY_PREREQUISITES', risk:'R0',
         instruction:'Verify fresh external recovery evidence. The adapter may request explicit reopen with reason/evidence through the existing engine; do not auto-reopen.'}
@@ -282,6 +288,7 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
     : action.kind === 'STOP_TERMINAL' ? 'STOP_TERMINAL'
     : action.kind === 'BLOCKED_UNKNOWN_STAGE' ? 'BLOCKED_UNKNOWN_STAGE'
     : action.kind === 'PREPARE_LINKED_RECOVERY_PLAN' ? 'NEEDS_RECOVERY_DECISION'
+    : action.kind === 'PAUSE_EXTERNAL_DEPENDENCY' ? 'PAUSED_EXTERNAL'
     : action.kind === 'VERIFY_RECOVERY_PREREQUISITES' ? 'RECOVERY_CHECK_REQUIRED'
     : (git.status !== 'READY' ? 'BLOCKED_GIT_PREFLIGHT'
       : (git.dirty && git.checkpointedEvidenceOnly!==true
