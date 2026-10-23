@@ -201,7 +201,7 @@ export function validateArtProducerBrief(projectDir, brief, {briefPath=null, own
     if (prior?.candidateNumber !== brief.candidateNumber - 1 || !hasText(prior?.revision) ||
         !Array.isArray(prior?.findings) || prior.findings.length === 0 ||
         prior.findings.some(x => !hasText(x)))
-      issues.push('subsequent candidate needs concrete pixel-backed findings and a revised brief');
+      issues.push((brief.candidateNumber === 2 ? 'second' : 'subsequent') + ' candidate needs concrete pixel-backed findings and a revised brief');
     verifiedFile(projectDir, prior?.evidencePath, prior?.sha256, issues, 'priorRejection');
   } else if (brief.candidateNumber === 1 && brief.priorRejection != null) {
     issues.push('first candidate cannot claim a previous failed generation');

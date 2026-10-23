@@ -45,8 +45,12 @@ export function resolveEpisodeIdentity(episodeId, episodeDocument, graph) {
     return { ok: false, code: 'AUTHORITATIVE_SCENES_INVALID' };
   const actual = episodeDocument.scenes;
   const expected = graph.scenes.filter(scene => scene.episode === number);
-  if (!expected.length || actual.length !== expected.length ||
-      actual.some(scene => !expected.some(record => record.id === scene?.id)))
+  // Historical S-numbered graphs have no episode metadata. Validate their
+  // authored IDs without imposing episode numbers retroactively.
+  const legacy = !expected.length && actual.every(scene => LEGACY.test(scene?.id ?? '')) &&
+    actual.every(scene => graph.scenes.some(record => record.id === scene.id && record.episode == null));
+  if ((!expected.length && !legacy) || (!legacy && actual.length !== expected.length) ||
+      actual.some(scene => !(legacy ? graph.scenes : expected).some(record => record.id === scene?.id)))
     return { ok: false, code: 'AUTHORITATIVE_EPISODE_SCENE_SET_MISMATCH' };
   return { ok: true, code: 'EPISODE_RESOLVED', episodeId: 'EP' + number, number };
 }
