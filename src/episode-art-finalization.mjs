@@ -459,7 +459,8 @@ function verifyReview(project, descriptor, sourceHead, reconciliationByScene, pr
     const extraction = extractStructuredResponse(raw.toString('utf8'));
     if (extraction.error || !extraction.parsed ||
         ['status','sourceHead','reviewedItems','evidenceRefs','receivedEvidenceRefs',
-         'actualPixelsReceived','decision','findings','unresolved','visualEvidence'].some(
+         'actualPixelsReceived','decision','findings','unresolved','visualEvidence',
+         ...(v3 ? ['requiredCast','wardrobeAssessments'] : [])].some(
           key => JSON.stringify(extraction.parsed[key]) !== JSON.stringify(review[key]))) {
       problems.push(label + '_RAW_RECEIPT_MISMATCH');
       return [];

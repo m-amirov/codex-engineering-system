@@ -92,7 +92,8 @@ function visualContentRunContext(project, receiptPath, review) {
   const trackedFields = [
     'phase', 'agent', 'taskId', 'reviewTraceId', 'sourceHead', 'status',
     'artAcceptanceProfile', 'reviewedItems', 'evidenceRefs', 'receivedEvidenceRefs',
-    'actualPixelsReceived', 'decision', 'findings', 'unresolved', 'resolvedFindings', 'visualEvidence'
+    'actualPixelsReceived', 'decision', 'findings', 'unresolved', 'resolvedFindings', 'visualEvidence',
+    'requiredCast','wardrobeAssessments'
   ];
   for (const key of trackedFields) {
     if (Object.hasOwn(review, key) && stable(review[key]) !== stable(linked[0][key]))
