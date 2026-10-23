@@ -5,12 +5,15 @@ import { spawnSync } from 'node:child_process';
 import { CEOS_ROOT, VERSION, SUPPORTED_PROFILES, SKILL_NAMES, resolveProject, loadManifest, doctor, gitState, resolveGates, runVerification, validateEvidence, createManifest, detectManifestForProject, latestEvidenceDir, readFailures, renderContext, installSkills, installGlobal, globalStatus, routingTable } from '../src/ceos.mjs';
 import { webPreflight } from '../src/web-preflight.mjs';
 import { gitPreflight } from '../src/git-preflight.mjs';
+import { inspectWorktrees, cleanupWorktree } from '../src/worktree-hygiene.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { webReviewPlan, validateWebReview } from '../src/web-delegation.mjs';
-import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES, preflightNativeProducerRoute, recoverLegacyCapabilityAttestation } from '../src/execution-engine.mjs';
+import { createRun, recordCheckpoint, refreshRunCapabilities, recordRecoveryEvent, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES, preflightNativeProducerRoute, recoverLegacyCapabilityAttestation } from '../src/execution-engine.mjs';
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
+import { planChangedSceneReviews } from '../src/art-change-impact.mjs';
+import { inspectArtCandidateLedger, recordArtCandidateAttempt } from '../src/art-candidate-ledger.mjs';
 import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
 import { importArtOutput } from '../src/art-output-transport.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
@@ -131,9 +134,11 @@ Usage:
   ceos adopt --project dir [--profile profile] [--dry-run] [--force] [--json]
   ceos status [--project dir] [--json]
   ceos git-preflight [--project dir] [--remote origin] [--branch main] [--expect-repo owner/repo] [--fetch] [--apply] [--json]
+  ceos worktrees inspect [--project dir] [--include-legacy] [--json]  # all registered local checkouts, never changes files
+  ceos worktrees cleanup --project dir --target <absolute-path> --expect-head SHA --plan-token TOKEN --apply [--include-legacy] [--json]
   ceos doctor [--project dir] [--json]
   ceos gates [--mode verification|release] [--project dir] [--json]
-  ceos verify [--mode verification|release] [--project dir] [--evidence dir] [--baseline-ref ref] [--dry-run] [--json]
+  ceos verify [--mode verification|release] [--project dir] [--evidence dir] [--baseline-ref ref] [--gate-timeout-ms N] [--replay-from prior-evidence-dir] [--dry-run] [--json]
   ceos evidence [--path dir | --project dir] [--json]
   ceos failures [--path dir | --project dir] [--tail lines] [--json]
   ceos profile [--project dir]
@@ -160,6 +165,7 @@ Usage:
   ceos direct [--project dir] [--json] (read-only optional development context; no runs/checkpoints)
   ceos continue --scope project [--plan <project-relative-completion-plan.md>] [--goal <short goal>] [--mode inspect|guided|auto] [--json]  (read-only project handoff)
   ceos continue [run-id|latest] [--project dir] [--progress-index path] [--mode inspect|guided|auto] [--dry-run] [--claim --action-id HASH | --release TOKEN] [--json] (guided default; inspect/dry-run read-only)
+  ceos recovery-event [run-id|latest] --event-file <project-relative.json> [--project dir] [--json] (persist one host-observed technical failure; never invokes a tool)
   ceos run-relocate [run-id|latest] --project <new-worktree> [--apply --expect-sha <original-run-sha256>] [--json] (read-only preview by default)
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
   ceos resume RUN_ID --reopen-blocked --reason "Scoped integration coverage fixed" --dual-format-batch-manifest <project-relative.json> --json
@@ -234,6 +240,20 @@ try {
       process.exitCode = ['IN_SYNC', 'IN_SYNC_DIRTY', 'FAST_FORWARDED'].includes(r.status) ? 0 : 2;
       break;
     }
+    case 'worktrees': {
+      const action = args._[1] ?? 'inspect';
+      if (action === 'inspect') print(inspectWorktrees(project, { includeLegacy: Boolean(args['include-legacy']) }), Boolean(args.json));
+      else if (action === 'cleanup') {
+        if (!args.apply) throw new Error('Worktree cleanup requires explicit --apply and a fresh inventory confirmation');
+        const result = cleanupWorktree(project, {
+          targetPath: args.target, expectedHead: args['expect-head'], planToken: args['plan-token'],
+          allowLegacy: Boolean(args['include-legacy'])
+        });
+        print(result, Boolean(args.json));
+        if (result.status !== 'REMOVED') process.exitCode = 2;
+      } else throw new Error('Unknown worktrees command; use inspect or cleanup');
+      break;
+    }
     case 'status': {
       const loaded = loadManifest(project); const git = gitState(project);
       const data = { ceosVersion: VERSION, project, manifest: loaded.file, profile: loaded.data.profile, productionAccess: loaded.data.production?.access ?? 'read-only', git };
@@ -256,7 +276,10 @@ try {
       break;
     }
     case 'verify': {
-      const result = runVerification(project, { mode: args.mode || 'verification', evidenceDir: args.evidence, dryRun: Boolean(args['dry-run']), baselineRef: args['baseline-ref'] === true ? null : (args['baseline-ref'] || null) });
+      const result = await runVerification(project, { mode: args.mode || 'verification', evidenceDir: args.evidence,
+        dryRun: Boolean(args['dry-run']), baselineRef: args['baseline-ref'] === true ? null : (args['baseline-ref'] || null),
+        gateTimeoutMs: args['gate-timeout-ms'] === undefined ? 300_000 : Number(args['gate-timeout-ms']),
+        replayFrom: args['replay-from'] || null });
       if (args.json) print({ outputDir: result.outputDir, summary: result.summary }, true); else {
         result.records.forEach(r => console.log(`${r.status.padEnd(19)} ${r.id} [${r.risk}]${r.exitCode === null ? '' : ` exit=${r.exitCode}`}${r.failureType ? ` ${r.failureType}` : ''}${r.reason && r.status === 'CONFIGURATION_ERROR' ? ` — ${r.reason}` : ''}`));
         console.log(`\nEvidence: ${result.outputDir}\nVERDICT: ${result.summary.verdict}`);
@@ -391,9 +414,36 @@ try {
     case 'art-brief-verify': {
       if (!args.file || args.file === true) throw new Error('--file <art-brief.json> is required');
       const brief = JSON.parse(fs.readFileSync(path.resolve(project, String(args.file)), 'utf8'));
-      const result = validateArtProducerBrief(project, brief, {briefPath:String(args.file)});
+      const result = validateArtProducerBrief(project, brief, {
+        briefPath:String(args.file),
+        ownerExceptionPath:args['owner-exception'] ?? null,
+        ownerExceptionSha256:args['owner-exception-sha256'] ?? null,
+        ownerApprovalObserved:args['owner-approval-observed'] === true,
+        candidateLedgerPath:args['candidate-ledger'] ?? null
+      });
       print(result, true);
       process.exitCode = result.status === 'READY_TO_GENERATE' ? 0 : 2;
+      break;
+    }
+    case 'art-candidate-ledger': {
+      if (typeof args.file !== 'string') throw new Error('--file <ledger.json> required');
+      const result = inspectArtCandidateLedger(project, args.file);
+      print(result,true);
+      process.exitCode = result.status === 'PASS_CANDIDATE_LEDGER' ? 0 : 2;
+      break;
+    }
+    case 'art-candidate-record': {
+      if (typeof args.file !== 'string' || typeof args['attempt-file'] !== 'string')
+        throw new Error('--file <ledger.json> and --attempt-file <real-attempt.json> required');
+      const attempt = JSON.parse(fs.readFileSync(path.resolve(project, String(args['attempt-file'])), 'utf8'));
+      const result = recordArtCandidateAttempt(project, {
+        ledgerPath:args.file, attempt, expectedLedgerSha256:args['expected-ledger-sha256'] ?? null,
+        ownerExceptionPath:args['owner-exception'] ?? null,
+        ownerExceptionSha256:args['owner-exception-sha256'] ?? null,
+        ownerApprovalObserved:args['owner-approval-observed'] === true
+      });
+      print(result,true);
+      process.exitCode = result.recorded ? 0 : 2;
       break;
     }
     case 'art-output-import': {
@@ -477,6 +527,14 @@ try {
       print(plan, true);
       break;
     }
+    case 'art-impact-plan': {
+      if (typeof args.file !== 'string') throw new Error('--file <impact-scope.json> required');
+      const data=JSON.parse(fs.readFileSync(path.resolve(project,args.file),'utf8'));
+      const result=planChangedSceneReviews(project,data);
+      print(result,true);
+      process.exitCode=result.status==='PASS_IMPACT_PLAN'?0:2;
+      break;
+    }
     case 'web-review-verify': {
       if (!args['record-file'] || !args.phase) throw new Error('--record-file and --phase are required');
       const record = JSON.parse(fs.readFileSync(path.resolve(project, String(args['record-file'])), 'utf8'));
@@ -485,7 +543,8 @@ try {
         phase: String(args.phase),
         currentHead: args.head || null,
         visual: Boolean(args.visual),
-        assurance: args.assurance || 'strict'
+        assurance: args.assurance || 'strict',
+        artAcceptanceProfile: args['art-profile'] || null
       });
       const result = { status: issues.length ? 'WEB_REVIEW_NOT_VERIFIED' : 'PASS', issues };
       print(result, true);
@@ -630,6 +689,22 @@ try {
         if (!result.executable) console.log('No host work authorized by this response.');
       }
       process.exitCode = ['READY_FOR_CODEX','READY_FOR_PROJECT_PLANNING','DONE','RELEASED'].includes(result.status) ? 0 : 2;
+      break;
+    }
+    case 'recovery-event': {
+      const runRef = args._[1] || 'latest';
+      if (!args['event-file']) throw new Error('--event-file is required');
+      const eventFile = path.resolve(project, String(args['event-file']));
+      if (!eventFile.startsWith(path.resolve(project) + path.sep)) throw new Error('--event-file must stay inside the project');
+      const event = JSON.parse(fs.readFileSync(eventFile, 'utf8'));
+      const result = recordRecoveryEvent(project, runRef, event);
+      if (args.json) print(result, true); else {
+        console.log('RECOVERY: ' + result.status);
+        if (result.reasonCode) console.log('Reason: ' + result.reasonCode);
+        if (result.nextAction) console.log('Next: ' + result.nextAction);
+        if (result.alreadyRecorded) console.log('Event: already recorded');
+      }
+      process.exitCode = ['AUTO_RECOVERABLE', 'READY'].includes(result.status) ? 0 : 2;
       break;
     }
     case 'run-status': {

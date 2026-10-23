@@ -1,0 +1,185 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { resolveAuthoredSceneId, resolveEpisodeIdentity, expectedEpisodePath } from '../src/narrative-source-resolver.mjs';
+import { authorizeArtCandidate, inspectArtCandidateLedger, recordArtCandidateAttempt } from '../src/art-candidate-ledger.mjs';
+import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
+import { classifyTemporaryBlocker, planWorkAroundTemporaryBlocker } from '../src/temporary-blocker-recovery.mjs';
+
+const digest = value => crypto.createHash('sha256').update(value).digest('hex');
+function project(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ceos-phase01-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  return root;
+}
+function put(root, rel, obj) {
+  const file = path.join(root, rel);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const bytes = Buffer.from(JSON.stringify(obj));
+  fs.writeFileSync(file, bytes);
+  return digest(bytes);
+}
+function putPng(root, rel, width = 2, height = 2) {
+  const bytes = Buffer.alloc(24);
+  Buffer.from('89504e470d0a1a0a', 'hex').copy(bytes, 0);
+  bytes.write('IHDR', 12, 'ascii');
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  const file = path.join(root, rel);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, bytes);
+  return digest(bytes);
+}
+test('canonical EP3 scene is accepted from actual graph, aliases and invented IDs refused', t => {
+  const root = project(t);
+  put(root, 'narrative/graph.json', { scenes: [
+    { id: 'ep3_old_photo', episode: 3, assetId: 'photo' },
+    { id: 'ep3_document_check_response', episode: 3, assetId: 'document' }
+  ]});
+  assert.equal(resolveAuthoredSceneId(root, 'ep3_old_photo').code, 'AUTHORED_SCENE');
+  assert.equal(resolveAuthoredSceneId(root, 'ep3_unwritten').code, 'SCENE_NOT_IN_NARRATIVE_GRAPH');
+  assert.equal(resolveAuthoredSceneId(root, '../ep3_old_photo').ok, false);
+  assert.equal(resolveAuthoredSceneId(root, 'ep3_old_photo_alias').ok, false);
+  assert.equal(expectedEpisodePath('EP3'), 'narrative/episodes/ep-03.json');
+  assert.equal(resolveEpisodeIdentity('EP3',
+    { episode: 3, scenes: [{id:'ep3_old_photo'}, {id:'ep3_document_check_response'}] },
+    { scenes: [{id:'ep3_old_photo',episode:3},{id:'ep3_document_check_response',episode:3}] }).ok, true);
+  assert.equal(resolveEpisodeIdentity('EP3',
+    { episode: 3, scenes: [{id:'ep3_old_photo'}] },
+    { scenes: [{id:'ep3_old_photo',episode:3},{id:'ep3_document_check_response',episode:3}] }).ok, false);
+});
+test('legacy S scenes and EP2 fixtures remain supported without requiring graph episode field', t => {
+  const root = project(t);
+  put(root, 'narrative/graph.json', {scenes:[{id:'S24',assetId:'a'}]});
+  assert.equal(resolveAuthoredSceneId(root, 'S24').ok, true);
+  assert.equal(resolveEpisodeIdentity('EP2', {episode:2,scenes:[{id:'S24'}]}, {scenes:[{id:'S24'}]}).ok, true);
+});
+test('third candidate requires one scoped host-observed, hash-bound exception and verified history', t => {
+  const root = project(t), head = 'a'.repeat(40);
+  const ledgerPath = 'artifacts/production-art/candidate-ledger.json';
+  const exceptionPath = 'artifacts/production-art/owner-exception.json';
+  const attempts = [1,2].map(n => {
+    const tracePath = 'artifacts/native-trace-' + n + '.jsonl';
+    const bytes = Buffer.from('{"observed":true,"candidate":' + n + '}\n');
+    fs.mkdirSync(path.join(root,'artifacts'),{recursive:true});
+    fs.writeFileSync(path.join(root,tracePath),bytes);
+    return {attemptId:'old-photo-'+n, sceneId:'ep3_old_photo',
+      variant:'pair', candidateNumber:n, status:'OUTPUT_SAVED', sourceHead:head,
+      producerTrace:'terra-trace-'+n,tracePath,traceSha256:digest(bytes)};
+  });
+  put(root, ledgerPath, {schemaVersion:1,kind:'ART_CANDIDATE_LEDGER_V1',attempts});
+  const exceptionSha = put(root, exceptionPath, {schemaVersion:1,kind:'OWNER_AUTHORIZED_ART_EXCEPTION_V1',
+    sourceHead:head,scenes:[{sceneId:'ep3_old_photo',variant:'pair',baseLimit:2,extraCandidates:1}]});
+  const options = {sceneId:'ep3_old_photo',variant:'pair',candidateNumber:3,sourceHead:head,
+    ownerExceptionPath:exceptionPath,ownerExceptionSha256:exceptionSha,ownerApprovalObserved:true,ledgerPath};
+  assert.equal(inspectArtCandidateLedger(root,ledgerPath).status,'PASS_CANDIDATE_LEDGER');
+  assert.equal(authorizeArtCandidate(root, options).status,'READY_TO_GENERATE');
+  fs.writeFileSync(path.join(root,'artifacts/native-trace-1.jsonl'), 'tampered');
+  assert.equal(authorizeArtCandidate(root, options).status,'BLOCKED_OWNER_EXCEPTION_HISTORY_UNVERIFIED');
+  fs.writeFileSync(path.join(root,'artifacts/native-trace-1.jsonl'), Buffer.from('{"observed":true,"candidate":1}\n'));
+  assert.equal(authorizeArtCandidate(root, {...options,ownerApprovalObserved:false}).authorized,false);
+  assert.equal(authorizeArtCandidate(root, {...options,sceneId:'ep3_other'}).authorized,false);
+  assert.equal(authorizeArtCandidate(root, {...options,candidateNumber:4}).authorized,false);
+  assert.equal(authorizeArtCandidate(root, {...options,ownerExceptionSha256:'f'.repeat(64)}).authorized,false);
+  assert.equal(authorizeArtCandidate(root, {...options,ledgerPath:null}).authorized,false);
+  assert.equal(authorizeArtCandidate(root, {...options,candidateNumber:2}).status,'BLOCKED_CANDIDATE_ALREADY_CONSUMED');
+});
+test('ledger counts invoked attempts even when image bytes were lost and refuses duplicate ordinals', t => {
+  const root=project(t), head='b'.repeat(40), rel='artifacts/candidates.json';
+  const x={attemptId:'one',sceneId:'ep3_old_photo',variant:'pair',candidateNumber:1,
+    status:'OUTPUT_LOST',sourceHead:head,producerTrace:'observed-native-tool-turn'};
+  put(root,rel,{schemaVersion:1,kind:'ART_CANDIDATE_LEDGER_V1',attempts:[x]});
+  assert.equal(inspectArtCandidateLedger(root,rel).consumed['ep3_old_photo:pair'],1);
+  put(root,rel,{schemaVersion:1,kind:'ART_CANDIDATE_LEDGER_V1',attempts:[x,{...x,attemptId:'two'}]});
+  assert.equal(inspectArtCandidateLedger(root,rel).status,'BLOCKED_CANDIDATE_LEDGER');
+});
+test('external failure is pausable but semantic and provenance defects never auto-reopen', () => {
+  assert.equal(classifyTemporaryBlocker('MODEL_ENTITLEMENT_UNAVAILABLE').status,'PAUSED_EXTERNAL');
+  assert.equal(classifyTemporaryBlocker('PROVENANCE_FAILURE').status,'HARD_BLOCKED');
+  assert.equal(classifyTemporaryBlocker('BLOCKED_ART_BRIEF').status,'HARD_BLOCKED');
+  assert.equal(planWorkAroundTemporaryBlocker('RATE_LIMITED','RUN_TESTS').executable,true);
+  assert.equal(planWorkAroundTemporaryBlocker('RATE_LIMITED','PUBLISH').executable,false);
+});
+
+test('ledger recorder pins a real trace, appends attempts and refuses concurrent replacement', t => {
+  const root = project(t), head = 'f'.repeat(40);
+  const tracePath = 'artifacts/native-trace.json';
+  const traceSha256 = put(root, tracePath, {host:'test fixture',toolInvocation:'observed'});
+  const ledgerPath = 'artifacts/candidate-ledger.json';
+  const attempt = {attemptId:'a1',sceneId:'ep3_old_photo',variant:'pair',candidateNumber:1,
+    status:'INVOKED',sourceHead:head,producerTrace:'observed-native-host',
+    tracePath, traceSha256};
+  const one = recordArtCandidateAttempt(root,{ledgerPath,attempt});
+  assert.equal(one.status,'PASS_CANDIDATE_ATTEMPT_RECORDED',one.reason);
+  const two = recordArtCandidateAttempt(root,{ledgerPath,attempt:{...attempt,attemptId:'a2',candidateNumber:2,status:'OUTPUT_LOST'},
+    expectedLedgerSha256:one.ledgerSha256});
+  assert.equal(two.status,'PASS_CANDIDATE_ATTEMPT_RECORDED',two.reason);
+  assert.equal(inspectArtCandidateLedger(root,ledgerPath).consumed['ep3_old_photo:pair'],2);
+  const clash=recordArtCandidateAttempt(root,{ledgerPath,attempt:{...attempt,attemptId:'a3',candidateNumber:3},
+    expectedLedgerSha256:one.ledgerSha256});
+  assert.equal(clash.status,'BLOCKED_LEDGER_CONCURRENT_CHANGE');
+  assert.equal(recordArtCandidateAttempt(root,{ledgerPath,attempt:{...attempt,attemptId:'a3',candidateNumber:3},
+    expectedLedgerSha256:two.ledgerSha256}).recorded,false);
+});
+
+test('source-bound repair brief and migrated owner exception use canonical scene and preserve the native history gate', t => {
+  const root = project(t);
+  put(root, 'narrative/graph.json', { scenes: [{ id: 'ep3_old_photo', episode: 3, assetId: 'photo' }] });
+  put(root, 'narrative/episodes/ep-03.json', { episode: 3, scenes: [{ id: 'ep3_old_photo' }] });
+  const nika = putPng(root, 'assets/nika.png');
+  const leo = putPng(root, 'assets/leo.png');
+  put(root, 'artifacts/prior-a.json', { status: 'REWORK', sceneId: 'ep3_old_photo' });
+  put(root, 'artifacts/prior-b.json', { status: 'REWORK', sceneId: 'ep3_old_photo' });
+  spawnSync('git', ['init'], { cwd: root, windowsHide: true });
+  spawnSync('git', ['config', 'user.email', 'ceos-test@example.invalid'], { cwd: root, windowsHide: true });
+  spawnSync('git', ['config', 'user.name', 'CEOS test'], { cwd: root, windowsHide: true });
+  spawnSync('git', ['add', '.'], { cwd: root, windowsHide: true });
+  assert.equal(spawnSync('git', ['commit', '-m', 'fixture'], { cwd: root, windowsHide: true }).status, 0);
+  const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).stdout.trim();
+  const traces = [1, 2].map(candidateNumber => {
+    const tracePath = `artifacts/trace-${candidateNumber}.jsonl`;
+    const bytes = Buffer.from(JSON.stringify({ observed: true, candidateNumber }) + '\n');
+    fs.writeFileSync(path.join(root, tracePath), bytes);
+    return { attemptId: `photo-${candidateNumber}`, sceneId: 'ep3_old_photo', variant: 'pair',
+      candidateNumber, status: 'OUTPUT_SAVED', sourceHead: head, producerTrace: `trace-${candidateNumber}`,
+      tracePath, traceSha256: digest(bytes) };
+  });
+  const ledgerPath = 'artifacts/candidate-ledger.json';
+  put(root, ledgerPath, { schemaVersion: 1, kind: 'ART_CANDIDATE_LEDGER_V1', attempts: traces });
+  const exceptionPath = 'artifacts/OWNER_AUTHORIZED_ART_EXCEPTION_20261023.json';
+  const exceptionSha = put(root, exceptionPath, {
+    schemaVersion: 1, kind: 'OWNER_AUTHORIZED_ART_EXCEPTION', sourceHead: head,
+    authorization: { status: 'OWNER_AUTHORIZED' },
+    exception: { globalLimitReset: false, otherScenesAllowed: false,
+      acceptedAssetsMayBeRegenerated: false, totalAdditionalCandidates: 1 },
+    scope: { scenes: [{ sceneId: 'ep3_old_photo', priorCandidateBudget: { used: 2, limit: 2 },
+      generationLedger: { allowedAdditionalAttempts: 1, additionalAttemptCount: 0 } }] }
+  });
+  const brief = {
+    schemaVersion: 1, kind: 'EP3_SOURCE_BOUND_REPAIR_BRIEF', status: 'OWNER_EXCEPTION_READY_FOR_TERRA',
+    sourceHead: head, sceneId: 'ep3_old_photo', assetId: 'photo', candidateNumber: 3,
+    ownerException: exceptionPath, narrativeSource: 'narrative/episodes/ep-03.json',
+    narrativeCue: 'A substantive authored archive action keeps the photograph visible.',
+    locationTime: 'Archive room, day 10, neutral daylight.', requiredCast: ['nika', 'leo'],
+    characterReferences: [{ id: 'nika', path: 'assets/nika.png', sha256: nika }, { id: 'leo', path: 'assets/leo.png', sha256: leo }],
+    priorFailureEvidence: ['artifacts/prior-a.json', 'artifacts/prior-b.json'],
+    repairIntent: { materialP1Findings: ['The authored prop action was not readable in prior pixels.'] },
+    dualFormat: { portrait: { width: 1024, height: 1536, composition: 'Vertical two-shot with a quiet lower dialogue area.' },
+      landscape: { width: 1672, height: 941, composition: 'Wide two-shot with the authored prop above dialogue.' } },
+    forbidden: ['readable invented text'],
+    acceptance: ['NARRATIVE_ART_ACCEPTANCE_V2', 'actual runtime pixels', 'separate portrait and landscape PNGs'],
+    outputPaths: { portrait: 'assets/photo-candidate3.png', landscape: 'assets/photo-candidate3-landscape.png' }
+  };
+  const ready = validateArtProducerBrief(root, brief, { briefPath: 'artifacts/brief.json',
+    ownerExceptionPath: exceptionPath, ownerExceptionSha256: exceptionSha, ownerApprovalObserved: true, candidateLedgerPath: ledgerPath });
+  assert.equal(ready.status, 'READY_TO_GENERATE', ready.issues?.join('; '));
+  assert.equal(ready.candidateAuthorization, 'READY_TO_GENERATE');
+  const invalid = validateArtProducerBrief(root, { ...brief, sceneId: 'ep3_old_photo_alias' }, {
+    ownerExceptionPath: exceptionPath, ownerExceptionSha256: exceptionSha, ownerApprovalObserved: true, candidateLedgerPath: ledgerPath });
+  assert.equal(invalid.status, 'BLOCKED_ART_BRIEF');
+  assert.ok(invalid.issues.some(issue => issue.includes('SCENE_NOT_IN_NARRATIVE_GRAPH')));
+});

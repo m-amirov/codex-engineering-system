@@ -1,4 +1,6 @@
 import { NARRATIVE_ART_ACCEPTANCE_V2, assessNarrativeArtFindings } from './narrative-art-acceptance.mjs';
+import { authorizeArtCandidate } from './art-candidate-ledger.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V3, assessArtFindingsV3 } from './narrative-art-acceptance-v3.mjs';
 
 const MATERIAL = new Set(['P0', 'P1', 'P2']);
 const SEVERITIES = new Set([...MATERIAL, 'P3']);
@@ -20,19 +22,20 @@ export function authorizeArtRework(request) {
   if (request.transportState && request.transportState !== 'READY')
     return denied('BLOCKED_INVALID_REWORK_REQUEST', 'Unknown transport state.');
 
-  if (request.acceptanceProfile && request.acceptanceProfile !== NARRATIVE_ART_ACCEPTANCE_V2)
+  if (request.acceptanceProfile && ![NARRATIVE_ART_ACCEPTANCE_V2,NARRATIVE_ART_ACCEPTANCE_V3].includes(request.acceptanceProfile))
     return denied('BLOCKED_INVALID_REWORK_REQUEST', 'Unsupported art acceptance profile');
   const v2 = request.acceptanceProfile === NARRATIVE_ART_ACCEPTANCE_V2;
-  const assessment = v2 ? assessNarrativeArtFindings(request.findings) : null;
-  if (v2 && !assessment.ok)
+  const v3 = request.acceptanceProfile === NARRATIVE_ART_ACCEPTANCE_V3;
+  const assessment = v2 ? assessNarrativeArtFindings(request.findings) : v3 ? assessArtFindingsV3(request.findings) : null;
+  if ((v2 || v3) && !assessment.ok)
     return denied('BLOCKED_UNVERIFIED_FINDINGS', assessment.errors.join('; '));
   const findings = request.findings.filter(f => f?.status === 'OPEN');
   if (findings.some(f => !text(f.id) || !SEVERITIES.has(f.severity)))
     return denied('BLOCKED_INVALID_REWORK_REQUEST', 'Every open finding needs identity and severity.');
-  const actionable = v2 ? assessment.blockingFindings : findings.filter(f => MATERIAL.has(f.severity));
+  const actionable = v2 || v3 ? assessment.blockingFindings : findings.filter(f => MATERIAL.has(f.severity));
   if (!actionable.length)
-    return denied('NO_MATERIAL_REWORK', v2
-      ? 'V2: advisory P2/P3 feedback is not blocking and cannot authorize production repair.'
+    return denied('NO_MATERIAL_REWORK', v2 || v3
+      ? 'V2/V3: advisory P2/P3 feedback is not blocking and cannot authorize production repair.'
       : 'P3-only feedback does not authorize art generation or production repair.');
   if (actionable.some(f => !text(f.authoredCue) || !text(f.observation) || !text(f.playerImpact) ||
       !text(f.evidenceRef) || f.actualPixelsReceived !== true))
@@ -55,8 +58,20 @@ export function authorizeArtRework(request) {
     return denied('BLOCKED_ALREADY_ACCEPTED', 'Previously accepted scope requires a new independent finding before another repair.', stats);
   if (strategies.size >= 3)
     return denied('ESCALATE_ART_REWORK', 'Three failed approaches require escalation, not a fourth automatic attempt.', stats);
-  if (request.proposedMethod === 'generation' && generations.length >= 2)
-    return denied('ESCALATE_ART_GENERATION', 'Two generation candidates exhausted; automatic third candidate prohibited.', stats);
+  if (request.proposedMethod === 'generation' && generations.length >= 2) {
+    if (!request.projectDir || !request.sceneId || !request.sourceHead ||
+        !request.ownerExceptionPath || !request.candidateLedgerPath)
+      return denied('ESCALATE_ART_GENERATION', 'Two generation candidates exhausted; automatic third candidate prohibited.', stats);
+    const auth = authorizeArtCandidate(request.projectDir, {
+      sceneId: request.sceneId, variant: request.variant ?? 'pair',
+      candidateNumber: generations.length + 1, sourceHead: request.sourceHead,
+      ownerExceptionPath: request.ownerExceptionPath,
+      ownerExceptionSha256: request.ownerExceptionSha256,
+      ownerApprovalObserved: request.ownerApprovalObserved === true,
+      ledgerPath: request.candidateLedgerPath
+    });
+    if (!auth.authorized) return denied('ESCALATE_ART_GENERATION', 'Owner exception not verified: ' + auth.status, stats);
+  }
   if (!text(request.proposedStrategyKey) || strategies.has(request.proposedMethod + ':' + request.proposedStrategyKey))
     return denied('BLOCKED_REPEAT_STRATEGY', 'Do not repeat the same failed strategy automatically.', stats);
 

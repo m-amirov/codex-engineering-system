@@ -12,7 +12,7 @@ Large audits: deduplicate equivalent cases by unique route/scene/cue/state, use 
 
 ## Model and trust boundary
 
-- CEOS-managed Web roles use explicit GPT-6 Sol High (`chatgpt-web/gpt-6-sol`), requiring Codex Web GPT 6.1.6 or newer. Do not silently downgrade to GPT-5.6.
+- CEOS-managed Web roles prefer explicit GPT-6 Sol High (`chatgpt-web/gpt-6-sol`), requiring Codex Web GPT 6.1.6 or newer. A DEV browser-only visual adapter may use one explicitly configured, independently multimodal fallback only after a live model-entitlement failure; it must preserve the actual fallback model/provider in evidence and prove delivery of the same pixels. `solAvailable:true` or a manifest row is not entitlement proof, and no model may be silently substituted.
 - `ceos_reasoner_web`: architecture, semantics, causal alternatives, UX/narrative.
 - `ceos_bulk_checker_web`: bounded, individually grounded text/ledger classification.
 - `ceos_art_director_web`: supplied images, art canon, composition, framing.
@@ -65,7 +65,7 @@ After `READY_TO_RECORD`, record with the ordinary `routing-trace` command; its l
 
 ## Cost, transport, recovery
 
-Do not spawn an agent per scene/page. Deduplicate, prefer a compact source excerpt plus necessary screenshots, and batch repeatable checks. Do not fire concurrent attachment-heavy turns. Observe `policies/web-transport.md`, respect explicit rate limits and bounded cooldowns, and never retry based on semantic disagreement. Optional Web absent/disabled → native-only; unexpected ready→unavailable transition → record explicit transport reason and native fallback. Explicit `--web-required` → BLOCKED on inability to use Web.
+Do not spawn an agent per scene/page. Deduplicate, prefer a compact source excerpt plus necessary screenshots, and batch repeatable checks. Do not fire concurrent attachment-heavy turns. Observe `policies/web-transport.md`, respect explicit rate limits and bounded cooldowns, and never retry based on semantic disagreement. Optional Web absent/disabled → native-only; unexpected ready→unavailable transition → record explicit transport reason and native fallback. A required DEV visual review with no entitled multimodal browser route is `BLOCKED_MODEL_ENTITLEMENT`; it cannot be promoted by native/text-only checks. Explicit `--web-required` → BLOCKED on inability to use Web.
 
 ## Claim discipline
 

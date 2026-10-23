@@ -2,7 +2,6 @@ name: CEOS Release Gate
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -24,6 +23,9 @@ jobs:
           node ./bin/ceos.mjs version
       - name: Unit and regression tests
         run: npm test
+      - name: Phase 04 process, worktree, replay and provider integrations (Linux)
+        run: |
+          node --test tests/phase04-verification-process.test.mjs tests/phase04-worktree-hygiene.test.mjs tests/phase04-replay.test.mjs tests/phase04-provider-lifecycle.test.mjs
       - name: Syntax gate
         run: npm run lint
       - name: Capability CLI smoke
@@ -69,6 +71,11 @@ jobs:
           node --test .\tests\run-relocation.test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --test .\tests\source-bound-revalidation.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Phase 04 command, provider, worktree, replay and core regression (Windows)
+        shell: powershell
+        run: |
+          node --test .\tests\phase04-verification-process.test.mjs .\tests\phase04-worktree-hygiene.test.mjs .\tests\phase04-replay.test.mjs .\tests\phase04-provider-lifecycle.test.mjs .\tests\core.test.mjs .\tests\dev-web-high-transport.test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Pre-install worktree must be clean
         shell: powershell

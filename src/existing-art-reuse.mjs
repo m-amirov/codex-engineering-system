@@ -210,10 +210,13 @@ export function verifyExistingArtReuse(projectDir, contract, {
 
   if (contract.provenance?.status !== 'DOCUMENTED') issues.push('EXISTING_ART_PROVENANCE_UNKNOWN');
   checkEvidence(resolvedProject, contract.provenance, 'EXISTING_ART_PROVENANCE', currentHead, sourceHead, issues, artifacts, { status: 'DOCUMENTED', dependencyBased });
+  const artProfile = contract.artAcceptance?.profile;
+  const acceptedV3 = artProfile==='NARRATIVE_ART_ACCEPTANCE_V3' &&
+    ['PASS','PASS_WITH_NOTES'].includes(contract.artAcceptance?.status);
   checkEvidence(resolvedProject, contract.artAcceptance, 'EXISTING_ART_ACCEPTANCE', currentHead, sourceHead, issues, artifacts, {
-    status: 'PASS', requirePixels: true, dependencyBased
+    status: acceptedV3 ? contract.artAcceptance.status : 'PASS', requirePixels: true, dependencyBased
   });
-  if (contract.artAcceptance?.profile !== 'NARRATIVE_ART_ACCEPTANCE_V2' ||
+  if (![ 'NARRATIVE_ART_ACCEPTANCE_V2','NARRATIVE_ART_ACCEPTANCE_V3'].includes(artProfile) ||
       !Array.isArray(contract.artAcceptance?.reviewedItems) ||
       contract.artAcceptance.reviewedItems.length < (manifest?.assets?.length ?? 1) ||
       !Array.isArray(contract.artAcceptance?.unresolved) || contract.artAcceptance.unresolved.length > 0) {

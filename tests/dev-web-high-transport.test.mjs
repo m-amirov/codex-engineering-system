@@ -6,8 +6,11 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 import { validateWebReview } from '../src/web-delegation.mjs';
+import { classifyWebTransportFailure } from '../src/web-transport-failure.mjs';
 import {
   DEV_WEB_HIGH_MODEL,
+  DEV_WEB_HIGH_FALLBACK_MODEL,
+  discoverDevWebCapabilities,
   DEV_WEB_HIGH_ATTACHMENT_LEASE_FILE,
   DevBrowserHelperClient,
   DevWebHighTransport,
@@ -119,6 +122,78 @@ test('DEV unavailable returns an explicit BLOCKED result', async () => {
   assert.equal(result.transport.classification, 'DEV_UNAVAILABLE');
 });
 
+test('config solAvailable is only a declaration and capability discovery stays unverified', () => {
+  const f = fixture();
+  const result = discoverDevWebCapabilities(profile({ home: path.join(f.projectDir, 'dev-home') }));
+  assert.equal(result.app.status, 'AVAILABLE');
+  assert.equal(result.authorization.status, 'UNKNOWN');
+  assert.equal(result.attachments.actualPixelsReceived, false);
+  assert.deepEqual(result.reviewers.map(route => [route.model, route.entitlement]), [
+    [DEV_WEB_HIGH_MODEL, 'UNVERIFIED'],
+    [DEV_WEB_HIGH_FALLBACK_MODEL, 'UNVERIFIED']
+  ]);
+  const observed = discoverDevWebCapabilities(profile({ home: path.join(f.projectDir, 'dev-home') }), {
+    observedRoutes: [{ model: DEV_WEB_HIGH_MODEL, classification: 'MODEL_ENTITLEMENT_UNAVAILABLE' }]
+  });
+  assert.equal(observed.reviewers[0].entitlement, 'UNAVAILABLE');
+});
+
+test('model entitlement failure is distinct from attachment and generic DEV failures', () => {
+  const model = classifyWebTransportFailure({
+    message: "The 'chatgpt-web/gpt-6-sol' model is not supported when using Codex with a ChatGPT account."
+  });
+  assert.equal(model.classification, 'MODEL_ENTITLEMENT_UNAVAILABLE');
+  assert.equal(model.retryAllowed, false);
+  assert.equal(model.reviewerFallbackAllowed, true);
+  assert.equal(classifyWebTransportFailure({ message: 'ChatGPT attachment upload failed before the prompt was sent' }).classification, 'ATTACHMENT_TRANSPORT');
+  assert.equal(classifyWebTransportFailure({ message: 'ChatGPT requires sign in for this account' }).classification, 'AUTHENTICATION_UNAVAILABLE');
+});
+
+test('unsupported preferred model selects one real multimodal browser fallback without weakening pixel gates', async () => {
+  const f = fixture();
+  const calls = [];
+  const t = transport(f, {
+    run: async request => {
+      calls.push({ model: request.model, images: request.images.length, requestedModel: request.model });
+      if (request.model === DEV_WEB_HIGH_MODEL) {
+        throw Object.assign(new Error("The 'chatgpt-web/gpt-6-sol' model is not supported when using Codex with a ChatGPT account."), {
+          code: 'MODEL_NOT_SUPPORTED'
+        });
+      }
+      return { text: reviewerResponse(f.request), submitted: true, attachmentAccepted: request.images.length === 2 };
+    }
+  });
+  const result = await t.review(f.request, { currentHead: HEAD });
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(calls.map(call => call.model), [DEV_WEB_HIGH_MODEL, DEV_WEB_HIGH_FALLBACK_MODEL]);
+  assert.deepEqual(calls.map(call => call.images), [2, 2]);
+  assert.equal(result.receipt.model, DEV_WEB_HIGH_FALLBACK_MODEL);
+  assert.equal(result.receipt.transport.modelId, 'gpt-5.6-sol');
+  assert.equal(result.receipt.transport.authorizationMode, 'codex-chatgpt-account');
+  assert.equal(result.receipt.actualPixelsReceived, true);
+  await t.close();
+});
+
+test('unsupported preferred and fallback models return BLOCKED_MODEL_ENTITLEMENT without a receipt', async () => {
+  const f = fixture();
+  let calls = 0;
+  const t = transport(f, {
+    run: async request => {
+      calls += 1;
+      throw Object.assign(new Error(`ChatGPT model ${request.model} could not be selected and verified`), {
+        code: 'MODEL_NOT_SUPPORTED'
+      });
+    }
+  });
+  const result = await t.review(f.request, { currentHead: HEAD });
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(result.reasonCode, 'BLOCKED_MODEL_ENTITLEMENT');
+  assert.equal(result.transport.classification, 'MODEL_ENTITLEMENT_UNAVAILABLE');
+  assert.equal(result.receipt, undefined);
+  assert.equal(calls, 2);
+  await t.close();
+});
+
 test('DEV helper acknowledges prompt selection and send activation', async () => {
   const client = new DevBrowserHelperClient(profile());
   const sent = [];
@@ -164,6 +239,24 @@ test('DEV review prompt applies dialogue-first narrative rubric without prescrib
   assert.match(prompt, /never major\/minor/);
   assert.match(prompt, /Owner decisions are review context, not evidence/);
   assert.match(prompt, /Do not treat this as an illustration checklist/i);
+  await t.close();
+});
+
+test('DEV Web High includes optional wardrobe assessment schema only for explicit wardrobe reviews', async () => {
+  const f = fixture();
+  let prompt = '';
+  const t = transport(f, {
+    run: async call => {
+      prompt = call.prompt;
+      return { text: reviewerResponse(f.request), submitted: true, attachmentAccepted: true };
+    }
+  });
+  f.request.context += '\\nWARDROBE_VISUAL_ACCEPTANCE_V1: independent wardrobe comparisons required';
+  const result = await t.review(f.request);
+  assert.equal(result.status, 'PASS');
+  assert.match(prompt, /wardrobeAssessments/);
+  assert.match(prompt, /silver streaks/);
+  assert.match(prompt, /every required cast member/i);
   await t.close();
 });
 
@@ -586,4 +679,47 @@ test('retained conversation failure is a clear blocker and never starts a replac
   assert.equal(calls, 2);
   assert.deepEqual(result.transport.attachmentRefs, f.request.images.map(image => image.ref));
   assert.equal(result.transport.replacementImageReviewStarted, false);
+});
+
+
+test('DEV V3 source-bound reviewer produces one accepted PASS_WITH_NOTES with wardrobe observations',async()=>{
+  const f=fixture();
+  f.request.artAcceptanceProfile='NARRATIVE_ART_ACCEPTANCE_V3';
+  f.request.requiredCast=['bianca'];
+  const wardrobeAssessments=[{
+    characterId:'bianca',identityObservation:'Bianca retains the correct copper hair and visible adult features.',
+    wardrobeObservation:'The correct charcoal business suit is clearly visible.',
+    actionObservation:'Bianca enters the hotel lobby during the authored story beat.',
+    identityStatus:'PASS',wardrobeStatus:'PASS',storyActionStatus:'PASS',dualFormatStatus:'PASS',
+    evidenceRefs:f.request.images.map(image=>image.ref)
+  }];
+  const response=reviewerResponse(f.request,undefined,{
+    artAcceptanceProfile:'NARRATIVE_ART_ACCEPTANCE_V3',status:'PASS_WITH_NOTES',
+    requiredCast:['bianca'],wardrobeAssessments,
+    findings:[{id:'slight-buttons',status:'OPEN',severity:'P3',
+      observation:'An incidental button detail differs slightly between formats'}]
+  });
+  let prompt;
+  const t=transport(f,{run:async call=>{
+    prompt=call.prompt;return {text:response,submitted:true,attachmentAccepted:true};
+  }});
+  const result=await t.review(f.request,{currentHead:HEAD});
+  assert.equal(result.status,'PASS_WITH_NOTES',result.reasonCode);
+  assert.equal(result.receipt.artAcceptanceProfile,'NARRATIVE_ART_ACCEPTANCE_V3');
+  assert.equal(result.receipt.wardrobeAssessments[0].characterId,'bianca');
+  assert.match(prompt,/Only verified materially misleading identity/);
+  assert.match(prompt,/PASS_WITH_NOTES/);
+  await t.close();
+});
+
+test('DEV V3 refuses missing actual per-character evidence instead of making cosmetic PASS',async()=>{
+  const f=fixture();f.request.artAcceptanceProfile='NARRATIVE_ART_ACCEPTANCE_V3';f.request.requiredCast=['bianca'];
+  const response=reviewerResponse(f.request,undefined,{
+    artAcceptanceProfile:'NARRATIVE_ART_ACCEPTANCE_V3',status:'PASS',requiredCast:['bianca'],
+    wardrobeAssessments:[]
+  });
+  const result=await transport(f,{run:async()=>({text:response,submitted:true,attachmentAccepted:true})})
+    .review(f.request,{currentHead:HEAD});
+  assert.equal(result.status,'NOT_VERIFIED');
+  assert.equal(result.reasonCode,'NARRATIVE_V3_REVIEW_INVALID');
 });

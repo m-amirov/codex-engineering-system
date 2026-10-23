@@ -19,6 +19,8 @@ Treat `BLOCKED_BRANCH`, `BLOCKED_REMOTE_MISMATCH`, `BLOCKED_DIRTY`, `BLOCKED_DIV
 After an authorized implementation: run scoped checks, inspect diff/status, commit only in-scope changes, fetch again, prove non-divergence and push without force. Verify the final remote SHA. Never claim a GitHub file absent until `origin/main` has been refreshed or the remote file was read directly.
 
 - Inspect branch, HEAD and worktree before mutation.
+- Keep one permanent `main` checkout for the owner. Codex task worktrees should be isolated and short-lived, with branches named `ceos/task/<topic>`. Report checkout path, branch, HEAD, dirty state and PR to avoid accidental cross-branch edits.
+- Inspect local siblings using `ceos worktrees inspect --project <repo> --json`; historical branches require `--include-legacy` for an opt-in cleanup plan. Only `ceos worktrees cleanup ... --apply` with exact eligible path, SHA and plan token may remove a clean, fully integrated local branch/worktree. Never force-remove ignored user data or source-bound evidence, and never delete remote branches automatically.
 - Preserve unrelated user changes.
 - Do not reset/clean/checkout away user work to simplify the task.
 - Record starting and final HEAD when meaningful.

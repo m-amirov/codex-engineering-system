@@ -25,6 +25,8 @@ Always load `policies/safety.md`, `policies/evidence.md`, and the resolved proje
 ## Invariants
 For Git-backed engineering tasks, begin with the fresh-remote Git preflight in `policies/git.md`. Do not trust only the local checkout when evaluating whether a requested GitHub file exists. The policy is non-destructive and does not authorize forced synchronization.
 
+Branch/worktree hygiene: keep a single stable `main` checkout for the owner, use one task-scoped branch/worktree for Codex edits, and always report checkout path, branch, HEAD, dirty status, and PR. Run `ceos worktrees inspect --project <repo> --json` before local cleanup; never automatically delete historical, dirty, unmerged, ignored-data or evidence-bound worktrees. See `docs/WORKTREE_HYGIENE.md`.
+
 
 1. Evidence, not assertion, determines PASS. Engine-backed terminal PASS also requires the executable `metadata.evidenceContract`; zero counters, artifacts without assertions, partial coverage, stale HEAD evidence, and unresolved manual/external conditions are not PASS.
 2. Default production access is read-only.

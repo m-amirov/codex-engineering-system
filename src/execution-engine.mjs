@@ -14,7 +14,26 @@ import { narrativeDualFormatEnabled, verifyNarrativeDualFormatArt } from './narr
 import { inspectNativeProducerRoute, nativeProducerParentContext } from './native-producer-routing.mjs';
 import { readRunCapabilityAttestation } from './capability-attestation.mjs';
 import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V3, isArtV3Accepted } from './narrative-art-acceptance-v3.mjs';
+import { classifyTemporaryBlocker } from './temporary-blocker-recovery.mjs';
 import { VERIFIED_EXISTING_ART_REUSE, verifyExistingArtReuse } from './existing-art-reuse.mjs';
+import { brokerCapabilities } from './capability-broker.mjs';
+import {
+  applyRecoveryEvent,
+  createRecoveryState,
+  recoveryDecision,
+  validateRecoveryState,
+  RECOVERY_CATEGORIES
+} from './continuation-recovery.mjs';
+
+function selectedNarrativeArtProfile(project) {
+  // Explicit opt-in only. Existing V2 runs and unrelated games never change.
+  try {
+    const config=JSON.parse(fs.readFileSync(path.join(project,'config','narrative-game.local.json'),'utf8'));
+    return config.artAcceptanceProfile===NARRATIVE_ART_ACCEPTANCE_V3
+      ? NARRATIVE_ART_ACCEPTANCE_V3 : NARRATIVE_ART_ACCEPTANCE_V2;
+  } catch {return NARRATIVE_ART_ACCEPTANCE_V2}
+}
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -137,6 +156,11 @@ export const EXECUTION_PIPELINES = {
 
 function now() {
   return new Date().toISOString();
+}
+
+function recoveryStateFor(run) {
+  if (run?.recovery && typeof run.recovery === 'object') return run.recovery;
+  return createRecoveryState({ sourceHead: run?.sourceAtStart?.head ?? null });
 }
 
 function safeStamp() {
@@ -384,7 +408,7 @@ function isScopedDualFormatCoverageBlocked(run, {
 function isRecoverableBlocked(run, recoveryContext = {}) {
   if (run.verdict !== 'BLOCKED' || run.state !== 'BLOCKED') return false;
   const stopReason = run.stopReason ?? {};
-  if (RECOVERABLE_BLOCK_CODES.has(stopReason.code)) return true;
+  if (RECOVERABLE_BLOCK_CODES.has(stopReason.code) || classifyTemporaryBlocker(stopReason.code).canContinueIndependentWork) return true;
   // Exact legacy full-episode-at-batch-stage failure is recoverable only
   // after a fresh scoped dual-format verification against actual GEN outputs.
   if (isScopedDualFormatCoverageBlocked(run, recoveryContext)) return true;
@@ -447,11 +471,13 @@ function nextAction(run) {
       ? 'metadata.dualFormatManifest: source-bound mappings for the exact generated batch; both portrait 2:3 and desktop 16:9 PNGs must match hash-pinned GENERATING output checks; episode final coverage is NOT asserted by a batch'
       : 'metadata.dualFormatManifest: full source-bound episode art mapping; both portrait 2:3 and desktop 16:9 files required for all authored scenes');
   if (def.finalReview) requirements.push('explicit outcome PASS, FAIL, BLOCKED, or ESCALATE plus metadata.evidenceContract for PASS');
+  const recovery = recoveryDecision(recoveryStateFor(run));
   return {
     terminal: false,
     stage: def.id,
     description: def.description,
-    requirements
+    requirements,
+    recovery
   };
 }
 
@@ -465,6 +491,10 @@ function capabilitiesHash(capabilities) {
 
 function assertRunIntegrity(runDir, run) {
   const issues = [];
+  if (run.recovery !== undefined) {
+    const recoveryIntegrity = validateRecoveryState(run.recovery);
+    if (!recoveryIntegrity.ok) issues.push(...recoveryIntegrity.issues.map(issue => `recovery: ${issue}`));
+  }
   const scopeFile = path.join(runDir, 'scope.json');
   const capFile = path.join(runDir, 'capabilities.json');
 
@@ -766,6 +796,7 @@ export function createRun(projectDir, pipeline, {
   atomicWriteJson(path.join(runDir, 'capabilities.json'), capabilities);
 
   const createdAt = now();
+  const sourceAtStart = gitSourceSnapshot(resolvedProject);
   const run = {
     schemaVersion: 1,
     engineVersion: 1,
@@ -776,7 +807,8 @@ export function createRun(projectDir, pipeline, {
     artOutputGateRequired: pipeline === 'production-art' && normalizedArtMode !== ART_MODES.VERIFIED_EXISTING_ART_REUSE,
     narrativeDualFormatRequired: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject),
     nativeProducerRouteRequired: pipeline === 'production-art' && normalizedArtMode !== ART_MODES.VERIFIED_EXISTING_ART_REUSE && narrativeDualFormatEnabled(resolvedProject),
-    artAcceptanceProfile: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? NARRATIVE_ART_ACCEPTANCE_V2 : null,
+    artAcceptanceProfile: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject)
+      ? selectedNarrativeArtProfile(resolvedProject) : null,
     // The run is product-scoped, not Codex-session-scoped. Native parent trust is
     // resolved at GENERATING from the current, run-scoped capability challenge.
     // Historical runs without this mode retain their original pinned parent.
@@ -801,7 +833,11 @@ export function createRun(projectDir, pipeline, {
     checkpointCount: 0,
     scopeSha256: scopeHash(normalizedScope),
     capabilitiesSha256: capabilitiesHash(capabilities),
-    sourceAtStart: gitSourceSnapshot(resolvedProject),
+    sourceAtStart,
+    // Technical continuation retries are persisted separately from artistic
+    // cycles and candidate budgets. Historical runs without this field remain
+    // readable through recoveryStateFor().
+    recovery: createRecoveryState({ sourceHead: sourceAtStart.head }),
     routingTrace: {
       webPreflightStatus: capabilities.web?.status ?? 'UNKNOWN',
       webAgentsUsed: [],
@@ -899,7 +935,7 @@ function assertWebReviewPhase(run, capabilities, stage, currentHead) {
     const pending = (trace.webReviews ?? []).filter(review => review.phase !== 'acceptance')
       .flatMap(review => review.unresolved ?? []);
     if (pending.length) {
-      const accepted = reviews.find(review => review.status === 'PASS' && Array.isArray(review.resolvedFindings));
+      const accepted = reviews.find(review => (run.artAcceptanceProfile===NARRATIVE_ART_ACCEPTANCE_V3 ? isArtV3Accepted(review.status) : review.status==='PASS') && Array.isArray(review.resolvedFindings));
       const resolved = accepted?.resolvedFindings ?? [];
       const received = accepted?.receivedEvidenceRefs ?? [];
       if (pending.some(id => !resolved.some(item => item?.id === id && received.includes(item.evidenceRef))))
@@ -1262,6 +1298,108 @@ export function refreshRunCapabilities(projectDir, runRef, capabilities) {
       run,
       integrity: assertRunIntegrity(resolved.runDir, run),
       nextAction: nextAction(run)
+    };
+  });
+}
+
+/**
+ * Persist one host-observed technical failure in the existing run state.
+ * This is deliberately not a checkpoint transition and never invokes a host
+ * tool. It records bounded technical retry state without changing artistic
+ * cycles, candidate ledgers, PNGs or acceptance receipts.
+ */
+export function recordRecoveryEvent(projectDir, runRef = 'latest', event = {}, { nowMs = Date.now() } = {}) {
+  const resolvedProject = path.resolve(projectDir);
+  const resolved = resolveRun(resolvedProject, runRef);
+  return withRunLock(resolved.runDir, () => {
+    const run = readJson(resolved.file);
+    const integrity = assertRunIntegrity(resolved.runDir, run);
+    if (!integrity.ok) return {
+      schemaVersion: 1,
+      status: RECOVERY_CATEGORIES.HARD_BLOCKED,
+      category: RECOVERY_CATEGORIES.HARD_BLOCKED,
+      reasonCode: 'BLOCKED_INTEGRITY',
+      runId: run.runId,
+      integrity,
+      executable: false,
+      nextAction: 'STOP_AND_REPAIR'
+    };
+    if (!event || typeof event !== 'object' || Array.isArray(event))
+      throw new Error('recovery event must be an object');
+    const currentSource = gitSourceSnapshot(resolvedProject);
+    const state = recoveryStateFor(run);
+    const stateIntegrity = validateRecoveryState(state);
+    if (!stateIntegrity.ok) return {
+      schemaVersion: 1,
+      status: RECOVERY_CATEGORIES.HARD_BLOCKED,
+      category: RECOVERY_CATEGORIES.HARD_BLOCKED,
+      reasonCode: 'CHECKPOINT_CORRUPTED',
+      runId: run.runId,
+      issues: stateIntegrity.issues,
+      executable: false,
+      nextAction: 'STOP_AND_REPAIR'
+    };
+    if (state.sourceHead && currentSource.head !== state.sourceHead) return {
+      schemaVersion: 1,
+      status: RECOVERY_CATEGORIES.HARD_BLOCKED,
+      category: RECOVERY_CATEGORIES.HARD_BLOCKED,
+      reasonCode: 'SOURCE_HEAD_CHANGED',
+      runId: run.runId,
+      expectedSourceHead: state.sourceHead,
+      actualSourceHead: currentSource.head,
+      executable: false,
+      nextAction: 'STOP_AND_REPAIR'
+    };
+    if (event.sourceHead && event.sourceHead !== currentSource.head) return {
+      schemaVersion: 1,
+      status: RECOVERY_CATEGORIES.HARD_BLOCKED,
+      category: RECOVERY_CATEGORIES.HARD_BLOCKED,
+      reasonCode: 'SOURCE_HEAD_CHANGED',
+      runId: run.runId,
+      expectedSourceHead: event.sourceHead,
+      actualSourceHead: currentSource.head,
+      executable: false,
+      nextAction: 'STOP_AND_REPAIR'
+    };
+    const applied = applyRecoveryEvent(state, {
+      ...event,
+      sourceHead: event.sourceHead ?? currentSource.head
+    }, { now: nowMs });
+    if (!applied.ok) return {
+      schemaVersion: 1,
+      status: applied.status ?? RECOVERY_CATEGORIES.HARD_BLOCKED,
+      category: applied.status ?? RECOVERY_CATEGORIES.HARD_BLOCKED,
+      reasonCode: applied.reasonCode,
+      runId: run.runId,
+      detail: applied.detail,
+      issues: applied.issues,
+      executable: false,
+      nextAction: applied.status === RECOVERY_CATEGORIES.NEEDS_USER_ACTION
+        ? 'REQUEST_USER_ACTION' : 'STOP_AND_REPAIR'
+    };
+    run.recovery = applied.state;
+    run.updatedAt = new Date(nowMs).toISOString();
+    atomicWriteJson(resolved.file, run);
+    atomicWriteJson(path.join(runRoot(resolvedProject), 'latest.json'), {
+      runId: run.runId, runDir: resolved.runDir, updatedAt: run.updatedAt
+    });
+    const decision = recoveryDecision(run.recovery, { now: nowMs });
+    return {
+      schemaVersion: 1,
+      status: decision.status,
+      category: decision.category,
+      reasonCode: decision.reasonCode,
+      nextAction: decision.nextAction,
+      executable: decision.status === RECOVERY_CATEGORIES.AUTO_RECOVERABLE,
+      alreadyRecorded: applied.alreadyRecorded === true,
+      runId: run.runId,
+      runDir: resolved.runDir,
+      recovery: run.recovery,
+      decision,
+      integrity: assertRunIntegrity(resolved.runDir, run),
+      nextStage: run.nextStage,
+      consumesArtAttempt: false,
+      consumesRepairCycle: false
     };
   });
 }

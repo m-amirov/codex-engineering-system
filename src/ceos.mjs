@@ -5,6 +5,9 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseYamlLite } from './yaml-lite.mjs';
+import { resolveVerificationCommand, runVerificationProcess } from './verification-process.mjs';
+import { validateVerificationReplay } from './verification-replay.mjs';
+import { fingerprintWorkingSource } from './source-fingerprint.mjs';
 
 export const CEOS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const VERSION = fs.readFileSync(path.join(CEOS_ROOT, 'VERSION'), 'utf8').trim();
@@ -207,6 +210,9 @@ export function doctor(projectDir) {
   for (const [id, command] of Object.entries(loaded.data.commands)) {
     const risk = classifyCommandRisk(command);
     checks.push({ id: `command-risk:${id}`, ok: risk === 'R0', detail: `${risk} ${command}` });
+    let adapterError = null;
+    try { resolveVerificationCommand(command, { projectDir }); } catch (error) { adapterError = error.message; }
+    checks.push({ id: `command-adapter:${id}`, ok: adapterError === null, detail: adapterError ?? 'allowed argv adapter' });
     const config = checkCommandConfiguration(projectDir, command);
     if (config.kind === 'npm-script') checks.push({ id: `npm-script:${id}`, ok: config.ok, detail: config.detail });
   }
@@ -217,8 +223,19 @@ function safeStamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
 function truncate(s, n = 8000) { return s.length <= n ? s : `${s.slice(0, n)}\n...[truncated ${s.length - n} chars]`; }
 function failureTypeForGate(id) { return /(^|[_.-])(test|e2e|integration|browser|playwright|smoke)([_.-]|$)/i.test(id) ? 'TEST_FAILURE' : 'COMMAND_FAILURE'; }
 
-export function runVerification(projectDir, { mode = 'verification', evidenceDir, dryRun = false, baselineRef = null } = {}) {
+function sourceFingerprint(projectDir, evidenceDir) {
+  try { return fingerprintWorkingSource(projectDir, evidenceDir); }
+  catch { return null; }
+}
+
+export async function runVerification(projectDir, { mode = 'verification', evidenceDir, dryRun = false,
+  baselineRef = null, gateTimeoutMs = 300_000, replayFrom = null } = {}) {
+  if (!Number.isInteger(gateTimeoutMs) || gateTimeoutMs < 50 || gateTimeoutMs > 1_800_000) {
+    throw new Error('gateTimeoutMs must be an integer between 50 and 1800000');
+  }
   const { file: manifestFile, data: manifest } = loadManifest(projectDir);
+  const replay = replayFrom ? validateVerificationReplay(projectDir, replayFrom) : null;
+  if (replay && !replay.ok) throw new Error(`${replay.reasonCode}: ${replay.detail}`);
   const gates = resolveGates(manifest, mode);
   if (!gates.length) throw new Error(`No gates configured for mode '${mode}'`);
 
@@ -226,6 +243,7 @@ export function runVerification(projectDir, { mode = 'verification', evidenceDir
   fs.mkdirSync(path.join(outputDir, 'gates'), { recursive: true });
   fs.mkdirSync(path.join(outputDir, 'logs'), { recursive: true });
   const startGit = gitState(projectDir);
+  const startFingerprint = startGit.isRepo ? sourceFingerprint(projectDir, outputDir) : null;
   fs.writeFileSync(path.join(outputDir, 'manifest.snapshot.json'), JSON.stringify(manifest, null, 2));
   fs.writeFileSync(path.join(outputDir, 'git.start.json'), JSON.stringify(startGit, null, 2));
 
@@ -263,15 +281,23 @@ export function runVerification(projectDir, { mode = 'verification', evidenceDir
     const risk = classifyCommandRisk(gate.command);
     const startedAt = new Date().toISOString();
     const config = checkCommandConfiguration(projectDir, gate.command);
+    let adapter = null;
+    let adapterError = null;
+    try { adapter = resolveVerificationCommand(gate.command, { projectDir }); }
+    catch (error) { adapterError = error.message; }
     let record;
     if (risk !== 'R0') {
       record = { ...gate, risk, status: 'BLOCKED', startedAt, completedAt: new Date().toISOString(), exitCode: null, reason: `Verification runner blocks ${risk} commands` };
+    } else if (adapterError) {
+      record = { ...gate, risk, status: 'BLOCKED', failureType: 'CONFIGURATION_ERROR', failureCode: 'UNSAFE_COMMAND_ADAPTER',
+        startedAt, completedAt: new Date().toISOString(), exitCode: null, reason: adapterError };
     } else if (!config.ok) {
       record = { ...gate, risk, status: 'CONFIGURATION_ERROR', failureType: 'CONFIGURATION_ERROR', startedAt, completedAt: new Date().toISOString(), exitCode: null, reason: config.detail, configuration: config };
     } else if (dryRun) {
       record = { ...gate, risk, status: 'SKIP', startedAt, completedAt: new Date().toISOString(), exitCode: null, reason: 'dry-run' };
     } else {
-      const result = spawnSync(gate.command, { cwd: projectDir, shell: true, encoding: 'utf8', env: { ...process.env, CEOS_MODE: mode, CEOS_EVIDENCE_DIR: outputDir }, maxBuffer: 20 * 1024 * 1024 });
+      const result = await runVerificationProcess(adapter, { cwd: projectDir,
+        env: { ...process.env, CEOS_MODE: mode, CEOS_EVIDENCE_DIR: outputDir }, timeoutMs: gateTimeoutMs });
       const stdout = result.stdout ?? '';
       const stderr = result.stderr ?? '';
       fs.writeFileSync(path.join(outputDir, 'logs', `${gate.id}.stdout.log`), stdout);
@@ -279,15 +305,21 @@ export function runVerification(projectDir, { mode = 'verification', evidenceDir
       record = {
         ...gate,
         risk,
-        status: result.status === 0 ? 'PASS' : 'FAIL',
-        failureType: result.status === 0 ? undefined : failureTypeForGate(gate.id),
+        status: result.status === 'PASS' ? 'PASS' : 'FAIL',
+        failureType: result.status === 'PASS' ? undefined : failureTypeForGate(gate.id),
+        failureCode: result.status === 'TIMED_OUT' ? 'GATE_TIMEOUT' : result.status === 'OUTPUT_LIMIT' ? 'GATE_OUTPUT_LIMIT' : undefined,
         startedAt,
         completedAt: new Date().toISOString(),
-        exitCode: result.status,
+        exitCode: result.exitCode,
+        adapter: adapter.kind,
+        timeoutMs: gateTimeoutMs,
+        durationMs: result.durationMs,
+        timedOut: result.timedOut,
+        termination: result.termination,
         stdout: truncate(stdout),
         stderr: truncate(stderr),
         signal: result.signal ?? null,
-        error: result.error?.message ?? null
+        error: result.error ?? null
       };
     }
     records.push(record);
@@ -295,6 +327,16 @@ export function runVerification(projectDir, { mode = 'verification', evidenceDir
   }
 
   const endGit = gitState(projectDir);
+  const endFingerprint = startGit.isRepo ? sourceFingerprint(projectDir, outputDir) : null;
+  if (startGit.isRepo && (!endGit.isRepo || endGit.head !== startGit.head || !startFingerprint || endFingerprint !== startFingerprint)) {
+    const startedAt = new Date().toISOString();
+    const record = { id: 'ceos.source_integrity.end', command: 'git rev-parse HEAD && git status --porcelain',
+      required: true, risk: 'R0', status: 'BLOCKED', failureType: 'PROVENANCE_FAILURE',
+      failureCode: 'SOURCE_DRIFT_DURING_GATES', startedAt, completedAt: new Date().toISOString(), exitCode: null,
+      reason: 'The source HEAD or workspace contents changed while verification was running' };
+    records.push(record);
+    fs.writeFileSync(path.join(outputDir, 'gates', `${record.id}.json`), JSON.stringify(record, null, 2));
+  }
   if (mode === 'release' && manifest.release?.clean_worktree === true) {
     const startedAt = new Date().toISOString();
     const status = endGit.isRepo && !endGit.dirty ? 'PASS' : 'BLOCKED';
@@ -315,6 +357,12 @@ export function runVerification(projectDir, { mode = 'verification', evidenceDir
     mode,
     releaseBaselineRef,
     projectDir,
+    sourceHead: startGit.isRepo ? startGit.head : null,
+    sourceRoot: startGit.isRepo ? fs.realpathSync(projectDir) : null,
+    sourceFingerprint: startFingerprint,
+    replayFrom: replay ? { evidenceDir: replay.evidenceDir, sourceHead: replay.sourceHead,
+      sourceRoot: replay.sourceRoot, priorSummarySha256: replay.priorSummarySha256,
+      priorVerdict: replay.priorVerdict } : null,
     manifestFile,
     startedAt: records[0]?.startedAt ?? new Date().toISOString(),
     completedAt: new Date().toISOString(),
