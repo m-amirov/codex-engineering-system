@@ -97,7 +97,7 @@ export function summarizeArtReviewQueue(ledger, receipts, { limit = 6 } = {}) {
     target.status = record.status;
   }
 
-  const counts = { PASS: 0, PASS_WITH_NOTES: 0, REWORK: 0, BLOCKED: 0, NOT_REVIEWED: 0 };
+  const counts = { PASS: 0, ...(v3 ? {PASS_WITH_NOTES:0} : {}), REWORK: 0, BLOCKED: 0, NOT_REVIEWED: 0 };
   const outstanding = [];
   for (const item of items.values()) {
     counts[item.status]++;
