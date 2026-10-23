@@ -11,7 +11,7 @@ import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, 
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
-import { inspectArtCandidateLedger } from '../src/art-candidate-ledger.mjs';
+import { inspectArtCandidateLedger, recordArtCandidateAttempt } from '../src/art-candidate-ledger.mjs';
 import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
 import { importArtOutput } from '../src/art-output-transport.mjs';
 import { inspectNativeProducerRoute } from '../src/native-producer-routing.mjs';
@@ -408,6 +408,20 @@ try {
       const result = inspectArtCandidateLedger(project, args.file);
       print(result,true);
       process.exitCode = result.status === 'PASS_CANDIDATE_LEDGER' ? 0 : 2;
+      break;
+    }
+    case 'art-candidate-record': {
+      if (typeof args.file !== 'string' || typeof args['attempt-file'] !== 'string')
+        throw new Error('--file <ledger.json> and --attempt-file <real-attempt.json> required');
+      const attempt = JSON.parse(fs.readFileSync(path.resolve(project, String(args['attempt-file'])), 'utf8'));
+      const result = recordArtCandidateAttempt(project, {
+        ledgerPath:args.file, attempt, expectedLedgerSha256:args['expected-ledger-sha256'] ?? null,
+        ownerExceptionPath:args['owner-exception'] ?? null,
+        ownerExceptionSha256:args['owner-exception-sha256'] ?? null,
+        ownerApprovalObserved:args['owner-approval-observed'] === true
+      });
+      print(result,true);
+      process.exitCode = result.recorded ? 0 : 2;
       break;
     }
     case 'art-output-import': {

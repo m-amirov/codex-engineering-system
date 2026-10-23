@@ -34,3 +34,5 @@ schemas need **explicit** safe conversion; do not silently infer permission.
 
 Before integrating into a local CEOS installation compare this branch
 against the unpublished local HEAD and retain its newer DEV Web routing fixes.
+
+To record a genuine invocation use `ceos art-candidate-record --project . --file artifacts/production-art/candidate-ledger.json --attempt-file artifacts/production-art/native-attempt.json --expected-ledger-sha256 <CURRENT_HASH> --json`. A new ledger requires an existing parent directory. `tracePath` and `traceSha256` must point to actual trace bytes within the project. Earlier entries remain unchanged; an optimistic SHA guard prevents lost concurrent updates. The trace must have a JSON payload.

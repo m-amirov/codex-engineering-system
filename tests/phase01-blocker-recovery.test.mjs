@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { resolveAuthoredSceneId, resolveEpisodeIdentity, expectedEpisodePath } from '../src/narrative-source-resolver.mjs';
-import { authorizeArtCandidate, inspectArtCandidateLedger } from '../src/art-candidate-ledger.mjs';
+import { authorizeArtCandidate, inspectArtCandidateLedger, recordArtCandidateAttempt } from '../src/art-candidate-ledger.mjs';
 import { classifyTemporaryBlocker, planWorkAroundTemporaryBlocker } from '../src/temporary-blocker-recovery.mjs';
 
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -80,4 +80,25 @@ test('external failure is pausable but semantic and provenance defects never aut
   assert.equal(classifyTemporaryBlocker('BLOCKED_ART_BRIEF').status,'HARD_BLOCKED');
   assert.equal(planWorkAroundTemporaryBlocker('RATE_LIMITED','RUN_TESTS').executable,true);
   assert.equal(planWorkAroundTemporaryBlocker('RATE_LIMITED','PUBLISH').executable,false);
+});
+
+test('ledger recorder pins a real trace, appends attempts and refuses concurrent replacement', t => {
+  const root = project(t), head = 'f'.repeat(40);
+  const tracePath = 'artifacts/native-trace.json';
+  const traceSha256 = put(root, tracePath, {host:'test fixture',toolInvocation:'observed'});
+  const ledgerPath = 'artifacts/candidate-ledger.json';
+  const attempt = {attemptId:'a1',sceneId:'ep3_old_photo',variant:'pair',candidateNumber:1,
+    status:'INVOKED',sourceHead:head,producerTrace:'observed-native-host',
+    tracePath, traceSha256};
+  const one = recordArtCandidateAttempt(root,{ledgerPath,attempt});
+  assert.equal(one.status,'PASS_CANDIDATE_ATTEMPT_RECORDED',one.reason);
+  const two = recordArtCandidateAttempt(root,{ledgerPath,attempt:{...attempt,attemptId:'a2',candidateNumber:2,status:'OUTPUT_LOST'},
+    expectedLedgerSha256:one.ledgerSha256});
+  assert.equal(two.status,'PASS_CANDIDATE_ATTEMPT_RECORDED',two.reason);
+  assert.equal(inspectArtCandidateLedger(root,ledgerPath).consumed['ep3_old_photo:pair'],2);
+  const clash=recordArtCandidateAttempt(root,{ledgerPath,attempt:{...attempt,attemptId:'a3',candidateNumber:3},
+    expectedLedgerSha256:one.ledgerSha256});
+  assert.equal(clash.status,'BLOCKED_LEDGER_CONCURRENT_CHANGE');
+  assert.equal(recordArtCandidateAttempt(root,{ledgerPath,attempt:{...attempt,attemptId:'a3',candidateNumber:3},
+    expectedLedgerSha256:two.ledgerSha256}).recorded,false);
 });
