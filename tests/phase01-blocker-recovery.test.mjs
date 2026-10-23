@@ -49,8 +49,15 @@ test('third candidate requires one scoped host-observed, hash-bound exception an
   const root = project(t), head = 'a'.repeat(40);
   const ledgerPath = 'artifacts/production-art/candidate-ledger.json';
   const exceptionPath = 'artifacts/production-art/owner-exception.json';
-  const attempts = [1,2].map(n => ({attemptId:'old-photo-'+n, sceneId:'ep3_old_photo',
-    variant:'pair', candidateNumber:n, status:'OUTPUT_SAVED', sourceHead:head,producerTrace:'terra-trace-'+n}));
+  const attempts = [1,2].map(n => {
+    const tracePath = 'artifacts/native-trace-' + n + '.jsonl';
+    const bytes = Buffer.from('{"observed":true,"candidate":' + n + '}\n');
+    fs.mkdirSync(path.join(root,'artifacts'),{recursive:true});
+    fs.writeFileSync(path.join(root,tracePath),bytes);
+    return {attemptId:'old-photo-'+n, sceneId:'ep3_old_photo',
+      variant:'pair', candidateNumber:n, status:'OUTPUT_SAVED', sourceHead:head,
+      producerTrace:'terra-trace-'+n,tracePath,traceSha256:digest(bytes)};
+  });
   put(root, ledgerPath, {schemaVersion:1,kind:'ART_CANDIDATE_LEDGER_V1',attempts});
   const exceptionSha = put(root, exceptionPath, {schemaVersion:1,kind:'OWNER_AUTHORIZED_ART_EXCEPTION_V1',
     sourceHead:head,scenes:[{sceneId:'ep3_old_photo',variant:'pair',baseLimit:2,extraCandidates:1}]});
@@ -58,6 +65,9 @@ test('third candidate requires one scoped host-observed, hash-bound exception an
     ownerExceptionPath:exceptionPath,ownerExceptionSha256:exceptionSha,ownerApprovalObserved:true,ledgerPath};
   assert.equal(inspectArtCandidateLedger(root,ledgerPath).status,'PASS_CANDIDATE_LEDGER');
   assert.equal(authorizeArtCandidate(root, options).status,'READY_TO_GENERATE');
+  fs.writeFileSync(path.join(root,'artifacts/native-trace-1.jsonl'), 'tampered');
+  assert.equal(authorizeArtCandidate(root, options).status,'BLOCKED_OWNER_EXCEPTION_HISTORY_UNVERIFIED');
+  fs.writeFileSync(path.join(root,'artifacts/native-trace-1.jsonl'), Buffer.from('{"observed":true,"candidate":1}\n'));
   assert.equal(authorizeArtCandidate(root, {...options,ownerApprovalObserved:false}).authorized,false);
   assert.equal(authorizeArtCandidate(root, {...options,sceneId:'ep3_other'}).authorized,false);
   assert.equal(authorizeArtCandidate(root, {...options,candidateNumber:4}).authorized,false);

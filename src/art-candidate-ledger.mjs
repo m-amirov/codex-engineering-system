@@ -22,6 +22,16 @@ function sourceFile(projectDir, relative, expectedHash = null) {
   return { value: JSON.parse(bytes.toString('utf8')), sha256: hash(bytes) };
 }
 
+function verifiedNativeTrace(projectDir, attempt) {
+  if (!safe(attempt?.tracePath) || !HASH.test(attempt?.traceSha256 ?? '')) return false;
+  try {
+    const root = fs.realpathSync(projectDir);
+    const filename = fs.realpathSync(path.resolve(root, attempt.tracePath));
+    return filename.startsWith(root + path.sep) && fs.statSync(filename).isFile() &&
+      hash(fs.readFileSync(filename)) === attempt.traceSha256.toLowerCase();
+  } catch { return false; }
+}
+
 export function inspectArtCandidateLedger(projectDir, ledgerPath) {
   if (!ledgerPath) return { status: 'NO_LEDGER', attempts: [], consumed: {} };
   try {
@@ -85,7 +95,9 @@ export function authorizeArtCandidate(projectDir, {
     const grants = value.scenes.filter(item => item?.sceneId === sceneId && (item.variant ?? 'pair') === variant);
     if (grants.length !== 1 || grants[0].extraCandidates !== 1 || grants[0].baseLimit !== DEFAULT_LIMIT)
       return denied('BLOCKED_OWNER_EXCEPTION_SCOPE');
-    if (ledger.status !== 'PASS_CANDIDATE_LEDGER' || consumed !== DEFAULT_LIMIT)
+    const prior = ledger.attempts.filter(a => a.sceneId === sceneId && a.variant === variant && a.candidateNumber <= DEFAULT_LIMIT);
+    if (ledger.status !== 'PASS_CANDIDATE_LEDGER' || consumed !== DEFAULT_LIMIT ||
+        prior.length !== DEFAULT_LIMIT || !prior.every(attempt => verifiedNativeTrace(projectDir, attempt)))
       return denied('BLOCKED_OWNER_EXCEPTION_HISTORY_UNVERIFIED', { consumed });
     return { status: 'READY_TO_GENERATE', authorized: true, maxCandidates: 3,
       consumed, exceptionUsed: true, exceptionSha256: sha256 };
@@ -120,8 +132,7 @@ export function recordArtCandidateAttempt(projectDir, {
     if (!file.startsWith(root + path.sep) || !fs.existsSync(path.dirname(file)) ||
         !fs.realpathSync(path.dirname(file)).startsWith(root + path.sep))
       return denied('BLOCKED_LEDGER_PATH');
-    const trace = sourceFile(projectDir, attempt.tracePath, attempt.traceSha256);
-    if (typeof trace.sha256 !== 'string') return denied('BLOCKED_NATIVE_TRACE_MISSING');
+    if (!verifiedNativeTrace(projectDir, attempt)) return denied('BLOCKED_NATIVE_TRACE_MISSING');
   } catch (error) {
     return denied('BLOCKED_NATIVE_TRACE_INVALID', error.message);
   }
