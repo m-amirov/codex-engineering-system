@@ -8,6 +8,7 @@ import { inspectArtProgress } from './art-progress.mjs';
 import { validateWebReview } from './web-delegation.mjs';
 import { extractStructuredResponse } from './dev-web-high-transport.mjs';
 import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V3, validateArtReviewV3, isArtV3Accepted } from './narrative-art-acceptance-v3.mjs';
 
 export const EPISODE_ART_FINALIZATION_V1 = 'EPISODE_ART_FINALIZATION_V1';
 const SHA = /^[a-f0-9]{64}$/i;
@@ -401,18 +402,20 @@ function verifyReview(project, descriptor, sourceHead, reconciliationByScene, pr
   if (legacy && !sceneIds.every(sceneId => reconciliationByScene.get(sceneId)?.provenance))
     problems.push(label + '_LEGACY_PROVENANCE_MISSING');
   const normalized = normalizePixelEvidence(review);
+  const v3 = normalized.artAcceptanceProfile === NARRATIVE_ART_ACCEPTANCE_V3;
   if (Array.isArray(review.pixelEvidence)) for (const [i, item] of review.pixelEvidence.entries()) {
+    const acceptedItem = v3 ? isArtV3Accepted(item?.acceptanceVerdict) : item?.acceptanceVerdict === 'PASS';
     if (String(item?.sourceReviewOverallStatus ?? '').startsWith('BLOCKED') &&
-        item?.acceptanceVerdict !== 'PASS' && item?.sourceVerdict !== 'PASS_SOURCE_PIXELS')
+        !acceptedItem && item?.sourceVerdict !== 'PASS_SOURCE_PIXELS')
       problems.push(label + '_PIXEL_' + i + '_BLOCKED_ITEM_NOT_ACCEPTED');
-    if (item?.actualPixelsReceivedInSourceReview !== true || item?.acceptanceVerdict !== 'PASS')
+    if (item?.actualPixelsReceivedInSourceReview !== true || !acceptedItem)
       problems.push(label + '_PIXEL_' + i + '_ACCEPTANCE_NOT_PASS');
   }
   const hasVisual = Array.isArray(normalized.visualEvidence) && normalized.visualEvidence.length > 0;
   if (hasVisual) {
     const checks = validateWebReview(normalized, {
       pipeline: 'production-art', phase: 'acceptance', currentHead: legacy ? null : sourceHead,
-      visual: true, assurance: 'visual-content', artAcceptanceProfile: NARRATIVE_ART_ACCEPTANCE_V2
+      visual: true, assurance: 'visual-content', artAcceptanceProfile: v3 ? NARRATIVE_ART_ACCEPTANCE_V3 : NARRATIVE_ART_ACCEPTANCE_V2
     });
     if (checks.length) {
       problems.push(label + '_WEB_INVALID:' + checks.join('; '));
@@ -422,7 +425,7 @@ function verifyReview(project, descriptor, sourceHead, reconciliationByScene, pr
     problems.push(label + '_LEGACY_RECEIPT_NOT_ACCEPTED');
     return [];
   }
-  if (review.status !== 'PASS' || review.actualPixelsReceived !== true ||
+  if (!(v3 ? isArtV3Accepted(review.status) : review.status==='PASS') || review.actualPixelsReceived !== true ||
       !Array.isArray(review.unresolved) || review.unresolved.length)
     problems.push(label + '_NON_PASS_OR_UNRESOLVED');
   const framePaths = new Set();
@@ -457,7 +460,8 @@ function verifyReview(project, descriptor, sourceHead, reconciliationByScene, pr
     const extraction = extractStructuredResponse(raw.toString('utf8'));
     if (extraction.error || !extraction.parsed ||
         ['status','sourceHead','reviewedItems','evidenceRefs','receivedEvidenceRefs',
-         'actualPixelsReceived','decision','findings','unresolved','visualEvidence'].some(
+         'actualPixelsReceived','decision','findings','unresolved','visualEvidence',
+         ...(v3 ? ['requiredCast','wardrobeAssessments'] : [])].some(
           key => JSON.stringify(extraction.parsed[key]) !== JSON.stringify(review[key]))) {
       problems.push(label + '_RAW_RECEIPT_MISMATCH');
       return [];

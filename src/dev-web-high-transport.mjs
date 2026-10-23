@@ -7,6 +7,7 @@ import { createInterface } from 'node:readline';
 
 import { assessNarrativeArtFindings, NARRATIVE_ART_ACCEPTANCE_V2, NARRATIVE_ART_STORY_FIRST_GUIDANCE } from './narrative-art-acceptance.mjs';
 import { classifyWebTransportFailure } from './web-transport-failure.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V3, ART_V3_REVIEW_GUIDANCE, validateArtReviewV3 } from './narrative-art-acceptance-v3.mjs';
 
 export const DEV_WEB_HIGH_MODEL = 'chatgpt-web/gpt-6-sol';
 export const DEV_WEB_HIGH_FALLBACK_MODEL = 'gpt-5.6-sol';
@@ -317,26 +318,35 @@ export function prepareDevWebReviewRequest(request, { projectDir, currentHead } 
   });
   if (!kinds.has('original') || !kinds.has('runtime')) throw fail('PROVENANCE_FAILURE', 'Both original and runtime pixel evidence are required');
   if (totalBytes > MAX_TURN_IMAGE_BYTES) throw fail('PROVENANCE_FAILURE', 'DEV Web High images exceed the 50 MB per-turn limit');
+  const profile = request.artAcceptanceProfile ?? NARRATIVE_ART_ACCEPTANCE_V2;
+  if (![NARRATIVE_ART_ACCEPTANCE_V2,NARRATIVE_ART_ACCEPTANCE_V3].includes(profile))
+    throw fail('PROVENANCE_FAILURE', 'Unknown requested art acceptance profile');
+  const cast=request.requiredCast;
+  if (profile===NARRATIVE_ART_ACCEPTANCE_V3 &&
+      (!Array.isArray(cast) || cast.some(x=>!nonempty(x)) || new Set(cast).size!==cast.length))
+    throw fail('PROVENANCE_FAILURE', 'V3 requires an explicit unique requiredCast array (empty for scenery)');
   return {
     schemaVersion: 1,
     sceneId: request.sceneId,
     sourceHead: request.sourceHead,
     context: request.context,
     images,
-    artAcceptanceProfile: NARRATIVE_ART_ACCEPTANCE_V2
+    requiredCast: profile===NARRATIVE_ART_ACCEPTANCE_V3 ? cast : undefined,
+    artAcceptanceProfile: profile
   };
 }
 
 function buildPrompt(request, route) {
   const manifest = request.images.map(image => ({ ref: image.ref, kind: image.kind, sha256: image.sha256 }));
   const wardrobeReview = request.context.includes('WARDROBE_VISUAL_ACCEPTANCE_V1');
+  const v3=request.artAcceptanceProfile===NARRATIVE_ART_ACCEPTANCE_V3;
   return [
     `You are an independent ${route.model} reviewer running through the isolated DEV browser-only transport.`,
     'You have no local filesystem, terminal, MCP, Stable bridge, or repository access. Review only the supplied text and attached pixels.',
     'Do not claim to have used tools or inspected files. Do not invent missing pixels.',
-    'This is a source-bound visual acceptance for NARRATIVE_ART_ACCEPTANCE_V2.',
+    `This is a source-bound visual acceptance for ${request.artAcceptanceProfile}.`,
     'First determine whether the complete player-facing story is understandable with the supplied dialogue and runtime frame. Do not treat this as an illustration checklist.',
-    ...NARRATIVE_ART_STORY_FIRST_GUIDANCE,
+    ...(v3 ? ART_V3_REVIEW_GUIDANCE : NARRATIVE_ART_STORY_FIRST_GUIDANCE),
     `Scene ID: ${request.sceneId}`,
     `Source HEAD: ${request.sourceHead}`,
     'Source-bound context:',
@@ -348,20 +358,14 @@ function buildPrompt(request, route) {
       schemaVersion: 1,
       sceneId: request.sceneId,
       sourceHead: request.sourceHead,
-      status: 'PASS | REWORK | BLOCKED',
+      status: v3 ? 'PASS | PASS_WITH_NOTES | REWORK' : 'PASS | REWORK | BLOCKED',
       reviewedItems: [request.sceneId],
       evidenceRefs: request.images.map(image => image.ref),
       receivedEvidenceRefs: request.images.map(image => image.ref),
       actualPixelsReceived: true,
       decision: 'substantive scene decision',
-      artAcceptanceProfile: NARRATIVE_ART_ACCEPTANCE_V2,
-      visualEvidence: request.images.map(image => ({
-        ref: image.ref,
-        path: image.path,
-        sha256: image.sha256,
-        observation: 'specific independent pixel observation of at least 20 characters'
-      })),
-      ...(wardrobeReview ? {
+      artAcceptanceProfile: request.artAcceptanceProfile,
+      ...(v3 ? {requiredCast:request.requiredCast,wardrobeAssessments:request.requiredCast.map(characterId=>({characterId,identityObservation:'visible face, age and hair observation',wardrobeObservation:'costume and time-context observation',actionObservation:'authored action observation',identityStatus:'PASS',wardrobeStatus:'PASS',storyActionStatus:'PASS',dualFormatStatus:'PASS',evidenceRefs:request.images.map(image=>image.ref)}))} : wardrobeReview ? {
         wardrobeAssessments: [{
           characterId: 'required character ID from the source-bound context; repeat for each required cast member',
           portraitObservation: 'actual original and runtime portrait clothing, age, hair and silhouette observation',
@@ -377,16 +381,22 @@ function buildPrompt(request, route) {
           evidenceRefs: request.images.map(image => image.ref)
         }]
       } : {}),
+      visualEvidence: request.images.map(image => ({
+        ref: image.ref,
+        path: image.path,
+        sha256: image.sha256,
+        observation: 'specific independent pixel observation of at least 20 characters'
+      })),
       findings: [],
       unresolved: []
     }),
-    ...(wardrobeReview ? [
+    ...(v3 ? [] : wardrobeReview ? [
       'WARDROBE_VISUAL_ACCEPTANCE_V1: Add a wardrobeAssessments entry for EVERY required cast member named in source-bound context. The template entry is illustrative, not an observed verdict.',
       'Compare original/runtime portrait and landscape pixels with the character reference and any adjacent-scene pixels. Apparent age, silver streaks, face, silhouette, garment/accessory continuity and unmotivated repeated outfits are substantive review subjects.',
       'Use PASS for a wardrobe sub-assessment only when the necessary pixels were actually received and the evidence supports it. Missing adjacent images needed for continuous-story continuity must not be invented; report REWORK with explicit evidence gap.',
       'Do not penalize authored same-day continuity or a necessary staff uniform. Material P0/P1 identity/wardrobe conflicts must produce a substantive REWORK; minor P2/P3 visual preferences must not trigger endless regeneration.'
     ] : []),
-    'Observe both the original PNG and the runtime capture separately. Copy the supplied sourceHead, refs, paths and SHA-256 values exactly; never invent or infer an observation for pixels you did not actually see. For any finding use the NARRATIVE_ART_ACCEPTANCE_V2 fields: id, severity, status, impactCode, authoredCue, observation, playerImpact, evidenceRef, actualPixelsReceived, visualRequired (if directly relevant), and materialPlayerImpact when relevant. If the visuals do not need to depict a narrated action, classify that absence as nonblocking, not as a visual contradiction.'
+    v3 ? 'Observe original and runtime pixels separately. P2/P3 imperfections go in findings and require PASS_WITH_NOTES; only independently substantiated P0/P1 material contradictions require REWORK. Fill each requiredCast wardrobeAssessments entry with real observations and linked image refs. Do not make up evidence or translate historical REWORK into PASS.' : 'Observe both the original PNG and the runtime capture separately. Copy the supplied sourceHead, refs, paths and SHA-256 values exactly; never invent or infer an observation for pixels you did not actually see. For any finding use the NARRATIVE_ART_ACCEPTANCE_V2 fields: id, severity, status, impactCode, authoredCue, observation, playerImpact, evidenceRef, actualPixelsReceived, visualRequired (if directly relevant), and materialPlayerImpact when relevant. If the visuals do not need to depict a narrated action, classify that absence as nonblocking, not as a visual contradiction.'
   ].join('\n');
 }
 
@@ -492,16 +502,16 @@ function validateReviewerEnvelope(request, parsed) {
   if (parsed?.schemaVersion !== 1) errors.push('schemaVersion must equal 1');
   if (parsed?.sceneId !== request.sceneId) errors.push('sceneId does not match the request');
   if (parsed?.sourceHead !== request.sourceHead) errors.push('sourceHead does not match the request');
-  if (!['PASS', 'REWORK', 'BLOCKED'].includes(parsed?.status)) errors.push('status must be PASS, REWORK or BLOCKED');
+  if (!(request.artAcceptanceProfile===NARRATIVE_ART_ACCEPTANCE_V3 ? ['PASS','PASS_WITH_NOTES','REWORK'].includes(parsed?.status) : ['PASS','REWORK','BLOCKED'].includes(parsed?.status))) errors.push('status not valid for requested art profile');
   if (!sameStringList(parsed?.reviewedItems, [request.sceneId])) errors.push('reviewedItems must contain exactly the scene ID');
   if (!sameStringList(parsed?.evidenceRefs, refs)) errors.push('evidenceRefs must match the supplied image refs');
   if (!sameStringList(parsed?.receivedEvidenceRefs, refs)) errors.push('receivedEvidenceRefs must match the supplied image refs');
   if (parsed?.actualPixelsReceived !== true) errors.push('actualPixelsReceived must be true');
   if (!nonempty(parsed?.decision)) errors.push('decision is required');
-  if (parsed?.artAcceptanceProfile !== NARRATIVE_ART_ACCEPTANCE_V2) errors.push('artAcceptanceProfile must be NARRATIVE_ART_ACCEPTANCE_V2');
+  if (parsed?.artAcceptanceProfile !== request.artAcceptanceProfile) errors.push('artAcceptanceProfile must match the requested review');
   if (!Array.isArray(parsed?.findings)) errors.push('findings must be an array');
   if (!Array.isArray(parsed?.unresolved)) errors.push('unresolved must be an array');
-  if (parsed?.status === 'PASS' && Array.isArray(parsed.unresolved) && parsed.unresolved.length > 0) {
+  if (['PASS','PASS_WITH_NOTES'].includes(parsed?.status) && Array.isArray(parsed.unresolved) && parsed.unresolved.length > 0) {
     errors.push('PASS cannot contain unresolved observations');
   }
 
@@ -542,7 +552,9 @@ function completeLegacyObservations(request, parsed) {
 }
 
 function schemaRepairEligible(request, parsed, validation) {
-  if (!parsed || !['PASS', 'REWORK', 'BLOCKED'].includes(parsed.status)
+  const allowedStatuses = request.artAcceptanceProfile === NARRATIVE_ART_ACCEPTANCE_V3
+    ? ['PASS', 'PASS_WITH_NOTES', 'REWORK'] : ['PASS', 'REWORK', 'BLOCKED'];
+  if (!parsed || !allowedStatuses.includes(parsed.status)
       || parsed.sceneId !== request.sceneId || parsed.sourceHead !== request.sourceHead
       || parsed.actualPixelsReceived !== true || !nonempty(parsed.decision)
       || !Array.isArray(parsed.findings) || !Array.isArray(parsed.unresolved)) return false;
@@ -553,7 +565,7 @@ function schemaRepairEligible(request, parsed, validation) {
 function malformedResponseRepairEligible(request, responseText) {
   const raw = String(responseText ?? '');
   if (!raw || !/"visualEvidence"\s*:/i.test(raw) || !/"actualPixelsReceived"\s*:\s*true/i.test(raw)
-      || !/"status"\s*:\s*"(?:PASS|REWORK|BLOCKED)"/i.test(raw)) return false;
+      || !new RegExp(`"status"\\s*:\\s*"(?:${request.artAcceptanceProfile === NARRATIVE_ART_ACCEPTANCE_V3 ? 'PASS|PASS_WITH_NOTES|REWORK' : 'PASS|REWORK|BLOCKED'})"`, 'i').test(raw)) return false;
   if (!request.images.every(image => raw.includes(image.ref))) return false;
   const observationCount = (raw.match(/"observation"\s*:/gi) || []).length;
   return observationCount >= request.images.length;
@@ -633,6 +645,7 @@ function buildReceipt(request, parsed, responseText, delivery, evidenceArtifact,
     findings: parsed.findings,
     unresolved: parsed.unresolved,
     artAcceptanceProfile: parsed.artAcceptanceProfile,
+    ...(parsed.artAcceptanceProfile===NARRATIVE_ART_ACCEPTANCE_V3 ? {requiredCast:parsed.requiredCast,wardrobeAssessments:parsed.wardrobeAssessments} : {}),
     evidenceArtifact,
     visualEvidence: parsed.visualEvidence,
     normalization: parsed.normalization,
@@ -685,22 +698,25 @@ function parseResponse(request, response, { evidenceArtifact, rawResponseArtifac
       route
     });
   }
-  const findingCheck = assessNarrativeArtFindings(parsed.findings);
-  if (!findingCheck.ok) return notVerified(request, 'NARRATIVE_FINDINGS_INVALID', responseText, transportEvidence, {
-    validationErrors: findingCheck.errors,
-    extraction,
-    rawResponseArtifacts,
-    normalization: { schemaRepairAttempted },
-    route
-  });
-  if (parsed.status === 'PASS' && findingCheck.blockingFindings.length > 0) {
-    return notVerified(request, 'NARRATIVE_VERDICT_CONTRADICTION', responseText, transportEvidence, {
-      validationErrors: ['PASS cannot contain open blocking NARRATIVE_ART_ACCEPTANCE_V2 findings'],
-      extraction,
-      rawResponseArtifacts,
-      normalization: { schemaRepairAttempted },
-      route
+  if (request.artAcceptanceProfile===NARRATIVE_ART_ACCEPTANCE_V3) {
+    const evaluation=validateArtReviewV3(parsed);
+    if (!evaluation.ok) return notVerified(request, 'NARRATIVE_V3_REVIEW_INVALID', responseText, transportEvidence, {
+      validationErrors:evaluation.errors, extraction,rawResponseArtifacts,normalization:{schemaRepairAttempted}
     });
+    if (JSON.stringify(parsed.requiredCast)!==JSON.stringify(request.requiredCast))
+      return notVerified(request,'NARRATIVE_V3_CAST_MISMATCH',responseText,transportEvidence,{
+        validationErrors:['requiredCast must equal the source-bound request cast'],extraction,rawResponseArtifacts,normalization:{schemaRepairAttempted}
+      });
+  } else {
+    const findingCheck = assessNarrativeArtFindings(parsed.findings);
+    if (!findingCheck.ok) return notVerified(request, 'NARRATIVE_FINDINGS_INVALID', responseText, transportEvidence, {
+      validationErrors:findingCheck.errors,extraction,rawResponseArtifacts,normalization:{schemaRepairAttempted}
+    });
+    if (parsed.status === 'PASS' && findingCheck.blockingFindings.length > 0)
+      return notVerified(request, 'NARRATIVE_VERDICT_CONTRADICTION', responseText, transportEvidence, {
+        validationErrors:['PASS cannot contain open blocking NARRATIVE_ART_ACCEPTANCE_V2 findings'],
+        extraction,rawResponseArtifacts,normalization:{schemaRepairAttempted}
+      });
   }
   const normalized = {
     ...parsed,
@@ -1136,7 +1152,10 @@ export class DevWebHighTransport {
     for (const request of requests) {
       const result = await this.review(request, options);
       results.push(result);
-      if (result.status !== 'PASS') break;
+      const accepted = request.artAcceptanceProfile === NARRATIVE_ART_ACCEPTANCE_V3
+        ? ['PASS', 'PASS_WITH_NOTES'].includes(result.status)
+        : result.status === 'PASS';
+      if (!accepted) break;
     }
     return results;
   }

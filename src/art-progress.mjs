@@ -290,7 +290,7 @@ export function inspectArtProgress(projectDir, indexPath) {
     usedPaths.add(batch.receipt?.path);
     const receipt = json(batch.receipt?.path, batch.receipt?.sha256, tag + '_RECEIPT');
     if (receipt) {
-      if (receipt.status !== 'PASS' || receipt.profile !== 'NARRATIVE_ART_ACCEPTANCE_V2' ||
+      if (!((receipt.profile === 'NARRATIVE_ART_ACCEPTANCE_V3' && ['PASS','PASS_WITH_NOTES'].includes(receipt.status)) || (receipt.status==='PASS' && receipt.profile==='NARRATIVE_ART_ACCEPTANCE_V2')) ||
           receipt.actualPixelsReceived !== true || receipt.acceptanceScope !== 'BATCH_ONLY' ||
           receipt.releaseReady !== false || receipt.episodeFinalAcceptance !== false ||
           receipt.requiredRegeneration !== false ||
