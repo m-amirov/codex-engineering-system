@@ -587,3 +587,46 @@ test('retained conversation failure is a clear blocker and never starts a replac
   assert.deepEqual(result.transport.attachmentRefs, f.request.images.map(image => image.ref));
   assert.equal(result.transport.replacementImageReviewStarted, false);
 });
+
+
+test('DEV V3 source-bound reviewer produces one accepted PASS_WITH_NOTES with wardrobe observations',async()=>{
+  const f=fixture();
+  f.request.artAcceptanceProfile='NARRATIVE_ART_ACCEPTANCE_V3';
+  f.request.requiredCast=['bianca'];
+  const wardrobeAssessments=[{
+    characterId:'bianca',identityObservation:'Bianca retains the correct copper hair and visible adult features.',
+    wardrobeObservation:'The correct charcoal business suit is clearly visible.',
+    actionObservation:'Bianca enters the hotel lobby during the authored story beat.',
+    identityStatus:'PASS',wardrobeStatus:'PASS',storyActionStatus:'PASS',dualFormatStatus:'PASS',
+    evidenceRefs:f.request.images.map(image=>image.ref)
+  }];
+  const response=reviewerResponse(f.request,undefined,{
+    artAcceptanceProfile:'NARRATIVE_ART_ACCEPTANCE_V3',status:'PASS_WITH_NOTES',
+    requiredCast:['bianca'],wardrobeAssessments,
+    findings:[{id:'slight-buttons',status:'OPEN',severity:'P3',
+      observation:'An incidental button detail differs slightly between formats'}]
+  });
+  let prompt;
+  const t=transport(f,{run:async call=>{
+    prompt=call.prompt;return {text:response,submitted:true,attachmentAccepted:true};
+  }});
+  const result=await t.review(f.request,{currentHead:HEAD});
+  assert.equal(result.status,'PASS_WITH_NOTES',result.reasonCode);
+  assert.equal(result.receipt.artAcceptanceProfile,'NARRATIVE_ART_ACCEPTANCE_V3');
+  assert.equal(result.receipt.wardrobeAssessments[0].characterId,'bianca');
+  assert.match(prompt,/Only verified materially misleading identity/);
+  assert.match(prompt,/PASS_WITH_NOTES/);
+  await t.close();
+});
+
+test('DEV V3 refuses missing actual per-character evidence instead of making cosmetic PASS',async()=>{
+  const f=fixture();f.request.artAcceptanceProfile='NARRATIVE_ART_ACCEPTANCE_V3';f.request.requiredCast=['bianca'];
+  const response=reviewerResponse(f.request,undefined,{
+    artAcceptanceProfile:'NARRATIVE_ART_ACCEPTANCE_V3',status:'PASS',requiredCast:['bianca'],
+    wardrobeAssessments:[]
+  });
+  const result=await transport(f,{run:async()=>({text:response,submitted:true,attachmentAccepted:true})})
+    .review(f.request,{currentHead:HEAD});
+  assert.equal(result.status,'NOT_VERIFIED');
+  assert.equal(result.reasonCode,'NARRATIVE_V3_REVIEW_INVALID');
+});
