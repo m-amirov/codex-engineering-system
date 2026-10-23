@@ -1,8 +1,9 @@
 import { NARRATIVE_ART_ACCEPTANCE_V2, assessNarrativeArtFindings } from './narrative-art-acceptance.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V3, validateArtReviewV3, isArtV3Accepted } from './narrative-art-acceptance-v3.mjs';
 
 const HEAD = /^[a-f0-9]{40}$/i;
 const SHA = /^[a-f0-9]{64}$/i;
-const OUTCOMES = new Set(['PASS', 'REWORK', 'BLOCKED']);
+const OUTCOMES = new Set(['PASS', 'PASS_WITH_NOTES', 'REWORK', 'BLOCKED']);
 
 function hash(value) { return typeof value === 'string' && SHA.test(value); }
 
@@ -18,7 +19,8 @@ export function summarizeArtReviewQueue(ledger, receipts, { limit = 6 } = {}) {
     throw new Error('limit must be an integer between 1 and 1000');
   if (!Array.isArray(receipts)) throw new Error('receipts must be an array');
   const v2 = ledger.acceptanceProfile === NARRATIVE_ART_ACCEPTANCE_V2;
-  if (ledger.acceptanceProfile && !v2) throw new Error('unknown art acceptance profile');
+  const v3 = ledger.acceptanceProfile === NARRATIVE_ART_ACCEPTANCE_V3;
+  if (ledger.acceptanceProfile && !v2 && !v3) throw new Error('unknown art acceptance profile');
 
   const seen = new Set();
   const items = new Map();
@@ -44,7 +46,7 @@ export function summarizeArtReviewQueue(ledger, receipts, { limit = 6 } = {}) {
       rejected.push({ index, itemId: record.itemId, reason: 'STALE_SOURCE_OR_PIXELS' });
       continue;
     }
-    if (record.actualPixelsReceived !== true || !OUTCOMES.has(record.status) ||
+    if (record.actualPixelsReceived !== true || !OUTCOMES.has(record.status) || (!v3 && record.status==='PASS_WITH_NOTES') ||
         typeof record.observation !== 'string' || record.observation.trim().length < 20) {
       rejected.push({ index, itemId: record.itemId, reason: 'INVALID_VISUAL_RECEIPT' });
       continue;
@@ -71,23 +73,35 @@ export function summarizeArtReviewQueue(ledger, receipts, { limit = 6 } = {}) {
       }
     }
 
+    if (v3) {
+      if (record.acceptanceProfile !== NARRATIVE_ART_ACCEPTANCE_V3) {
+        rejected.push({index,itemId:record.itemId,reason:'V3_PROFILE_MISMATCH'}); continue;
+      }
+      if (record.status!=='BLOCKED') {
+        const evaluation=validateArtReviewV3({...record,artAcceptanceProfile:record.acceptanceProfile});
+        if (!evaluation.ok) {
+          rejected.push({index,itemId:record.itemId,reason:'V3_STATUS_OR_OBSERVATIONS_INVALID',details:evaluation.errors}); continue;
+        }
+      }
+    }
     const prior = history.get(record.itemId);
-    if (record.status === 'PASS' && prior?.status === 'REWORK' &&
-        (!Array.isArray(record.resolvedFindings) || record.resolvedFindings.length === 0)) {
+    if (['PASS','PASS_WITH_NOTES'].includes(record.status) && prior?.status === 'REWORK' &&
+        (!Array.isArray(record.resolvedFindings) || record.resolvedFindings.length === 0 ||
+         (v3 && (!record.reviewTraceId || record.reviewTraceId===prior.reviewTraceId)))) {
       rejected.push({ index, itemId: record.itemId, reason: 'REWORK_NOT_RESOLVED' });
       continue;
     }
 
     matchedRecords++;
-    history.set(record.itemId, { status: record.status, index });
+    history.set(record.itemId, { status: record.status, index, reviewTraceId:record.reviewTraceId });
     target.status = record.status;
   }
 
-  const counts = { PASS: 0, REWORK: 0, BLOCKED: 0, NOT_REVIEWED: 0 };
+  const counts = { PASS: 0, PASS_WITH_NOTES: 0, REWORK: 0, BLOCKED: 0, NOT_REVIEWED: 0 };
   const outstanding = [];
   for (const item of items.values()) {
     counts[item.status]++;
-    if (item.status !== 'PASS')
+    if (!['PASS','PASS_WITH_NOTES'].includes(item.status))
       outstanding.push({ id:item.id, sceneId:item.sceneId, cue:item.cue, viewport:item.viewport, status:item.status });
   }
   const ready = outstanding.filter(item => item.status === 'NOT_REVIEWED' || item.status === 'BLOCKED');
@@ -95,7 +109,7 @@ export function summarizeArtReviewQueue(ledger, receipts, { limit = 6 } = {}) {
   return {
     schemaVersion: 1,
     sourceHead: ledger.sourceHead,
-    ...(v2 ? { acceptanceProfile: NARRATIVE_ART_ACCEPTANCE_V2 } : {}),
+    ...(v2 ? { acceptanceProfile: NARRATIVE_ART_ACCEPTANCE_V2 } : v3 ? { acceptanceProfile:NARRATIVE_ART_ACCEPTANCE_V3 } : {}),
     totalUniqueFrames: items.size,
     receiptCount: receipts.length,
     matchedRecords, counts, rejected,

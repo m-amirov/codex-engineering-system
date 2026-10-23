@@ -8,6 +8,7 @@ import { inspectArtProgress } from './art-progress.mjs';
 import { validateWebReview } from './web-delegation.mjs';
 import { extractStructuredResponse } from './dev-web-high-transport.mjs';
 import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V3, validateArtReviewV3, isArtV3Accepted } from './narrative-art-acceptance-v3.mjs';
 
 export const EPISODE_ART_FINALIZATION_V1 = 'EPISODE_ART_FINALIZATION_V1';
 const SHA = /^[a-f0-9]{64}$/i;
@@ -409,10 +410,11 @@ function verifyReview(project, descriptor, sourceHead, reconciliationByScene, pr
       problems.push(label + '_PIXEL_' + i + '_ACCEPTANCE_NOT_PASS');
   }
   const hasVisual = Array.isArray(normalized.visualEvidence) && normalized.visualEvidence.length > 0;
+  const v3 = normalized.artAcceptanceProfile===NARRATIVE_ART_ACCEPTANCE_V3;
   if (hasVisual) {
     const checks = validateWebReview(normalized, {
       pipeline: 'production-art', phase: 'acceptance', currentHead: legacy ? null : sourceHead,
-      visual: true, assurance: 'visual-content', artAcceptanceProfile: NARRATIVE_ART_ACCEPTANCE_V2
+      visual: true, assurance: 'visual-content', artAcceptanceProfile: v3 ? NARRATIVE_ART_ACCEPTANCE_V3 : NARRATIVE_ART_ACCEPTANCE_V2
     });
     if (checks.length) {
       problems.push(label + '_WEB_INVALID:' + checks.join('; '));
@@ -422,7 +424,7 @@ function verifyReview(project, descriptor, sourceHead, reconciliationByScene, pr
     problems.push(label + '_LEGACY_RECEIPT_NOT_ACCEPTED');
     return [];
   }
-  if (review.status !== 'PASS' || review.actualPixelsReceived !== true ||
+  if (!(v3 ? isArtV3Accepted(review.status) : review.status==='PASS') || review.actualPixelsReceived !== true ||
       !Array.isArray(review.unresolved) || review.unresolved.length)
     problems.push(label + '_NON_PASS_OR_UNRESOLVED');
   const framePaths = new Set();

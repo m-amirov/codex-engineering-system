@@ -1,4 +1,5 @@
 import { NARRATIVE_ART_ACCEPTANCE_V2, assessNarrativeArtFindings } from './narrative-art-acceptance.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V3, validateArtReviewV3, isArtV3Accepted } from './narrative-art-acceptance-v3.mjs';
 
 /**
  * CEOS Web High review orchestration. Web reviewers reason over native-collected
@@ -74,7 +75,11 @@ export function validateWebReview(review, { pipeline, phase, currentHead, visual
     }
   }
   if (!nonempty(review.sourceHead) || (currentHead && review.sourceHead !== currentHead)) errors.push('Stale or missing source HEAD');
-  if (!(phase === 'analysis' ? ['PASS', 'FINDINGS'].includes(review.status) : review.status === 'PASS')) errors.push('Review status is not acceptable for this phase');
+  const v3Acceptance = pipeline==='production-art' && phase==='acceptance' &&
+    artAcceptanceProfile===NARRATIVE_ART_ACCEPTANCE_V3;
+  if (!(phase==='analysis' ? ['PASS','FINDINGS'].includes(review.status)
+      : v3Acceptance ? isArtV3Accepted(review.status) : review.status==='PASS'))
+    errors.push('Review status is not acceptable for this phase');
   if (!uniqueStrings(review.reviewedItems)) errors.push('Missing reviewed item identities');
   if (!uniqueStrings(review.evidenceRefs)) errors.push('Missing supplied evidence references');
   if (!uniqueStrings(review.receivedEvidenceRefs)
@@ -94,6 +99,10 @@ export function validateWebReview(review, { pipeline, phase, currentHead, visual
       if (evaluation.blockingFindings.length)
         errors.push('Narrative art V2 still contains plot-critical blocking findings');
     }
+  }
+  if (v3Acceptance) {
+    const v3=validateArtReviewV3(review);
+    if (!v3.ok) errors.push('Narrative art V3 invalid: '+v3.errors.join('; '));
   }
   if (visual && review.actualPixelsReceived !== true) errors.push('Visual review requires explicit actual-pixel receipt');
   return errors;

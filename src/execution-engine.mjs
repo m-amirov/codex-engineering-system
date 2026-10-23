@@ -14,8 +14,18 @@ import { narrativeDualFormatEnabled, verifyNarrativeDualFormatArt } from './narr
 import { inspectNativeProducerRoute, nativeProducerParentContext } from './native-producer-routing.mjs';
 import { readRunCapabilityAttestation } from './capability-attestation.mjs';
 import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V3, isArtV3Accepted } from './narrative-art-acceptance-v3.mjs';
 import { classifyTemporaryBlocker } from './temporary-blocker-recovery.mjs';
 import { VERIFIED_EXISTING_ART_REUSE, verifyExistingArtReuse } from './existing-art-reuse.mjs';
+
+function selectedNarrativeArtProfile(project) {
+  // Explicit opt-in only. Existing V2 runs and unrelated games never change.
+  try {
+    const config=JSON.parse(fs.readFileSync(path.join(project,'config','narrative-game.local.json'),'utf8'));
+    return config.artAcceptanceProfile===NARRATIVE_ART_ACCEPTANCE_V3
+      ? NARRATIVE_ART_ACCEPTANCE_V3 : NARRATIVE_ART_ACCEPTANCE_V2;
+  } catch {return NARRATIVE_ART_ACCEPTANCE_V2}
+}
 
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
 const OUTCOMES = new Set(['CONTINUE', 'PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -777,7 +787,8 @@ export function createRun(projectDir, pipeline, {
     artOutputGateRequired: pipeline === 'production-art' && normalizedArtMode !== ART_MODES.VERIFIED_EXISTING_ART_REUSE,
     narrativeDualFormatRequired: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject),
     nativeProducerRouteRequired: pipeline === 'production-art' && normalizedArtMode !== ART_MODES.VERIFIED_EXISTING_ART_REUSE && narrativeDualFormatEnabled(resolvedProject),
-    artAcceptanceProfile: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject) ? NARRATIVE_ART_ACCEPTANCE_V2 : null,
+    artAcceptanceProfile: pipeline === 'production-art' && narrativeDualFormatEnabled(resolvedProject)
+      ? selectedNarrativeArtProfile(resolvedProject) : null,
     // The run is product-scoped, not Codex-session-scoped. Native parent trust is
     // resolved at GENERATING from the current, run-scoped capability challenge.
     // Historical runs without this mode retain their original pinned parent.
@@ -900,7 +911,7 @@ function assertWebReviewPhase(run, capabilities, stage, currentHead) {
     const pending = (trace.webReviews ?? []).filter(review => review.phase !== 'acceptance')
       .flatMap(review => review.unresolved ?? []);
     if (pending.length) {
-      const accepted = reviews.find(review => review.status === 'PASS' && Array.isArray(review.resolvedFindings));
+      const accepted = reviews.find(review => (run.artAcceptanceProfile===NARRATIVE_ART_ACCEPTANCE_V3 ? isArtV3Accepted(review.status) : review.status==='PASS') && Array.isArray(review.resolvedFindings));
       const resolved = accepted?.resolvedFindings ?? [];
       const received = accepted?.receivedEvidenceRefs ?? [];
       if (pending.some(id => !resolved.some(item => item?.id === id && received.includes(item.evidenceRef))))

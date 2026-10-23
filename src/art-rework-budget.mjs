@@ -1,5 +1,6 @@
 import { NARRATIVE_ART_ACCEPTANCE_V2, assessNarrativeArtFindings } from './narrative-art-acceptance.mjs';
 import { authorizeArtCandidate } from './art-candidate-ledger.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V3, assessArtFindingsV3 } from './narrative-art-acceptance-v3.mjs';
 
 const MATERIAL = new Set(['P0', 'P1', 'P2']);
 const SEVERITIES = new Set([...MATERIAL, 'P3']);
@@ -21,19 +22,20 @@ export function authorizeArtRework(request) {
   if (request.transportState && request.transportState !== 'READY')
     return denied('BLOCKED_INVALID_REWORK_REQUEST', 'Unknown transport state.');
 
-  if (request.acceptanceProfile && request.acceptanceProfile !== NARRATIVE_ART_ACCEPTANCE_V2)
+  if (request.acceptanceProfile && ![NARRATIVE_ART_ACCEPTANCE_V2,NARRATIVE_ART_ACCEPTANCE_V3].includes(request.acceptanceProfile))
     return denied('BLOCKED_INVALID_REWORK_REQUEST', 'Unsupported art acceptance profile');
   const v2 = request.acceptanceProfile === NARRATIVE_ART_ACCEPTANCE_V2;
-  const assessment = v2 ? assessNarrativeArtFindings(request.findings) : null;
-  if (v2 && !assessment.ok)
+  const v3 = request.acceptanceProfile === NARRATIVE_ART_ACCEPTANCE_V3;
+  const assessment = v2 ? assessNarrativeArtFindings(request.findings) : v3 ? assessArtFindingsV3(request.findings) : null;
+  if ((v2 || v3) && !assessment.ok)
     return denied('BLOCKED_UNVERIFIED_FINDINGS', assessment.errors.join('; '));
   const findings = request.findings.filter(f => f?.status === 'OPEN');
   if (findings.some(f => !text(f.id) || !SEVERITIES.has(f.severity)))
     return denied('BLOCKED_INVALID_REWORK_REQUEST', 'Every open finding needs identity and severity.');
-  const actionable = v2 ? assessment.blockingFindings : findings.filter(f => MATERIAL.has(f.severity));
+  const actionable = v2 || v3 ? assessment.blockingFindings : findings.filter(f => MATERIAL.has(f.severity));
   if (!actionable.length)
-    return denied('NO_MATERIAL_REWORK', v2
-      ? 'V2: advisory P2/P3 feedback is not blocking and cannot authorize production repair.'
+    return denied('NO_MATERIAL_REWORK', v2 || v3
+      ? 'V2/V3: advisory P2/P3 feedback is not blocking and cannot authorize production repair.'
       : 'P3-only feedback does not authorize art generation or production repair.');
   if (actionable.some(f => !text(f.authoredCue) || !text(f.observation) || !text(f.playerImpact) ||
       !text(f.evidenceRef) || f.actualPixelsReceived !== true))

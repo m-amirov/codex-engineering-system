@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { decodeProductionPng } from './art-output-gate.mjs';
 import { executionStatus } from './execution-engine.mjs';
 import { NARRATIVE_ART_ACCEPTANCE_V2 } from './narrative-art-acceptance.mjs';
+import { NARRATIVE_ART_ACCEPTANCE_V3 } from './narrative-art-acceptance-v3.mjs';
 import { validateWebReview } from './web-delegation.mjs';
 
 const HASH = /^[a-f0-9]{64}$/i;
@@ -127,7 +128,7 @@ export function inspectWebHighAcceptance(projectDir, receiptRef, review, {
   if (explicitlyVisualContent && assurance !== 'visual-content') errors.push('WEB_HIGH_ASSURANCE_MISMATCH');
   if (assurance === 'visual-content' && !run) errors.push('WEB_HIGH_CONTENT_RUN_REQUIRED');
 
-  if (review.status !== 'PASS' || review.actualPixelsReceived !== true ||
+  if (!(review.artAcceptanceProfile===NARRATIVE_ART_ACCEPTANCE_V3 ? ['PASS','PASS_WITH_NOTES'].includes(review.status) : review.status==='PASS') || review.actualPixelsReceived !== true ||
       !HEAD.test(String(review.sourceHead ?? '')) ||
       (expectedSourceHead && review.sourceHead !== expectedSourceHead) ||
       !Array.isArray(review.evidenceRefs) || !review.evidenceRefs.length ||
@@ -146,13 +147,13 @@ export function inspectWebHighAcceptance(projectDir, receiptRef, review, {
         run.webDelegationPlan?.visual !== true || run.webDelegationPlan?.assurance !== 'visual-content' ||
         scope?.webReviewMode !== 'enhanced' || scope?.webReviewAssurance !== 'visual-content')
       errors.push('WEB_HIGH_ASSURANCE_NOT_SCOPE_LOCKED');
-    if (review.phase !== 'acceptance' || review.artAcceptanceProfile !== NARRATIVE_ART_ACCEPTANCE_V2)
+    if (review.phase !== 'acceptance' || ![NARRATIVE_ART_ACCEPTANCE_V2,NARRATIVE_ART_ACCEPTANCE_V3].includes(review.artAcceptanceProfile))
       errors.push('WEB_HIGH_ART_ACCEPTANCE_PROFILE_INVALID');
     const validation = validateWebReview(review, {
       pipeline: 'production-art', phase: 'acceptance',
       currentHead: expectedSourceHead ?? run.sourceAtStart?.head ?? null,
       visual: true, assurance: 'visual-content',
-      artAcceptanceProfile: NARRATIVE_ART_ACCEPTANCE_V2
+      artAcceptanceProfile: review.artAcceptanceProfile
     });
     for (const issue of validation) errors.push(`WEB_HIGH_REVIEW_INVALID:${issue}`);
 

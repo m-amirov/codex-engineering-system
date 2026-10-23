@@ -11,6 +11,7 @@ import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, 
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
+import { planChangedSceneReviews } from '../src/art-change-impact.mjs';
 import { inspectArtCandidateLedger, recordArtCandidateAttempt } from '../src/art-candidate-ledger.mjs';
 import { inspectArtOutput, inspectArtBatch, normalizeArtCanvas } from '../src/art-output-gate.mjs';
 import { importArtOutput } from '../src/art-output-transport.mjs';
@@ -505,6 +506,14 @@ try {
       print(plan, true);
       break;
     }
+    case 'art-impact-plan': {
+      if (typeof args.file !== 'string') throw new Error('--file <impact-scope.json> required');
+      const data=JSON.parse(fs.readFileSync(path.resolve(project,args.file),'utf8'));
+      const result=planChangedSceneReviews(project,data);
+      print(result,true);
+      process.exitCode=result.status==='PASS_IMPACT_PLAN'?0:2;
+      break;
+    }
     case 'web-review-verify': {
       if (!args['record-file'] || !args.phase) throw new Error('--record-file and --phase are required');
       const record = JSON.parse(fs.readFileSync(path.resolve(project, String(args['record-file'])), 'utf8'));
@@ -513,7 +522,8 @@ try {
         phase: String(args.phase),
         currentHead: args.head || null,
         visual: Boolean(args.visual),
-        assurance: args.assurance || 'strict'
+        assurance: args.assurance || 'strict',
+        artAcceptanceProfile: args['art-profile'] || null
       });
       const result = { status: issues.length ? 'WEB_REVIEW_NOT_VERIFIED' : 'PASS', issues };
       print(result, true);
