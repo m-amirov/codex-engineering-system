@@ -7,7 +7,7 @@ import { webPreflight } from '../src/web-preflight.mjs';
 import { gitPreflight } from '../src/git-preflight.mjs';
 import { collectCapabilities } from '../src/capabilities.mjs';
 import { webReviewPlan, validateWebReview } from '../src/web-delegation.mjs';
-import { createRun, recordCheckpoint, refreshRunCapabilities, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES, preflightNativeProducerRoute, recoverLegacyCapabilityAttestation } from '../src/execution-engine.mjs';
+import { createRun, recordCheckpoint, refreshRunCapabilities, recordRecoveryEvent, reopenBlockedRun, resumeRun, executionStatus, recordRoutingTrace, preflightRoutingReceipt, recordWebAttachmentQuotaBlock, EXECUTION_PIPELINES, preflightNativeProducerRoute, recoverLegacyCapabilityAttestation } from '../src/execution-engine.mjs';
 import { beginCapabilityChallenge, respondCapabilityChallenge, readRunCapabilityAttestation } from '../src/capability-attestation.mjs';
 import { planAdoption, applyAdoption } from '../src/adoption.mjs';
 import { validateArtProducerBrief } from '../src/art-producer-brief.mjs';
@@ -162,6 +162,7 @@ Usage:
   ceos direct [--project dir] [--json] (read-only optional development context; no runs/checkpoints)
   ceos continue --scope project [--plan <project-relative-completion-plan.md>] [--goal <short goal>] [--mode inspect|guided|auto] [--json]  (read-only project handoff)
   ceos continue [run-id|latest] [--project dir] [--progress-index path] [--mode inspect|guided|auto] [--dry-run] [--claim --action-id HASH | --release TOKEN] [--json] (guided default; inspect/dry-run read-only)
+  ceos recovery-event [run-id|latest] --event-file <project-relative.json> [--project dir] [--json] (persist one host-observed technical failure; never invokes a tool)
   ceos run-relocate [run-id|latest] --project <new-worktree> [--apply --expect-sha <original-run-sha256>] [--json] (read-only preview by default)
   ceos resume [run-id|latest] [--refresh-capabilities] [--reopen-blocked --reason "..."] [--evidence <path;path>] [--image-generation state] [--json]
   ceos resume RUN_ID --reopen-blocked --reason "Scoped integration coverage fixed" --dual-format-batch-manifest <project-relative.json> --json
@@ -668,6 +669,22 @@ try {
         if (!result.executable) console.log('No host work authorized by this response.');
       }
       process.exitCode = ['READY_FOR_CODEX','READY_FOR_PROJECT_PLANNING','DONE','RELEASED'].includes(result.status) ? 0 : 2;
+      break;
+    }
+    case 'recovery-event': {
+      const runRef = args._[1] || 'latest';
+      if (!args['event-file']) throw new Error('--event-file is required');
+      const eventFile = path.resolve(project, String(args['event-file']));
+      if (!eventFile.startsWith(path.resolve(project) + path.sep)) throw new Error('--event-file must stay inside the project');
+      const event = JSON.parse(fs.readFileSync(eventFile, 'utf8'));
+      const result = recordRecoveryEvent(project, runRef, event);
+      if (args.json) print(result, true); else {
+        console.log('RECOVERY: ' + result.status);
+        if (result.reasonCode) console.log('Reason: ' + result.reasonCode);
+        if (result.nextAction) console.log('Next: ' + result.nextAction);
+        if (result.alreadyRecorded) console.log('Event: already recorded');
+      }
+      process.exitCode = ['AUTO_RECOVERABLE', 'READY'].includes(result.status) ? 0 : 2;
       break;
     }
     case 'run-status': {

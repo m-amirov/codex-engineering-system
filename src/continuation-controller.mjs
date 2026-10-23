@@ -8,6 +8,8 @@ import { discoverArtProgress, inspectArtProgress } from './art-progress.mjs';
 import { inspectRunRelocation } from './run-relocation.mjs';
 import { inspectCheckpointedArtDirt } from './checkpointed-art-dirt.mjs';
 import { classifyTemporaryBlocker } from './temporary-blocker-recovery.mjs';
+import { brokerCapabilities } from './capability-broker.mjs';
+import { recoveryDecision, RECOVERY_CATEGORIES } from './continuation-recovery.mjs';
 
 const MODES = new Set(['inspect', 'guided', 'auto']);
 const TERMINAL = new Set(['PASS', 'FAIL', 'BLOCKED', 'ESCALATE']);
@@ -279,11 +281,47 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
     return makeBlocked('BLOCKED_ART_PROGRESS',{...summary,
       action:{kind:'RESTORE_SOURCE_BOUND_PROGRESS',risk:'R0',
         instruction:'Restore the referenced source-bound files and re-run continue; do not claim acceptance or release from a blocked ledger.'}});
+  let capabilities;
+  try { capabilities = read(path.join(resumed.runDir,'capabilities.json')); }
+  catch (error) {
+    return makeBlocked('BLOCKED_CAPABILITY_SNAPSHOT',{...summary,
+      capability:{status:RECOVERY_CATEGORIES.HARD_BLOCKED,category:RECOVERY_CATEGORIES.HARD_BLOCKED,
+        reasonCode:'CAPABILITY_SNAPSHOT_INVALID',nextAction:'STOP_AND_REPAIR',detail:error.message}});
+  }
+  const capability = brokerCapabilities(capabilities, {
+    pipeline:run.pipeline,
+    stage:run.nextStage,
+    webRequired:run.webRequired === true,
+    usesExistingArtReuse:run.artMode === 'VERIFIED_EXISTING_ART_REUSE'
+  });
+  const recovery = run.recovery
+    ? recoveryDecision(run.recovery, {
+      externalReady: capability.category === 'READY' && capability.requiresFreshCapabilityChallenge !== true
+    })
+    : {status:'READY',category:'READY',reasonCode:null,nextAction:null,retryCount:0,nextRetryAt:null};
+  if (capability.category !== 'READY') {
+    const capabilityStatus = capability.category === RECOVERY_CATEGORIES.HARD_BLOCKED
+      ? 'BLOCKED_CAPABILITY' : capability.category;
+    return makeBlocked(capabilityStatus,{...summary,capability,recovery,
+      action:{kind:'WAIT_FOR_CAPABILITY',risk:'R0',
+        instruction:`Capability broker: ${capability.nextAction}. ${capability.reasonCode}`}});
+  }
+  if (recovery.status !== 'READY' && recovery.status !== RECOVERY_CATEGORIES.AUTO_RECOVERABLE) {
+    const recoveryStatus = recovery.category === RECOVERY_CATEGORIES.HARD_BLOCKED
+      ? 'BLOCKED_RECOVERY' : recovery.status;
+    return makeBlocked(recoveryStatus,{...summary,capability,recovery,
+      action:{kind:'WAIT_FOR_RECOVERY',risk:'R0',instruction:`Recovery: ${recovery.nextAction}. ${recovery.reasonCode}`}});
+  }
   const action=taskFor(run);
+  if (capability.requiresFreshCapabilityChallenge) {
+    action.requirements = [...(action.requirements ?? []),
+      'Run the fresh current-turn capability challenge before any Image Gen call; this response does not authorize generation by itself.'];
+  }
   if (progress?.status === 'PASS_ART_PROGRESS_REVALIDATED')
     action.instruction += ` Existing accepted progress: ${progress.acceptedPairs}/${progress.plannedPairs} pairs (${progress.acceptedPng} PNGs); continue with the remaining scope without regenerating accepted pairs.`;
   const actionId=digest(JSON.stringify({runId:run.runId,scope:run.scopeSha256,head:git.head,
-    cycle:run.cycle,checkpointCount:run.checkpointCount,nextStage:run.nextStage,kind:action.kind,progress}));
+    cycle:run.cycle,checkpointCount:run.checkpointCount,nextStage:run.nextStage,kind:action.kind,
+    recoveryAttempt:recovery.retryCount,progress}));
   const status=action.kind === 'RUN_COMPLETE' ? 'DONE'
     : action.kind === 'STOP_TERMINAL' ? 'STOP_TERMINAL'
     : action.kind === 'BLOCKED_UNKNOWN_STAGE' ? 'BLOCKED_UNKNOWN_STAGE'
@@ -295,7 +333,7 @@ export function planContinuation(projectDir, {runRef, mode='inspect', progressIn
           ? 'BLOCKED_DIRTY_WORKTREE' : 'READY_FOR_CODEX'));
   const executable=status === 'READY_FOR_CODEX';
   return {schemaVersion:1,status,executable,...summary,integrity:resumed.integrity,
-    action:{...action,id:actionId},nextAction:resumed.nextAction,
+    capability,recovery,action:{...action,id:actionId},nextAction:resumed.nextAction,
     hostExecutionRequired:true, boundaries:{
       noImplicitGitPush:true,noImplicitMerge:true,noPublish:true,
       noCheckpointWithoutEvidence:true,noImplicitScopeExpansion:true
