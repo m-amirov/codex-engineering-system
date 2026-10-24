@@ -184,9 +184,10 @@ Profiles: ${SUPPORTED_PROFILES.join(', ')}
 Skills: ${SKILL_NAMES.join(', ')}`);
 }
 
-const args = parseArgs(process.argv.slice(2));
+const argv = process.argv.slice(2);
+const args = parseArgs(argv);
 const cmd = args._[0] ?? 'help';
-if (args.help !== undefined || args._.includes('-h')) {
+if (argv.includes('--help') || argv.includes('-h')) {
   if (cmd === 'adopt') {
     console.log('Usage: ceos adopt --project <dir> [--profile <profile>] [--dry-run] [--force] [--json]');
     console.log('Adds only CEOS-owned .codex-os adoption files; dry-run plans without writes.');

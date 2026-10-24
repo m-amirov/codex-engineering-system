@@ -39,6 +39,22 @@ test('install-global -h is also read-only', t => {
   runHelp(t, ['install-global', '-h']);
 });
 
+test('install-global --force -h cannot consume help as the force value', t => {
+  runHelp(t, ['install-global', '--force', '-h']);
+});
+
+test('install-global --mode -h cannot consume help as an option value', t => {
+  runHelp(t, ['install-global', '--mode', '-h']);
+});
+
+test('init --force -h never initializes a project', t => {
+  runHelp(t, ['init', '--force', '-h']);
+});
+
+test('worktrees cleanup --apply -h never enters cleanup', t => {
+  runHelp(t, ['worktrees', 'cleanup', '--apply', '-h']);
+});
+
 test('other mutating commands handle --help before any operation', async t => {
   for (const command of [['init', '--help'], ['install-skills', '--help'], ['worktrees', 'cleanup', '--help']]) {
     await t.test(command.join(' '), subtest => runHelp(subtest, command));
